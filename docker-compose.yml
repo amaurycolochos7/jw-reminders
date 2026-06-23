@@ -21,8 +21,6 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: jw-reminders-api
     restart: unless-stopped
-    ports:
-      - "4000:4000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jw_reminders}
       JWT_SECRET: ${JWT_SECRET}
@@ -40,6 +38,11 @@ services:
       - "traefik.http.routers.jw-api.entrypoints=websecure"
       - "traefik.http.routers.jw-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.jw-api.loadbalancer.server.port=4000"
+      - "traefik.http.routers.jw-api.priority=10"
+      - "traefik.docker.network=bridge"
+    networks:
+      - default
+      - bridge
 
   web:
     build:
@@ -47,8 +50,6 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: jw-reminders-web
     restart: unless-stopped
-    ports:
-      - "3001:3001"
     environment:
       NEXT_PUBLIC_API_URL: https://jw-reminders.duckdns.org
       NODE_ENV: production
@@ -61,6 +62,10 @@ services:
       - "traefik.http.routers.jw-web.tls.certresolver=letsencrypt"
       - "traefik.http.services.jw-web.loadbalancer.server.port=3001"
       - "traefik.http.routers.jw-web.priority=1"
+      - "traefik.docker.network=bridge"
+    networks:
+      - default
+      - bridge
 
   worker:
     build:
@@ -85,8 +90,6 @@ services:
       dockerfile: apps/whatsapp/Dockerfile
     container_name: jw-reminders-whatsapp
     restart: unless-stopped
-    ports:
-      - "3010:3010"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jw_reminders}
       PORT: "3010"
@@ -101,3 +104,8 @@ services:
 volumes:
   pgdata:
   whatsapp_session:
+
+networks:
+  bridge:
+    external: true
+    name: bridge
