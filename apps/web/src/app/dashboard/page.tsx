@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { api } from '@/lib/api'
 
 interface Stats {
   publicadores: number
@@ -40,7 +41,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/dashboard')
+        const res = await api('/api/dashboard')
         if (res.ok) {
           const data = await res.json()
           setStats(data.stats ?? stats)

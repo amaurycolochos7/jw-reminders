@@ -1,5 +1,6 @@
 import { Router } from "express";
 import authRoutes from "../modules/auth/auth.routes.js";
+import dashboardRoutes from "../modules/dashboard/dashboard.routes.js";
 import publishersRoutes from "../modules/publishers/publishers.routes.js";
 import meetingWeeksRoutes from "../modules/meeting-weeks/meeting-weeks.routes.js";
 import assignmentsRoutes from "../modules/assignments/assignments.routes.js";
@@ -15,6 +16,7 @@ export const apiRouter = Router();
 apiRouter.use("/auth", authRoutes);
 
 // Protected routes
+apiRouter.use("/dashboard", authMiddleware, dashboardRoutes);
 apiRouter.use("/publishers", authMiddleware, publishersRoutes);
 apiRouter.use("/meeting-weeks", authMiddleware, meetingWeeksRoutes);
 apiRouter.use("/assignments", authMiddleware, assignmentsRoutes);
