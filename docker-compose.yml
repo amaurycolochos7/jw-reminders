@@ -71,10 +71,10 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jw_reminders}
       PORT: "3010"
-      WHATSAPP_SESSION_PATH: /app/.wwebjs_auth
+      WHATSAPP_SESSION_PATH: /app/apps/whatsapp/.wwebjs_auth
       NODE_ENV: production
     volumes:
-      - whatsapp_session:/app/.wwebjs_auth
+      - whatsapp_session:/app/apps/whatsapp/.wwebjs_auth
     depends_on:
       db:
         condition: service_healthy

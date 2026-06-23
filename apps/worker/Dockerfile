@@ -16,4 +16,5 @@ RUN pnpm --filter @jw-reminders/database generate
 RUN pnpm --filter @jw-reminders/worker build
 
 ENV NODE_ENV=production
-CMD ["node", "apps/worker/dist/index.js"]
+WORKDIR /app/apps/worker
+CMD ["node", "dist/index.js"]

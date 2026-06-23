@@ -33,5 +33,6 @@ RUN pnpm --filter @jw-reminders/whatsapp build
 
 ENV NODE_ENV=production
 EXPOSE 3010
-VOLUME ["/app/.wwebjs_auth"]
-CMD ["node", "apps/whatsapp/dist/index.js"]
+VOLUME ["/app/apps/whatsapp/.wwebjs_auth"]
+WORKDIR /app/apps/whatsapp
+CMD ["node", "dist/index.js"]

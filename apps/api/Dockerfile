@@ -18,4 +18,4 @@ RUN pnpm --filter @jw-reminders/api build
 ENV NODE_ENV=production
 EXPOSE 4000
 
-CMD sh -c "cd packages/database && npx prisma migrate deploy && npx tsx prisma/seed.ts; cd /app && node apps/api/dist/server.js"
+CMD sh -c "cd /app/packages/database && npx prisma migrate deploy && npx tsx prisma/seed.ts; cd /app/apps/api && node dist/server.js"
