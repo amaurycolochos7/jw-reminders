@@ -1,4 +1,5 @@
-FROM node:20-alpine
+FROM node:20-slim
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
 WORKDIR /app
 
@@ -17,5 +18,5 @@ RUN pnpm --filter @jw-reminders/api build
 
 ENV NODE_ENV=production
 EXPOSE 4000
-
+WORKDIR /app/apps/api
 CMD sh -c "cd /app/packages/database && npx prisma migrate deploy && npx tsx prisma/seed.ts; cd /app/apps/api && node dist/server.js"
