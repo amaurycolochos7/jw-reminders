@@ -32,7 +32,7 @@ logs/
 .wwebjs_cache/
 
 # Prisma
-packages/database/prisma/migrations/**/migration_lock.toml
+# Note: migration_lock.toml must be committed
 
 # Docker
 docker-data/
