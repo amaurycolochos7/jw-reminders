@@ -1,30 +1,26 @@
-FROM node:20-alpine AS base
+FROM node:20-alpine
 RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
 WORKDIR /app
 
-FROM base AS deps
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+# Copy workspace files
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
+
+# Install deps
 RUN pnpm install --frozen-lockfile || pnpm install
 
-FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY . .
+# Copy source
+COPY packages/ ./packages/
+COPY apps/api/ ./apps/api/
+
+# Generate Prisma client and build
 RUN pnpm --filter @jw-reminders/database generate
 RUN pnpm --filter @jw-reminders/api build
 
-FROM base AS runner
-WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/database/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/packages/database/prisma ./prisma
 EXPOSE 4000
-CMD ["node", "dist/server.js"]
+
+# Start with migration + seed + server
+CMD sh -c "cd packages/database && npx prisma migrate deploy && npx tsx prisma/seed.ts; cd /app && node apps/api/dist/server.js"
