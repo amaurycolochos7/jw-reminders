@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+
+# WhatsApp session
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Prisma
+packages/database/prisma/migrations/**/migration_lock.toml
+
+# Docker
+docker-data/
+
+# Coverage
+coverage/
+
+# Temp
+tmp/
+temp/

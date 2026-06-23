@@ -1,0 +1,27 @@
+{
+  "name": "jw-reminders",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de recordatorios de asignaciones JW",
+  "scripts": {
+    "dev:api": "pnpm --filter @jw-reminders/api dev",
+    "dev:web": "pnpm --filter @jw-reminders/web dev",
+    "dev:worker": "pnpm --filter @jw-reminders/worker dev",
+    "dev:whatsapp": "pnpm --filter @jw-reminders/whatsapp dev",
+    "build": "pnpm -r build",
+    "build:api": "pnpm --filter @jw-reminders/api build",
+    "build:web": "pnpm --filter @jw-reminders/web build",
+    "build:worker": "pnpm --filter @jw-reminders/worker build",
+    "build:whatsapp": "pnpm --filter @jw-reminders/whatsapp build",
+    "db:generate": "pnpm --filter @jw-reminders/database generate",
+    "db:migrate": "pnpm --filter @jw-reminders/database migrate",
+    "db:seed": "pnpm --filter @jw-reminders/database seed",
+    "db:push": "pnpm --filter @jw-reminders/database push",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

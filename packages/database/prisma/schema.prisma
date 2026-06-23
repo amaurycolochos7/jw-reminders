@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum AssignmentSection {
+  BIBLE_READING
+  APPLY_YOURSELF
+}
+
+enum AssignmentType {
+  BIBLE_READING
+  START_CONVERSATION
+  MAKE_RETURN_VISIT
+  BIBLE_STUDY
+  EXPLAIN_BELIEFS
+  MAKE_DISCIPLES
+  TALK
+  OTHER
+}
+
+enum Room {
+  MAIN
+  AUXILIARY
+}
+
+enum AssignmentStatus {
+  PENDING
+  NOTIFIED
+  CANCELLED
+  COMPLETED
+}
+
+enum ReminderType {
+  INITIAL_NOTICE
+  SEVEN_DAYS_BEFORE
+  THREE_DAYS_BEFORE
+  ONE_DAY_BEFORE
+  SAME_DAY
+  CHANGE_NOTICE
+  CANCELLATION_NOTICE
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum MessageLogStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum WhatsappSessionStatus {
+  STARTING
+  QR_REQUIRED
+  AUTHENTICATED
+  READY
+  DISCONNECTED
+  FAILED
+}
+
+// ─── Models ──────────────────────────────────────────────
+
+model AdminUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JwPublisher {
+  id                    String    @id @default(cuid())
+  fullName              String
+  displayName           String?
+  phone                 String    @unique
+  whatsappPhone         String?
+  gender                Gender?
+  isActive              Boolean   @default(true)
+  canReceiveAssignments Boolean   @default(true)
+  canBeCompanion        Boolean   @default(true)
+  notes                 String?
+  // Future fields
+  congregationId        String?
+  email                 String?
+  birthDate             DateTime?
+  emergencyContact      String?
+  roleNotes             String?
+  tags                  String?
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  assignedAssignments  JwAssignment[]          @relation("AssignedPublisher")
+  companionAssignments JwAssignment[]          @relation("CompanionPublisher")
+  reminders            JwAssignmentReminder[]
+  messageLogs          JwMessageLog[]
+}
+
+model JwMeetingWeek {
+  id               String   @id @default(cuid())
+  weekStartDate    DateTime
+  meetingDate      DateTime
+  meetingTime      String
+  congregationName String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  assignments JwAssignment[]
+}
+
+model JwAssignment {
+  id                     String           @id @default(cuid())
+  meetingWeekId          String
+  assignmentNumber       Int
+  section                AssignmentSection
+  assignmentType         AssignmentType
+  title                  String
+  durationMinutes        Int?
+  context                String?
+  reference              String?
+  assignedPublisherId    String
+  companionPublisherId   String?
+  assignedNameSnapshot   String?
+  assignedPhoneSnapshot  String?
+  companionNameSnapshot  String?
+  companionPhoneSnapshot String?
+  room                   Room
+  notes                  String?
+  status                 AssignmentStatus @default(PENDING)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  meetingWeek JwMeetingWeek @relation(fields: [meetingWeekId], references: [id])
+  assigned    JwPublisher   @relation("AssignedPublisher", fields: [assignedPublisherId], references: [id])
+  companion   JwPublisher?  @relation("CompanionPublisher", fields: [companionPublisherId], references: [id])
+  reminders   JwAssignmentReminder[]
+  messageLogs JwMessageLog[]
+}
+
+model JwAssignmentReminder {
+  id           String         @id @default(cuid())
+  assignmentId String
+  publisherId  String
+  reminderDay  ReminderType
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  status       ReminderStatus @default(PENDING)
+  errorMessage String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  assignment JwAssignment @relation(fields: [assignmentId], references: [id])
+  publisher  JwPublisher  @relation(fields: [publisherId], references: [id])
+
+  @@unique([assignmentId, publisherId, reminderDay])
+}
+
+model JwMessageTemplate {
+  id        String   @id @default(cuid())
+  type      String   @unique
+  title     String
+  body      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JwMessageLog {
+  id                String           @id @default(cuid())
+  assignmentId      String?
+  publisherId       String?
+  phone             String
+  messageType       String?
+  messageBody       String
+  providerMessageId String?
+  status            MessageLogStatus
+  errorMessage      String?
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  assignment JwAssignment? @relation(fields: [assignmentId], references: [id])
+  publisher  JwPublisher?  @relation(fields: [publisherId], references: [id])
+}
+
+model JwWhatsappSessionLog {
+  id        String                @id @default(cuid())
+  status    WhatsappSessionStatus
+  message   String?
+  createdAt DateTime              @default(now())
+}
+
+model AppConfig {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+}

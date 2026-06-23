@@ -1,0 +1,118 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jw-reminders-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jw_reminders}
+      POSTGRES_USER: ${POSTGRES_USER:-jw_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jw_admin} -d ${POSTGRES_DB:-jw_reminders}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: jw-reminders-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jw_reminders}
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: production
+      PORT: "4000"
+      WHATSAPP_API_URL: http://whatsapp:3010
+      TEST_MODE: ${TEST_MODE:-true}
+      TEST_PHONE: ${TEST_PHONE}
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jw-api.rule=Host(`jw-reminders.duckdns.org`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.jw-api.entrypoints=websecure"
+      - "traefik.http.routers.jw-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jw-api.loadbalancer.server.port=4000"
+    networks:
+      - internal
+      - web
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: jw-reminders-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: https://jw-reminders.duckdns.org
+      NODE_ENV: production
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jw-web.rule=Host(`jw-reminders.duckdns.org`)"
+      - "traefik.http.routers.jw-web.entrypoints=websecure"
+      - "traefik.http.routers.jw-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.jw-web.loadbalancer.server.port=3001"
+      - "traefik.http.routers.jw-web.priority=1"
+    networks:
+      - internal
+      - web
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: jw-reminders-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jw_reminders}
+      WHATSAPP_API_URL: http://whatsapp:3010
+      CRON_SCHEDULE: "*/10 * * * *"
+      TEST_MODE: ${TEST_MODE:-true}
+      TEST_PHONE: ${TEST_PHONE}
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      whatsapp:
+        condition: service_started
+    networks:
+      - internal
+
+  whatsapp:
+    build:
+      context: .
+      dockerfile: apps/whatsapp/Dockerfile
+    container_name: jw-reminders-whatsapp
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jw_reminders}
+      PORT: "3010"
+      WHATSAPP_SESSION_PATH: /app/.wwebjs_auth
+      NODE_ENV: production
+    volumes:
+      - whatsapp_session:/app/.wwebjs_auth
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+  whatsapp_session:
+
+networks:
+  internal:
+  web:
+    external: true

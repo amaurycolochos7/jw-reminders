@@ -1,0 +1,96 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jw-reminders-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jw_reminders
+      POSTGRES_USER: jw_admin
+      POSTGRES_PASSWORD: jw_local_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jw_admin -d jw_reminders"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: jw-reminders-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://jw_admin:jw_local_pass@db:5432/jw_reminders
+      JWT_SECRET: local_jwt_secret_change_me
+      NODE_ENV: development
+      PORT: "4000"
+      WHATSAPP_API_URL: http://whatsapp:3010
+      TEST_MODE: "true"
+      TEST_PHONE: "5219611234567"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: jw-reminders-web
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NODE_ENV: development
+    depends_on:
+      - api
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: jw-reminders-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://jw_admin:jw_local_pass@db:5432/jw_reminders
+      WHATSAPP_API_URL: http://whatsapp:3010
+      CRON_SCHEDULE: "*/10 * * * *"
+      TEST_MODE: "true"
+      TEST_PHONE: "5219611234567"
+      NODE_ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+      whatsapp:
+        condition: service_started
+
+  whatsapp:
+    build:
+      context: .
+      dockerfile: apps/whatsapp/Dockerfile
+    container_name: jw-reminders-whatsapp
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    environment:
+      DATABASE_URL: postgresql://jw_admin:jw_local_pass@db:5432/jw_reminders
+      PORT: "3010"
+      WHATSAPP_SESSION_PATH: /app/.wwebjs_auth
+      NODE_ENV: development
+    volumes:
+      - whatsapp_session:/app/.wwebjs_auth
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  whatsapp_session:
