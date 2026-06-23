@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.json ./
 COPY packages/database/package.json ./packages/database/
-COPY packages/shared/package.json ./packages/shared/
+COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
 COPY apps/worker/package.json ./apps/worker/
 
 RUN pnpm install --frozen-lockfile || pnpm install
@@ -13,6 +13,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 COPY packages/ ./packages/
 COPY apps/worker/ ./apps/worker/
 
+RUN pnpm --filter @jw-reminders/shared build
 RUN pnpm --filter @jw-reminders/database generate
 RUN pnpm --filter @jw-reminders/worker build
 
