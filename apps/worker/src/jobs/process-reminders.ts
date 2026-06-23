@@ -1,7 +1,7 @@
 import { prisma } from "@jw-reminders/database";
 import { WHATSAPP_SEND_DELAY_MS } from "@jw-reminders/shared";
-import { renderReminderMessage } from "../services/template-renderer.js";
-import { sendWhatsappMessage } from "../services/whatsapp-client.js";
+import { renderReminderMessage } from "../services/template-renderer";
+import { sendWhatsappMessage } from "../services/whatsapp-client";
 
 const TEST_MODE = process.env.TEST_MODE === "true";
 const TEST_PHONE = process.env.TEST_PHONE || "";

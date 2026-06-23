@@ -1,4 +1,4 @@
-import { client, status } from "../client/whatsapp.js";
+import { client, status } from "../client/whatsapp";
 
 export async function sendMessage(phone: string, message: string) {
   if (!/^\d{10,15}$/.test(phone)) {

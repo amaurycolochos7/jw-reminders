@@ -1,6 +1,6 @@
 import express from "express";
-import { initWhatsApp, status } from "./client/whatsapp.js";
-import { sendMessage } from "./services/message-sender.js";
+import { initWhatsApp, status } from "./client/whatsapp";
+import { sendMessage } from "./services/message-sender";
 
 const app = express();
 app.use(express.json());

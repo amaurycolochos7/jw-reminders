@@ -1,5 +1,5 @@
 import * as cron from "node-cron";
-import { processReminders } from "./jobs/process-reminders.js";
+import { processReminders } from "./jobs/process-reminders";
 
 const CRON_SCHEDULE = process.env.CRON_SCHEDULE || "*/10 * * * *"; // every 10 min
 
