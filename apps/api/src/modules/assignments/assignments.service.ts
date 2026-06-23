@@ -45,12 +45,25 @@ export async function generateReminders(id: string) {
     { type: "SAME_DAY", offset: 0 },
   ];
 
+  // Generate reminders for the assigned publisher
   const reminders = reminderDays.map(({ type, offset }) => ({
     assignmentId: id,
     publisherId: assignment.assignedPublisherId,
     reminderDay: type,
     scheduledAt: new Date(meetingDate.getTime() - offset * 24 * 60 * 60 * 1000),
   }));
+
+  // Also generate reminders for the companion if present
+  if (assignment.companionPublisherId) {
+    reminderDays.forEach(({ type, offset }) => {
+      reminders.push({
+        assignmentId: id,
+        publisherId: assignment.companionPublisherId!,
+        reminderDay: type,
+        scheduledAt: new Date(meetingDate.getTime() - offset * 24 * 60 * 60 * 1000),
+      });
+    });
+  }
 
   return prisma.jwAssignmentReminder.createMany({ data: reminders, skipDuplicates: true });
 }

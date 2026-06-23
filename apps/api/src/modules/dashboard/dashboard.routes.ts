@@ -3,6 +3,8 @@ import { prisma } from "@jw-reminders/database";
 
 const router = Router();
 
+const WA_URL = process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:3010";
+
 router.get("/", async (_req, res) => {
   try {
     const [publisherCount, pendingAssignments, todayReminders, sentMessages] = await Promise.all([
@@ -21,6 +23,32 @@ router.get("/", async (_req, res) => {
       take: 5,
     });
 
+    // Get recent activity from message logs
+    const recentLogs = await prisma.jwMessageLog.findMany({
+      include: { publisher: true },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    const activity = recentLogs.map((log) => ({
+      id: log.id,
+      description: `Mensaje ${log.status.toLowerCase()} a ${log.publisher?.displayName || log.publisher?.fullName || log.phone}`,
+      time: log.createdAt.toISOString(),
+    }));
+
+    // Get real WhatsApp status
+    let whatsappStatus = "disconnected";
+    try {
+      const waRes = await fetch(`${WA_URL}/status`);
+      if (waRes.ok) {
+        const waData = await waRes.json();
+        const st = (waData.status || "").toUpperCase();
+        if (st === "READY") whatsappStatus = "connected";
+        else if (st === "QR_REQUIRED" || st === "AUTHENTICATED") whatsappStatus = "waiting_qr";
+        else whatsappStatus = "disconnected";
+      }
+    } catch { /* fallback to disconnected */ }
+
     res.json({
       stats: {
         publicadores: publisherCount,
@@ -35,8 +63,9 @@ router.get("/", async (_req, res) => {
         assignee: a.assigned.displayName || a.assigned.fullName,
         status: a.status.toLowerCase(),
       })),
+      activity,
       systemStatus: {
-        whatsapp: "waiting_qr",
+        whatsapp: whatsappStatus,
         worker: "running",
         database: "connected",
       },
@@ -45,7 +74,8 @@ router.get("/", async (_req, res) => {
     res.json({
       stats: { publicadores: 0, asignacionesPendientes: 0, recordatoriosHoy: 0, mensajesEnviados: 0 },
       assignments: [],
-      systemStatus: { whatsapp: "waiting_qr", worker: "running", database: "connected" },
+      activity: [],
+      systemStatus: { whatsapp: "disconnected", worker: "running", database: "connected" },
     });
   }
 });

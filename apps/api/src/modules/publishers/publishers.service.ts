@@ -2,7 +2,15 @@ import { prisma } from "@jw-reminders/database";
 
 export async function listPublishers(search?: string) {
   return prisma.jwPublisher.findMany({
-    where: search ? { fullName: { contains: search, mode: "insensitive" } } : undefined,
+    where: search
+      ? {
+          OR: [
+            { fullName: { contains: search, mode: "insensitive" } },
+            { phone: { contains: search } },
+            { displayName: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : undefined,
     orderBy: { fullName: "asc" },
   });
 }

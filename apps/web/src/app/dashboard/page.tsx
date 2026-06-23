@@ -10,6 +10,14 @@ interface Stats {
   mensajesEnviados: number
 }
 
+interface Assignment {
+  id: string
+  date: string
+  title: string
+  assignee: string
+  status: string
+}
+
 interface Activity {
   id: string
   description: string
@@ -49,6 +57,7 @@ const EnvelopeIcon = () => (
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<Stats>({ publicadores: 0, asignacionesPendientes: 0, recordatoriosHoy: 0, mensajesEnviados: 0 })
+  const [assignments, setAssignments] = useState<Assignment[]>([])
   const [activity, setActivity] = useState<Activity[]>([])
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({ whatsapp: 'disconnected', worker: 'stopped', database: 'connected' })
 
@@ -59,6 +68,7 @@ export default function DashboardPage() {
         if (res.ok) {
           const data = await res.json()
           if (data.stats) setStats(data.stats)
+          if (data.assignments) setAssignments(data.assignments)
           if (data.activity) setActivity(data.activity)
           if (data.systemStatus) setSystemStatus(data.systemStatus)
         }
@@ -70,7 +80,7 @@ export default function DashboardPage() {
   }, [])
 
   const statCards = [
-    { label: 'Publicadores', value: stats.publicadores, icon: <PeopleIcon /> },
+    { label: 'Publicadores activos', value: stats.publicadores, icon: <PeopleIcon /> },
     { label: 'Asignaciones pendientes', value: stats.asignacionesPendientes, icon: <CalendarIcon /> },
     { label: 'Recordatorios hoy', value: stats.recordatoriosHoy, icon: <BellIcon /> },
     { label: 'Mensajes enviados', value: stats.mensajesEnviados, icon: <EnvelopeIcon /> },
@@ -117,18 +127,24 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Upcoming assignments + System status */}
       <div className="grid md:grid-cols-2 gap-4">
-        {/* Recent activity */}
+        {/* Upcoming assignments */}
         <div className="bg-white rounded-card p-7">
-          <h2 className="text-lg font-semibold text-ink tracking-tight mb-4">Actividad reciente</h2>
-          {activity.length === 0 ? (
-            <p className="text-sm text-graphite py-8 text-center">Sin actividad reciente</p>
+          <h2 className="text-lg font-semibold text-ink tracking-tight mb-4">Proximas asignaciones</h2>
+          {assignments.length === 0 ? (
+            <p className="text-sm text-graphite py-8 text-center">Sin asignaciones pendientes</p>
           ) : (
             <ul className="space-y-3">
-              {activity.map((a) => (
+              {assignments.map((a) => (
                 <li key={a.id} className="flex items-center justify-between border-b border-silver-mist pb-3 last:border-0 last:pb-0">
-                  <span className="text-sm text-ink">{a.description}</span>
-                  <span className="text-xs text-graphite whitespace-nowrap ml-4">{a.time}</span>
+                  <div>
+                    <span className="text-sm text-ink font-medium">{a.title}</span>
+                    <p className="text-xs text-graphite mt-0.5">{a.assignee}</p>
+                  </div>
+                  <span className="text-xs text-graphite whitespace-nowrap ml-4">
+                    {new Date(a.date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -153,6 +169,23 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+
+          {/* Recent activity */}
+          {activity.length > 0 && (
+            <div className="mt-6 pt-5 border-t border-silver-mist">
+              <h3 className="text-sm font-semibold text-ink mb-3">Actividad reciente</h3>
+              <ul className="space-y-2">
+                {activity.slice(0, 5).map((a) => (
+                  <li key={a.id} className="flex items-center justify-between">
+                    <span className="text-xs text-graphite">{a.description}</span>
+                    <span className="text-xs text-graphite/60 whitespace-nowrap ml-2">
+                      {new Date(a.time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     </div>

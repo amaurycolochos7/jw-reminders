@@ -16,21 +16,22 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email: username, password }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message || 'Credenciales incorrectas');
+        setError(data.error || 'Credenciales incorrectas');
         return;
       }
 
       localStorage.setItem('token', data.token);
-      router.push('/');
+      router.push('/dashboard');
     } catch {
       setError('Error de conexion. Intenta de nuevo.');
     } finally {
