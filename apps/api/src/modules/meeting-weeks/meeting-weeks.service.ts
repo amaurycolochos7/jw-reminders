@@ -1,7 +1,7 @@
 import { prisma } from "@jw-reminders/database";
 
 export async function listMeetingWeeks() {
-  return prisma.jwMeetingWeek.findMany({ orderBy: { weekStartDate: "desc" } });
+  return prisma.jwMeetingWeek.findMany({ orderBy: { weekStartDate: "desc" }, include: { _count: { select: { assignments: true } } } });
 }
 
 export async function getMeetingWeek(id: string) {
