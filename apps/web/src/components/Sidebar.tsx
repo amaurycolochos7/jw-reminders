@@ -13,8 +13,6 @@ const nav = [
 ];
 
 export default function Sidebar() {
-
-export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
