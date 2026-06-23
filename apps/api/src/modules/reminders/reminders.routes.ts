@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import * as service from "./reminders.service";
+import * as service from "./reminders.service.js";
 
 const router = Router();
 

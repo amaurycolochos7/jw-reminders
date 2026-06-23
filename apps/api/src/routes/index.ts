@@ -1,13 +1,13 @@
 import { Router } from "express";
-import authRoutes from "../modules/auth/auth.routes";
-import publishersRoutes from "../modules/publishers/publishers.routes";
-import meetingWeeksRoutes from "../modules/meeting-weeks/meeting-weeks.routes";
-import assignmentsRoutes from "../modules/assignments/assignments.routes";
-import remindersRoutes from "../modules/reminders/reminders.routes";
-import messageTemplatesRoutes from "../modules/message-templates/message-templates.routes";
-import messageLogsRoutes from "../modules/message-logs/message-logs.routes";
-import whatsappRoutes from "../modules/whatsapp/whatsapp.routes";
-import { authMiddleware } from "../middleware/auth";
+import authRoutes from "../modules/auth/auth.routes.js";
+import publishersRoutes from "../modules/publishers/publishers.routes.js";
+import meetingWeeksRoutes from "../modules/meeting-weeks/meeting-weeks.routes.js";
+import assignmentsRoutes from "../modules/assignments/assignments.routes.js";
+import remindersRoutes from "../modules/reminders/reminders.routes.js";
+import messageTemplatesRoutes from "../modules/message-templates/message-templates.routes.js";
+import messageLogsRoutes from "../modules/message-logs/message-logs.routes.js";
+import whatsappRoutes from "../modules/whatsapp/whatsapp.routes.js";
+import { authMiddleware } from "../middleware/auth.js";
 
 export const apiRouter = Router();
 

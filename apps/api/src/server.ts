@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { apiRouter } from "./routes";
+import { apiRouter } from "./routes/index.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;

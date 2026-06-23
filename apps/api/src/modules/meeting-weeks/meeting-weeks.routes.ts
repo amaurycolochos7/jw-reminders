@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import * as service from "./meeting-weeks.service";
+import * as service from "./meeting-weeks.service.js";
 
 const router = Router();
 

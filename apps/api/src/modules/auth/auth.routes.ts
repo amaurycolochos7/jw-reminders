@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import { login } from "./auth.service";
+import { login } from "./auth.service.js";
 
 const router = Router();
 
