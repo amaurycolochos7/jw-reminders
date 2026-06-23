@@ -32,17 +32,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jw-api.rule=Host(`jw-reminders.duckdns.org`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.jw-api.entrypoints=websecure"
-      - "traefik.http.routers.jw-api.tls.certresolver=letsencrypt"
-      - "traefik.http.services.jw-api.loadbalancer.server.port=4000"
-      - "traefik.http.routers.jw-api.priority=10"
-      - "traefik.docker.network=bridge"
-    networks:
-      - default
-      - bridge
 
   web:
     build:
@@ -55,17 +44,6 @@ services:
       NODE_ENV: production
     depends_on:
       - api
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.jw-web.rule=Host(`jw-reminders.duckdns.org`)"
-      - "traefik.http.routers.jw-web.entrypoints=websecure"
-      - "traefik.http.routers.jw-web.tls.certresolver=letsencrypt"
-      - "traefik.http.services.jw-web.loadbalancer.server.port=3001"
-      - "traefik.http.routers.jw-web.priority=1"
-      - "traefik.docker.network=bridge"
-    networks:
-      - default
-      - bridge
 
   worker:
     build:
@@ -104,8 +82,3 @@ services:
 volumes:
   pgdata:
   whatsapp_session:
-
-networks:
-  bridge:
-    external: true
-    name: bridge
