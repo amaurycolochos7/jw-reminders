@@ -2,7 +2,11 @@
   "name": "@jw-reminders/database",
   "version": "1.0.0",
   "private": true,
-  "main": "./src/client.ts",
+  "type": "module",
+  "main": "./src/client.js",
+  "exports": {
+    ".": "./src/client.js"
+  },
   "scripts": {
     "generate": "prisma generate",
     "migrate": "prisma migrate deploy",
