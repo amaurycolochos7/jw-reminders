@@ -3,84 +3,16 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --color-primary: #4A6FA5;
-    --color-primary-light: #EEF2F7;
-    --color-success: #10B981;
-    --color-warning: #F59E0B;
-    --color-error: #EF4444;
-    --color-bg: #FAFBFC;
-    --color-surface: #FFFFFF;
-    --color-border: #E2E8F0;
-    --color-text: #1E293B;
-    --color-text-muted: #64748B;
-    --radius: 12px;
-    --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.04);
-    --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.06);
-    --shadow-elevated: 0 12px 48px rgba(0, 0, 0, 0.12);
-  }
-
-  html {
-    scroll-behavior: smooth;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
   body {
-    @apply bg-[var(--color-bg)] text-[var(--color-text)];
+    @apply bg-fog text-ink antialiased;
+    font-family: 'Inter', 'SF Pro Text', system-ui, sans-serif;
+    letter-spacing: -0.003em;
   }
-
-  /* Focus ring — Apple-like blue outline */
-  *:focus-visible {
-    @apply outline-none ring-2 ring-primary-500/40 ring-offset-2;
+  h1, h2, h3 { letter-spacing: -0.02em; }
+  input, select, textarea {
+    @apply w-full px-4 py-3 bg-fog border-0 rounded-xl text-ink placeholder:text-graphite/60 focus:outline-none focus:ring-2 focus:ring-azure/30 transition-all;
   }
-
-  /* Form elements */
-  input,
-  textarea,
-  select {
-    @apply rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm
-      transition-colors placeholder:text-slate-400
-      focus:border-primary-400 focus:ring-2 focus:ring-primary-500/20 focus:outline-none;
-  }
-
-  /* Scrollbar */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-slate-200;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-300;
-  }
-}
-
-@layer components {
-  .card {
-    @apply rounded-2xl border border-slate-100 bg-white p-6 shadow-soft;
-  }
-
-  .btn-primary {
-    @apply inline-flex items-center justify-center rounded-xl bg-primary-500 px-4 py-2.5
-      text-sm font-medium text-white transition-all
-      hover:bg-primary-600 active:scale-[0.98];
-  }
-
-  .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white
-      px-4 py-2.5 text-sm font-medium text-slate-700 transition-all
-      hover:bg-slate-50 active:scale-[0.98];
-  }
-
-  .badge {
-    @apply inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium;
+  button:focus-visible {
+    @apply outline-none ring-2 ring-azure/40 ring-offset-2;
   }
 }
