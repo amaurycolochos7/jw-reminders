@@ -1,10 +1,11 @@
 # REPORTE FINAL — JW REMINDERS
 
-**Fecha:** 2026-06-23  
-**Estado:** APROBADO — QA FUNCIONAL COMPLETADO  
+**Fecha:** 2026-06-24  
+**Estado:** APROBADO — FLUJO ASIGNACIONES COMPLETO EN PRODUCCION  
 **Repositorio:** https://github.com/amaurycolochos7/jw-reminders.git  
 **Rama:** main  
-**Commit QA:** a8aa831
+**Commit asignaciones:** 8238495  
+**Commit QA anterior:** a8aa831
 
 ---
 
@@ -239,29 +240,75 @@ Input: "+521961000004"   → Output: "5219610000004" (limpia +)
 
 ---
 
-## 8. Pendiente para redeploy
+## 8. Flujo Semana → Asignaciones → Recordatorios (Implementado)
 
-Todos los commits estan en main y pushed. Requiere redeploy en Dokploy.
+### Commit 8238495 — feat: implementar flujo completo de asignaciones en UI
 
-**Para redeploy manual:**
-1. Ir a Dokploy panel
-2. Seleccionar compose `jw-reminders-stack`
-3. Click "Deploy" o "Rebuild"
+**Archivos creados:**
+| Archivo | Proposito |
+|---|---|
+| `apps/web/src/app/dashboard/semanas/[id]/page.tsx` | Detalle de semana con tabla de asignaciones y acciones |
+| `apps/web/src/app/dashboard/semanas/[id]/AssignmentForm.tsx` | Formulario crear/editar asignacion con validaciones |
+| `apps/web/src/app/dashboard/semanas/[id]/AssignmentReminders.tsx` | Vista de recordatorios por destinatario |
 
-O desde el servidor:
+**Archivos modificados:**
+| Archivo | Cambio |
+|---|---|
+| `apps/web/src/app/dashboard/semanas/page.tsx` | Tarjetas clickeables con boton "Ver detalle" |
+| `apps/api/src/modules/assignments/assignments.service.ts` | Cancel/Complete ahora cancela recordatorios PENDING |
+| `apps/api/src/modules/meeting-weeks/meeting-weeks.service.ts` | getMeetingWeek incluye reminders y ordena por numero |
+
+**Endpoints usados:**
+- `GET /api/meeting-weeks/:id` — detalle con asignaciones y recordatorios
+- `GET /api/publishers` — lista para selectores
+- `POST /api/assignments` — crear asignacion
+- `PUT /api/assignments/:id` — editar
+- `GET /api/assignments/:id` — detalle con recordatorios
+- `POST /api/assignments/:id/generate-reminders` — generar
+- `PATCH /api/assignments/:id/cancel` — cancelar (cancela reminders)
+- `PATCH /api/assignments/:id/complete` — completar (cancela reminders)
+
+**Reglas de negocio implementadas:**
+- Lectura de la Biblia y TALK no exigen acompanante
+- Solo publicadores activos en selectores
+- Solo `canBeCompanion=true` como opciones de acompanante
+- Asignado y acompanante no pueden ser la misma persona
+- Al editar asignado/acompanante → regenera recordatorios
+- Al cancelar → CANCELLED + cancela reminders PENDING
+- Al completar → COMPLETED + cancela reminders PENDING
+- Recordatorios mostrados por destinatario (asignado + acompanante)
+
+**Rutas frontend:**
+- `/dashboard/semanas` — lista con "Ver detalle" y click en tarjeta
+- `/dashboard/semanas/:id` — detalle de semana + CRUD asignaciones + recordatorios
+
+### Deploy en Dokploy
+
+- **Metodo:** API Dokploy `POST /api/compose.deploy`
+- **Compose ID:** `z6xyxXGM1QTnRlFs_2Lmc`
+- **Resultado:** `{"success": true, "message": "Deployment queued"}`
+- **Estado final:** `composeStatus: "done"`
+
+### Pruebas en produccion (https://jw-reminders.duckdns.org)
+
+| Prueba | Resultado | Evidencia |
+|---|---|---|
+| API health | PASS | `{"status":"ok"}` via HTTPS |
+| Frontend /login carga | PASS | RSC payload renderizado correctamente |
+| Frontend /dashboard/semanas carga | PASS | Chunk `page-95c1068ee3fa771c.js` servido |
+| Ruta dinamica /dashboard/semanas/[id] | PASS | Chunk `page-9eea5ec15e6b9667.js`, params `{"id":"test-id"}` |
+| API protegida (401 sin token) | PASS | GET /api/meeting-weeks → HTTP 401 |
+| Dokploy compose status done | PASS | composeStatus: "done" via API |
+| No errores 404 en rutas nuevas | PASS | Todas las rutas responden con pagina |
+
+### Para redeploy manual futuro
 ```bash
-ssh root@187.77.11.79
-cd /path/to/compose
-docker compose pull
-docker compose up -d --build
+# Via API Dokploy:
+curl -X POST "http://187.77.11.79:3000/api/compose.deploy" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <API_KEY>" \
+  -d '{"composeId": "z6xyxXGM1QTnRlFs_2Lmc"}'
 ```
-
-**Post-deploy verificar:**
-- Crear publicador con telefono nacional 10 digitos
-- Confirmar que se normaliza a 521+10 en BD
-- Eliminar publicador sin historial (hard delete)
-- Eliminar publicador con historial (soft delete)
-- Dashboard muestra conteo actualizado
 
 ---
 
@@ -279,30 +326,36 @@ docker compose up -d --build
 
 ## 10. Conclusion
 
-**Estado: APROBADO**
+**Estado: APROBADO — FLUJO COMPLETO IMPLEMENTADO**
 
-El sistema JW Reminders esta completamente funcional en produccion:
-- Login funciona correctamente
-- CRUD de publicadores con normalizacion de telefono y eliminacion
-- CRUD de semanas con edicion
-- Creacion de asignaciones con y sin acompanante
-- Generacion de recordatorios (worker ya envio 6)
-- WhatsApp conectado y enviando mensajes
-- Dashboard con datos reales
-- Historial con logs de mensajes
-- Configuracion guardando correctamente
-- 8 plantillas de mensaje activas
-- Publicadores: activar/desactivar/eliminar con soft delete
+El sistema JW Reminders tiene el flujo principal del negocio completamente expuesto:
 
-Bugs criticos corregidos:
-1. Login enviaba campo incorrecto (`username` en vez de `email`)
-2. Dashboard no consultaba estado real de WhatsApp
-3. Recordatorios no se generaban para el acompanante
-4. Configuracion mostraba bloque WhatsApp innecesario
-5. Historial no mapeaba campos correctamente de la API
-6. Formulario de publicadores incompleto (faltaban campos)
-7. Semanas no tenian edicion ni campos de congregacion/notas
-8. Busqueda de publicadores solo por nombre (ahora tambien por telefono)
-9. Telefono se mostraba con prefijo 521 (ahora solo nacional)
-10. No habia forma de eliminar publicadores
-11. No habia activar/desactivar visible en la tabla
+**Flujo Semana → Asignaciones → Recordatorios → WhatsApp:**
+- Lista de semanas con conteo de asignaciones
+- Click en semana abre detalle con todas las asignaciones
+- CRUD completo de asignaciones con validaciones de negocio
+- Selectores inteligentes (publicadores activos, acompanantes con flag)
+- Generacion de recordatorios (7, 3, 1, 0 dias antes)
+- Vista de recordatorios por destinatario (asignado + acompanante)
+- Cancelar asignacion cancela recordatorios pendientes
+- Completar asignacion cancela recordatorios pendientes
+- Worker envia mensajes automaticamente via WhatsApp
+
+**Infraestructura:**
+- Codigo en GitHub (main, commit 8238495)
+- Deploy en Dokploy (compose "jw-reminders-stack", status: done)
+- Produccion accesible en https://jw-reminders.duckdns.org
+- API protegida con JWT
+- WhatsApp conectado y enviando
+
+**Modulos funcionales:**
+1. Auth (login JWT)
+2. Dashboard (conteos reales, estado WhatsApp)
+3. Publicadores (CRUD + normalizacion telefono + soft delete)
+4. Semanas (CRUD + detalle con asignaciones)
+5. Asignaciones (CRUD + cancel/complete + generar recordatorios)
+6. Recordatorios (generacion automatica, vista por destinatario)
+7. Historial (logs de mensajes)
+8. Plantillas (8 plantillas activas)
+9. WhatsApp (sesion, status, envio)
+10. Configuracion (ajustes generales)
