@@ -2,6 +2,8 @@ import pkg from "whatsapp-web.js";
 const { Client, LocalAuth } = pkg;
 import qrcode from "qrcode-terminal";
 import { prisma, WhatsappSessionStatus } from "@jw-reminders/database";
+import { existsSync, unlinkSync, readdirSync } from "fs";
+import { join } from "path";
 
 const dataPath = process.env.WHATSAPP_SESSION_PATH || ".wwebjs_auth";
 const INIT_TIMEOUT_MS = 90_000; // 90 seconds max for initialize
@@ -15,7 +17,51 @@ export let lastError: string | null = null;
 
 let currentClient: InstanceType<typeof Client>;
 
+/**
+ * Remove Chromium SingletonLock files that prevent launch after unclean shutdown.
+ * These get left behind when a container is killed without graceful shutdown.
+ */
+function cleanChromiumLocks() {
+  try {
+    const sessionsDir = dataPath;
+    if (!existsSync(sessionsDir)) return;
+
+    // Walk through session directories looking for SingletonLock files
+    const entries = readdirSync(sessionsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const sessionPath = join(sessionsDir, entry.name);
+        const lockFile = join(sessionPath, "SingletonLock");
+        if (existsSync(lockFile)) {
+          console.log(`[WhatsApp] Removing stale lock: ${lockFile}`);
+          unlinkSync(lockFile);
+        }
+        // Also check nested Default profile directory
+        const defaultDir = join(sessionPath, "Default");
+        if (existsSync(defaultDir)) {
+          const nestedLock = join(defaultDir, "SingletonLock");
+          if (existsSync(nestedLock)) {
+            console.log(`[WhatsApp] Removing stale lock: ${nestedLock}`);
+            unlinkSync(nestedLock);
+          }
+        }
+      }
+    }
+
+    // Also check root level
+    const rootLock = join(sessionsDir, "SingletonLock");
+    if (existsSync(rootLock)) {
+      console.log(`[WhatsApp] Removing stale lock: ${rootLock}`);
+      unlinkSync(rootLock);
+    }
+  } catch (e) {
+    console.error("[WhatsApp] Error cleaning locks:", e);
+  }
+}
+
 function createClient(): InstanceType<typeof Client> {
+  // Clean any leftover Chromium lock files before creating a new client
+  cleanChromiumLocks();
   const c = new Client({
     authStrategy: new LocalAuth({ dataPath }),
     puppeteer: {
@@ -31,6 +77,7 @@ function createClient(): InstanceType<typeof Client> {
         "--no-zygote",
         "--single-process",
         "--disable-accelerated-2d-canvas",
+        "--disable-features=LockProfileCookieDatabase",
       ],
       timeout: 60000,
     },
@@ -120,6 +167,7 @@ async function initializeWithTimeout(c: InstanceType<typeof Client>): Promise<vo
 }
 
 export async function initWhatsApp() {
+  cleanChromiumLocks(); // Clean any stale locks from previous container
   await logStatus("STARTING");
   try {
     await initializeWithTimeout(currentClient);
