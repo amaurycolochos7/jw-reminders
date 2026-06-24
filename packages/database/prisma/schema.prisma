@@ -98,6 +98,7 @@ model JwPublisher {
   canReceiveAssignments Boolean   @default(true)
   canBeCompanion        Boolean   @default(true)
   notes                 String?
+  deletedAt             DateTime?
   // Future fields
   congregationId        String?
   email                 String?
