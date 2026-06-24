@@ -1,7 +1,7 @@
 # REPORTE FINAL — JW REMINDERS
 
 **Fecha:** 2026-06-24  
-**Estado:** APROBADO — FLUJO ASIGNACIONES COMPLETO EN PRODUCCION  
+**Estado:** APROBADO — QA E2E FUNCIONAL COMPLETADO EN PRODUCCION  
 **Repositorio:** https://github.com/amaurycolochos7/jw-reminders.git  
 **Rama:** main  
 **Commit asignaciones:** 8238495  
@@ -289,17 +289,65 @@ Input: "+521961000004"   → Output: "5219610000004" (limpia +)
 - **Resultado:** `{"success": true, "message": "Deployment queued"}`
 - **Estado final:** `composeStatus: "done"`
 
-### Pruebas en produccion (https://jw-reminders.duckdns.org)
+### Pruebas E2E en produccion (https://jw-reminders.duckdns.org)
 
-| Prueba | Resultado | Evidencia |
-|---|---|---|
-| API health | PASS | `{"status":"ok"}` via HTTPS |
-| Frontend /login carga | PASS | RSC payload renderizado correctamente |
-| Frontend /dashboard/semanas carga | PASS | Chunk `page-95c1068ee3fa771c.js` servido |
-| Ruta dinamica /dashboard/semanas/[id] | PASS | Chunk `page-9eea5ec15e6b9667.js`, params `{"id":"test-id"}` |
-| API protegida (401 sin token) | PASS | GET /api/meeting-weeks → HTTP 401 |
-| Dokploy compose status done | PASS | composeStatus: "done" via API |
-| No errores 404 en rutas nuevas | PASS | Todas las rutas responden con pagina |
+**Fecha:** 2026-06-24  
+**Metodo:** Requests autenticados contra API de produccion  
+**Token:** Obtenido via POST /api/auth/login (admin/dorian123)
+
+| # | Prueba | Resultado | Evidencia |
+|---|--------|-----------|-----------|
+| 1 | Login real con admin | PASS | User: admin, Name: Administrador |
+| 2 | Listar publicadores activos | PASS | 4 publicadores retornados con isActive=true |
+| 3 | Crear semana de prueba E2E | PASS | ID: cmqrn8hfs0000t0i7cqvx9bdl, meetingDate: 2026-07-03 |
+| 4 | Consultar detalle de semana | PASS | Retorna todos los campos + assignments=0 |
+| 5 | Crear asignacion Lectura de la Biblia (sin acompanante) | PASS | ID: cmqrnbgtj0002t0i7ciuy4ks2, status=PENDING, companion=null |
+| 6 | Crear asignacion START_CONVERSATION con acompanante | PASS | ID: cmqrnby8u0004t0i7f2zjfsop, companion=cmqr9vm3m0003cdpsdm1rq8er |
+| 7 | Crear asignacion TALK sin acompanante | PASS | ID: cmqrncz080006t0i7jmq79xqr, companion=null |
+| 8 | Persistencia: re-consultar semana con 3 asignaciones | PASS | assignments.Count=3, datos intactos |
+| 9 | Editar asignacion (cambiar titulo y duracion) | PASS | title="E2E...EDITADO", duration=5, notes="Editado" |
+| 10 | Generar recordatorios asig 1 (sin companion) | PASS | 4 creados (7d, 3d, 1d, 0d) |
+| 11 | Generar recordatorios asig 2 (con companion) | PASS | 8 creados (4 asignado + 4 acompanante) |
+| 12 | Generar recordatorios asig 3 (sin companion) | PASS | 4 creados |
+| 13 | Re-generar recordatorios (no duplicados) | PASS | created=0, skipDuplicates funciona |
+| 14 | Ver recordatorios por destinatario asig 2 | PASS | Maria: 4 PENDING (7d,3d,1d,0d) / Ana: 4 PENDING |
+| 15 | Cancelar asignacion 3 | PASS | status PENDING→CANCELLED |
+| 16 | Recordatorios cancelados automaticamente | PASS | 4 PENDING→0, 4 CANCELLED |
+| 17 | Completar asignacion 1 | PASS | status PENDING→COMPLETED |
+| 18 | Recordatorios cancelados al completar | PASS | 4 PENDING→0, 4 CANCELLED |
+| 19 | Dashboard conteos reales | PASS | 4 pub, 4 asig pendientes, 6 mensajes, worker running |
+| 20 | Dashboard proximas asignaciones | PASS | Muestra E2E editada correctamente |
+| 21 | Stats recordatorios globales | PASS | pending=14, sent=6, failed=0, total=20 |
+| 22 | Lista semanas con conteo | PASS | Semana E2E: 3 asignaciones, Semana QA: 3 |
+| 23 | Frontend /dashboard/semanas carga | PASS | Chunk page-95c1068ee3fa771c.js |
+| 24 | Frontend /dashboard/semanas/[id] carga | PASS | Chunk page-9eea5ec15e6b9667.js |
+| 25 | API protegida (401 sin token) | PASS | GET /api/meeting-weeks → 401 |
+
+### Datos E2E creados en produccion
+
+**Semana E2E:**
+- ID: `cmqrn8hfs0000t0i7cqvx9bdl`
+- Inicio: 2026-06-29
+- Reunion: 2026-07-03, 19:30
+- Congregacion: E2E Test Congregacion
+
+**Asignaciones E2E:**
+| # | ID | Titulo | Tipo | Asignado | Acompanante | Estado |
+|---|----|----|----|----|----|----|
+| 3 | cmqrnbgtj0002t0i7ciuy4ks2 | E2E Lectura Salmo 91 | BIBLE_READING | Juan Perez | --- | COMPLETED |
+| 4 | cmqrnby8u0004t0i7f2zjfsop | E2E Empiece conversaciones - EDITADO | START_CONVERSATION | Maria Lopez | Ana Gomez | PENDING |
+| 5 | cmqrncz080006t0i7jmq79xqr | E2E Discurso - La fe que agrada a Dios | TALK | Carlos Ruiz | --- | CANCELLED |
+
+**Recordatorios generados:** 16 total
+- Asignacion 1: 4 (todos CANCELLED por completar)
+- Asignacion 2: 8 (todos PENDING, 4 asignado + 4 acompanante)
+- Asignacion 3: 4 (todos CANCELLED por cancelar)
+
+### Observaciones
+- WhatsApp en estado STARTING — problema pre-existente no relacionado con asignaciones
+- Worker en estado running y ha enviado 6 mensajes previamente
+- No hay errores 404 en ninguna ruta
+- Flujo completo Semana → Asignaciones → Recordatorios → Dashboard operativo
 
 ### Para redeploy manual futuro
 ```bash
