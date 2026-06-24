@@ -130,6 +130,18 @@ export async function toggleActive(id: string) {
   return prisma.jwPublisher.update({ where: { id }, data: { isActive: !pub.isActive } });
 }
 
+export async function restorePublisher(id: string) {
+  return prisma.jwPublisher.update({
+    where: { id },
+    data: {
+      isActive: true,
+      canReceiveAssignments: true,
+      canBeCompanion: true,
+      deletedAt: null,
+    },
+  });
+}
+
 export async function deletePublisher(id: string) {
   const pub = await prisma.jwPublisher.findUniqueOrThrow({
     where: { id },

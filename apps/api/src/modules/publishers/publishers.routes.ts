@@ -63,6 +63,12 @@ router.patch("/:id/toggle-active", async (req: Request<{ id: string }>, res: Res
   } catch { res.status(404).json({ error: "Not found" }); }
 });
 
+router.patch("/:id/restore", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.restorePublisher(req.params.id));
+  } catch { res.status(404).json({ error: "Not found" }); }
+});
+
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
     const result = await service.deletePublisher(req.params.id);
