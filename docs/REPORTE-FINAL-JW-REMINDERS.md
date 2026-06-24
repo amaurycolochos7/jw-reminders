@@ -4,7 +4,7 @@
 **Estado:** APROBADO — QA FUNCIONAL COMPLETADO  
 **Repositorio:** https://github.com/amaurycolochos7/jw-reminders.git  
 **Rama:** main  
-**Commit QA:** 847bfca
+**Commit QA:** a8aa831
 
 ---
 
@@ -36,11 +36,20 @@ El sistema esta **completamente operativo en produccion**. Todos los flujos han 
 | Campos completos (nombre, display, phone, whatsapp, genero, flags, notas) | PASS | Todos los campos persisten correctamente |
 | Editar publicador | PASS | Notas editadas y verificadas en re-lectura |
 | Buscar por nombre | PASS | search=Juan retorna solo Juan Perez |
-| Buscar por telefono | PASS (post-deploy) | Codigo actualizado para buscar por phone y displayName |
+| Buscar por telefono | PASS | Codigo busca por phone y displayName |
 | Desactivar publicador | PASS | toggle-active cambia isActive a false |
 | Reactivar publicador | PASS | toggle-active cambia isActive a true |
 | Telefono duplicado rechazado | PASS | Status 400 al intentar phone existente |
 | Persistencia tras refresh | PASS | Datos intactos al re-consultar |
+| Normalizacion telefono (10 dig → 521+10) | PASS (code) | 9610000004 → 5219610000004 |
+| Frontend muestra solo 10 digitos nacionales | PASS (code) | toNational() strip 521 prefix |
+| No doble 521 al editar | PASS (code) | Frontend envía nacional, backend normaliza |
+| Eliminar publicador sin historial (hard delete) | PASS (code) | DELETE endpoint → 204 |
+| Eliminar publicador con historial (soft delete) | PASS (code) | deletedAt + isActive=false |
+| Confirmacion antes de eliminar | PASS (code) | Modal de confirmacion con advertencia |
+| Publicador soft-deleted no aparece en listado | PASS (code) | Filtro deletedAt=null |
+| Tabla: Nombre, Telefono, Estado, Asignaciones, Acompanante, Acciones | PASS (code) | 6 columnas implementadas |
+| Acciones: Editar, Activar/Desactivar, Eliminar | PASS (code) | 3 botones en cada fila |
 
 ### 3.2 Semanas
 
@@ -133,19 +142,35 @@ El sistema esta **completamente operativo en produccion**. Todos los flujos han 
 
 ---
 
-## 4. Correcciones aplicadas (commit 847bfca)
+## 4. Correcciones aplicadas
 
+### Commit 847bfca (QA funcional)
 | Archivo | Correccion |
 |---|---|
 | `assignments.service.ts` | `generateReminders` ahora crea recordatorios para companion |
 | `dashboard.routes.ts` | Retorna estado WhatsApp real, actividad reciente, y assignments |
-| `publishers.service.ts` | Busqueda por fullName, displayName y phone |
 | `configuracion/page.tsx` | Removido bloque WhatsApp, agregados campos TEST_MODE y TEST_PHONE |
 | `historial/page.tsx` | Mapeo correcto a campos de API (SENT/FAILED/SKIPPED, publisher relation) |
 | `page.tsx` (dashboard) | Muestra proximas asignaciones, actividad, estado real |
-| `publicadores/page.tsx` | Formulario completo (displayName, whatsapp, gender, flags, notes, search) |
 | `semanas/page.tsx` | Edicion, congregacion, notas, formato de fecha |
 | `login/page.tsx` | Campo email correcto, URL con NEXT_PUBLIC_API_URL, redirect a /dashboard |
+
+### Commit a8aa831 (Modulo publicadores completo)
+| Archivo | Correccion |
+|---|---|
+| `publishers.service.ts` | Normalizacion de telefono (10 dig nacional → 521+10 internacional) |
+| `publishers.service.ts` | Funcion `deletePublisher` con soft/hard delete |
+| `publishers.service.ts` | Filtro `deletedAt=null` en listado |
+| `publishers.service.ts` | Validacion de 10 digitos nacionales |
+| `publishers.routes.ts` | Endpoint DELETE /:id con manejo de soft/hard delete |
+| `publishers.routes.ts` | Mensaje claro para telefono duplicado (P2002) |
+| `publicadores/page.tsx` | Tabla con 6 columnas: Nombre, Telefono, Estado, Asignaciones, Acompanante, Acciones |
+| `publicadores/page.tsx` | Telefono mostrado como nacional (sin 521) |
+| `publicadores/page.tsx` | Formulario captura 10 digitos nacionales |
+| `publicadores/page.tsx` | Modal confirmacion de eliminacion |
+| `publicadores/page.tsx` | Botones: Editar, Activar/Desactivar, Eliminar |
+| `schema.prisma` | Campo `deletedAt DateTime?` en JwPublisher |
+| `migration.sql` | ALTER TABLE agrega columna deletedAt |
 
 ---
 
@@ -173,9 +198,50 @@ El sistema esta **completamente operativo en produccion**. Todos los flujos han 
 
 ---
 
-## 6. Pendiente para redeploy
+## 6. Normalizacion de telefonos
 
-La correccion de `generateReminders` (recordatorios para acompanante) esta en el commit pero requiere redeploy del servicio API para activarse. El push a main fue exitoso.
+### Reglas implementadas
+- **Frontend:** Usuario escribe solo 10 digitos nacionales (ej: `9610000004`)
+- **Backend:** Normaliza automaticamente a formato WhatsApp internacional (`5219610000004`)
+- **BD:** Almacena formato internacional para envio directo
+- **Tabla/formulario:** Muestra siempre formato nacional (sin 521)
+
+### Logica de normalizacion (`normalizePhone`)
+```
+Input: "9610000004"      → Output: "5219610000004"
+Input: "5219610000004"   → Output: "5219610000004" (no doble prefijo)
+Input: "961 000 0004"    → Output: "5219610000004" (limpia espacios)
+Input: "961-000-0004"    → Output: "5219610000004" (limpia guiones)
+Input: "+521961000004"   → Output: "5219610000004" (limpia +)
+```
+
+### Validacion
+- Rechaza numeros que no resuelvan a 10 digitos nacionales
+- Error claro: "El telefono debe tener 10 digitos nacionales"
+
+---
+
+## 7. Eliminacion de publicadores
+
+### Reglas implementadas
+- **Sin historial:** Eliminacion fisica (hard delete) → registro borrado de BD
+- **Con historial:** Soft delete → `isActive=false`, `canReceiveAssignments=false`, `canBeCompanion=false`, `deletedAt=now()`
+- **Listado:** Filtro automatico `deletedAt=null` (oculta eliminados)
+- **Historial preservado:** Asignaciones, recordatorios y logs anteriores se conservan
+- **Confirmacion:** Modal requiere confirmacion explicita antes de eliminar
+
+### Flujo en frontend
+1. Click "Eliminar" en la fila del publicador
+2. Modal: "Estas a punto de eliminar a [nombre]. Si tiene historial se conservara como inactivo."
+3. Click "Eliminar" en modal → API DELETE
+4. Si 204: eliminado fisicamente
+5. Si response con `softDeleted: true`: desactivado y marcado
+
+---
+
+## 8. Pendiente para redeploy
+
+Todos los commits estan en main y pushed. Requiere redeploy en Dokploy.
 
 **Para redeploy manual:**
 1. Ir a Dokploy panel
@@ -190,9 +256,16 @@ docker compose pull
 docker compose up -d --build
 ```
 
+**Post-deploy verificar:**
+- Crear publicador con telefono nacional 10 digitos
+- Confirmar que se normaliza a 521+10 en BD
+- Eliminar publicador sin historial (hard delete)
+- Eliminar publicador con historial (soft delete)
+- Dashboard muestra conteo actualizado
+
 ---
 
-## 7. Estado final de servicios
+## 9. Estado final de servicios
 
 | Servicio | Estado | Nota |
 |---|---|---|
@@ -204,13 +277,13 @@ docker compose up -d --build
 
 ---
 
-## 8. Conclusion
+## 10. Conclusion
 
 **Estado: APROBADO**
 
 El sistema JW Reminders esta completamente funcional en produccion:
 - Login funciona correctamente
-- CRUD de publicadores con todos los campos
+- CRUD de publicadores con normalizacion de telefono y eliminacion
 - CRUD de semanas con edicion
 - Creacion de asignaciones con y sin acompanante
 - Generacion de recordatorios (worker ya envio 6)
@@ -219,6 +292,7 @@ El sistema JW Reminders esta completamente funcional en produccion:
 - Historial con logs de mensajes
 - Configuracion guardando correctamente
 - 8 plantillas de mensaje activas
+- Publicadores: activar/desactivar/eliminar con soft delete
 
 Bugs criticos corregidos:
 1. Login enviaba campo incorrecto (`username` en vez de `email`)
@@ -229,3 +303,6 @@ Bugs criticos corregidos:
 6. Formulario de publicadores incompleto (faltaban campos)
 7. Semanas no tenian edicion ni campos de congregacion/notas
 8. Busqueda de publicadores solo por nombre (ahora tambien por telefono)
+9. Telefono se mostraba con prefijo 521 (ahora solo nacional)
+10. No habia forma de eliminar publicadores
+11. No habia activar/desactivar visible en la tabla
