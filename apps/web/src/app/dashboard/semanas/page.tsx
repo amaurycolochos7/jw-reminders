@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
+import CompletionStatus from '@/components/CompletionStatus'
 
 interface MeetingWeek {
   id: string
@@ -12,6 +13,7 @@ interface MeetingWeek {
   congregationName: string | null
   notes: string | null
   _count?: { assignments: number }
+  totalReminders?: number
 }
 
 /**
@@ -45,6 +47,7 @@ export default function SemanasPage() {
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<MeetingWeek | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [whatsappConnected, setWhatsappConnected] = useState(false)
 
   async function load() {
     try {
@@ -54,6 +57,20 @@ export default function SemanasPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    async function loadWhatsappStatus() {
+      try {
+        const res = await api('/api/whatsapp/status')
+        if (res.ok) {
+          const data = await res.json()
+          const st = (data.status || '').toUpperCase()
+          setWhatsappConnected(st === 'READY')
+        }
+      } catch { /* ignore */ }
+    }
+    loadWhatsappStatus()
+  }, [])
 
   function openCreate() {
     setEditing(null)
@@ -201,13 +218,13 @@ export default function SemanasPage() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="bg-red-600 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:bg-red-700 disabled:opacity-50"
+                className="bg-red-400 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {deleting ? 'Eliminando...' : 'Eliminar'}
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog"
+                className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors"
               >
                 Cancelar
               </button>
@@ -223,6 +240,9 @@ export default function SemanasPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
           </svg>
           <p className="text-graphite text-sm">No hay semanas registradas</p>
+          <button onClick={openCreate} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity mt-4">
+            Nueva semana
+          </button>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -244,6 +264,15 @@ export default function SemanasPage() {
               {w.congregationName && <p className="text-xs text-graphite mt-1">{w.congregationName}</p>}
               <p className="text-xs text-graphite mt-1">{w._count?.assignments || 0} asignaciones</p>
               {w.notes && <p className="text-xs text-graphite/70 mt-2 italic">{w.notes}</p>}
+
+              {/* Completion Status */}
+              <div className="mt-3">
+                <CompletionStatus
+                  hasAssignments={(w._count?.assignments || 0) > 0}
+                  hasReminders={(w.totalReminders || 0) > 0}
+                  whatsappConnected={whatsappConnected}
+                />
+              </div>
 
               {/* Actions - always visible */}
               <div className="flex items-center gap-2 mt-4 pt-4 border-t border-silver-mist">

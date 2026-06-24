@@ -94,11 +94,11 @@ function roomLabel(room: string): string {
 function statusVariant(status: string): { label: string; classes: string } {
   const map: Record<string, { label: string; classes: string }> = {
     PENDING: { label: 'Pendiente', classes: 'bg-amber-50 text-amber-700' },
-    NOTIFIED: { label: 'Notificado', classes: 'bg-blue-50 text-blue-700' },
+    NOTIFIED: { label: 'Notificado', classes: 'bg-fog text-azure' },
     CANCELLED: { label: 'Cancelada', classes: 'bg-red-50 text-red-700' },
     COMPLETED: { label: 'Completada', classes: 'bg-emerald-50 text-emerald-700' },
   }
-  return map[status] || { label: status, classes: 'bg-slate-100 text-slate-600' }
+  return map[status] || { label: status, classes: 'bg-fog text-graphite' }
 }
 
 // ─── Page ────────────────────────────────────────────────
@@ -123,6 +123,17 @@ export default function SemanaDetallePage() {
   // Actions
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ type: 'cancel' | 'complete' | 'delete'; assignment: Assignment } | null>(null)
+
+  // Edit week state
+  const [showEditWeek, setShowEditWeek] = useState(false)
+  const [editWeekForm, setEditWeekForm] = useState({ weekStartDate: '', meetingDate: '', meetingTime: '', congregationName: '', notes: '' })
+  const [savingWeek, setSavingWeek] = useState(false)
+  const [weekError, setWeekError] = useState('')
+
+  // Bulk reminders & notifications
+  const [generatingReminders, setGeneratingReminders] = useState(false)
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [showAllReminders, setShowAllReminders] = useState(false)
 
   const loadWeek = useCallback(async () => {
     try {
@@ -217,6 +228,80 @@ export default function SemanaDetallePage() {
     await loadWeek()
   }
 
+  // ─── Bulk Generate Reminders ───────────────────────────────
+
+  async function handleBulkGenerateReminders() {
+    if (!week) return
+    const pendingAssignments = week.assignments.filter(a => a.status === 'PENDING')
+    if (pendingAssignments.length === 0) {
+      setNotification({ type: 'error', message: 'No hay asignaciones pendientes para generar recordatorios' })
+      setTimeout(() => setNotification(null), 4000)
+      return
+    }
+    setGeneratingReminders(true)
+    let totalCreated = 0
+    const errors: string[] = []
+    for (const a of pendingAssignments) {
+      try {
+        const res = await api(`/api/assignments/${a.id}/generate-reminders`, { method: 'POST' })
+        if (res.ok) {
+          const data = await res.json()
+          totalCreated += data.created || 0
+        } else {
+          errors.push(a.title)
+        }
+      } catch {
+        errors.push(a.title)
+      }
+    }
+    if (errors.length > 0) {
+      setNotification({ type: 'error', message: `Error en: ${errors.join(', ')}` })
+    } else {
+      setNotification({ type: 'success', message: `${totalCreated} recordatorios creados` })
+    }
+    setTimeout(() => setNotification(null), 4000)
+    setGeneratingReminders(false)
+    await loadWeek()
+  }
+
+  // ─── Edit Week ─────────────────────────────────────────────
+
+  function openEditWeek() {
+    if (!week) return
+    setEditWeekForm({
+      weekStartDate: week.weekStartDate.split('T')[0],
+      meetingDate: week.meetingDate.split('T')[0],
+      meetingTime: week.meetingTime,
+      congregationName: week.congregationName || '',
+      notes: week.notes || '',
+    })
+    setWeekError('')
+    setShowEditWeek(true)
+  }
+
+  async function handleEditWeekSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingWeek(true)
+    setWeekError('')
+    try {
+      const body: any = {
+        weekStartDate: `${editWeekForm.weekStartDate}T00:00:00.000Z`,
+        meetingDate: `${editWeekForm.meetingDate}T00:00:00.000Z`,
+        meetingTime: editWeekForm.meetingTime,
+      }
+      if (editWeekForm.congregationName) body.congregationName = editWeekForm.congregationName
+      if (editWeekForm.notes) body.notes = editWeekForm.notes
+      const res = await api(`/api/meeting-weeks/${weekId}`, { method: 'PUT', body: JSON.stringify(body) })
+      if (res.ok) {
+        setShowEditWeek(false)
+        await loadWeek()
+      } else {
+        const data = await res.json()
+        setWeekError(data.error || 'Error al guardar')
+      }
+    } catch { setWeekError('Error de conexion') } finally { setSavingWeek(false) }
+  }
+
   // ─── Render ──────────────────────────────────────────────
 
   if (loading) {
@@ -285,16 +370,46 @@ export default function SemanaDetallePage() {
         )}
       </div>
 
+      {/* Action Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        <button
+          onClick={() => { setEditingAssignment(null); setShowForm(true) }}
+          className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity"
+        >
+          Agregar asignacion
+        </button>
+        <button
+          onClick={handleBulkGenerateReminders}
+          disabled={generatingReminders}
+          className="text-sm font-medium text-ink px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors disabled:opacity-50"
+        >
+          {generatingReminders ? 'Generando...' : 'Generar recordatorios'}
+        </button>
+        <button
+          onClick={() => setShowAllReminders(true)}
+          className="text-sm font-medium text-ink px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors"
+        >
+          Ver recordatorios
+        </button>
+        <button
+          onClick={openEditWeek}
+          className="text-sm font-medium text-ink px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors"
+        >
+          Editar semana
+        </button>
+      </div>
+
+      {/* Notification */}
+      {notification && (
+        <div className={`p-3 rounded-xl text-sm ${notification.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+          {notification.message}
+        </div>
+      )}
+
       {/* Assignments Section */}
       <div className="bg-white rounded-card p-7">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-ink tracking-tight">Asignaciones</h2>
-          <button
-            onClick={() => { setEditingAssignment(null); setShowForm(true) }}
-            className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity"
-          >
-            Agregar asignacion
-          </button>
         </div>
 
         {week.assignments.length === 0 ? (
@@ -410,7 +525,7 @@ export default function SemanaDetallePage() {
               {week.assignments.map((a) => {
                 const sv = statusVariant(a.status)
                 return (
-                  <div key={a.id} className="border border-silver-mist rounded-2xl p-4">
+                  <div key={a.id} className="border border-silver-mist rounded-card p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-medium text-ink">{a.assignmentNumber}. {a.title}</p>
@@ -439,19 +554,19 @@ export default function SemanaDetallePage() {
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-silver-mist/50">
-                      <button onClick={() => { setEditingAssignment(a); setShowForm(true) }} className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5">Editar</button>
-                      <button onClick={() => setViewingReminders(a)} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog">Recordatorios</button>
+                      <button onClick={() => { setEditingAssignment(a); setShowForm(true) }} className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5 transition-colors">Editar</button>
+                      <button onClick={() => setViewingReminders(a)} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Recordatorios</button>
                       {a.status === 'PENDING' && (
                         <>
-                          <button onClick={() => handleGenerateReminders(a.id)} disabled={actionLoading === a.id} className="text-emerald-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 disabled:opacity-50">Generar</button>
-                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog">Completar</button>
-                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50">Cancelar</button>
+                          <button onClick={() => handleGenerateReminders(a.id)} disabled={actionLoading === a.id} className="text-emerald-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors disabled:opacity-50">Generar</button>
+                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Completar</button>
+                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancelar</button>
                         </>
                       )}
                       {a.status === 'NOTIFIED' && (
                         <>
-                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog">Completar</button>
-                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50">Cancelar</button>
+                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Completar</button>
+                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancelar</button>
                         </>
                       )}
                     </div>
@@ -493,7 +608,7 @@ export default function SemanaDetallePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 ) : (
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <svg className="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                   </svg>
                 )}
@@ -514,17 +629,97 @@ export default function SemanaDetallePage() {
               <button
                 onClick={confirmAction.type === 'cancel' ? handleCancelAssignment : handleCompleteAssignment}
                 disabled={actionLoading === confirmAction.assignment.id}
-                className={`text-white text-sm font-medium px-5 py-2.5 rounded-pill disabled:opacity-50 ${confirmAction.type === 'cancel' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                className={`text-white text-sm font-medium px-5 py-2.5 rounded-pill disabled:opacity-50 ${confirmAction.type === 'cancel' ? 'bg-red-400 hover:opacity-90' : 'bg-emerald-500 hover:opacity-90'} transition-opacity`}
               >
                 {actionLoading === confirmAction.assignment.id ? 'Procesando...' : confirmAction.type === 'cancel' ? 'Cancelar asignacion' : 'Completar'}
               </button>
               <button
                 onClick={() => setConfirmAction(null)}
-                className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog"
+                className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors"
               >
                 Volver
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ver recordatorios (all week) Modal */}
+      {showAllReminders && week && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowAllReminders(false)}>
+          <div className="bg-white rounded-card p-7 w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-ink tracking-tight">Recordatorios de la semana</h2>
+              <button onClick={() => setShowAllReminders(false)} className="p-2 rounded-xl hover:bg-fog transition-colors" aria-label="Cerrar">
+                <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {week.assignments.filter(a => a.reminders && a.reminders.length > 0).length === 0 ? (
+              <p className="text-sm text-graphite text-center py-8">No hay recordatorios generados en esta semana</p>
+            ) : (
+              <div className="space-y-6">
+                {week.assignments.filter(a => a.reminders && a.reminders.length > 0).map(a => (
+                  <div key={a.id}>
+                    <p className="text-sm font-medium text-ink mb-2">{a.assignmentNumber}. {a.title}</p>
+                    <div className="space-y-2">
+                      {a.reminders!.map(r => (
+                        <div key={r.id} className="flex items-center justify-between px-4 py-2.5 border border-silver-mist/70 rounded-xl">
+                          <div>
+                            <p className="text-sm text-ink">{r.reminderDay}</p>
+                            <p className="text-xs text-graphite">{r.publisher?.displayName || r.publisher?.fullName || 'Publicador'}</p>
+                          </div>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${r.status === 'SENT' ? 'bg-emerald-50 text-emerald-700' : r.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                            {r.status === 'SENT' ? 'Enviado' : r.status === 'PENDING' ? 'Pendiente' : r.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Editar semana Modal */}
+      {showEditWeek && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowEditWeek(false)}>
+          <div className="bg-white rounded-card p-7 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-ink tracking-tight mb-5">Editar semana</h2>
+            {weekError && <p className="text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-xl">{weekError}</p>}
+            <form onSubmit={handleEditWeekSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">Inicio de semana</label>
+                <input type="date" required value={editWeekForm.weekStartDate} onChange={(e) => setEditWeekForm({ ...editWeekForm, weekStartDate: e.target.value })} className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">Fecha de reunion</label>
+                <input type="date" required value={editWeekForm.meetingDate} onChange={(e) => setEditWeekForm({ ...editWeekForm, meetingDate: e.target.value })} className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">Hora de reunion</label>
+                <input type="time" required value={editWeekForm.meetingTime} onChange={(e) => setEditWeekForm({ ...editWeekForm, meetingTime: e.target.value })} className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">Congregacion</label>
+                <input type="text" value={editWeekForm.congregationName} onChange={(e) => setEditWeekForm({ ...editWeekForm, congregationName: e.target.value })} className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">Notas</label>
+                <textarea value={editWeekForm.notes} onChange={(e) => setEditWeekForm({ ...editWeekForm, notes: e.target.value })} rows={2} className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 resize-none" />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={savingWeek} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50">
+                  {savingWeek ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button type="button" onClick={() => setShowEditWeek(false)} className="text-sm font-medium text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -7,13 +7,20 @@ const WA_URL = process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:301
 
 router.get("/", async (_req, res) => {
   try {
-    const [publisherCount, pendingAssignments, todayReminders, sentMessages] = await Promise.all([
+    const now = new Date();
+    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startOfTomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+
+    const [publisherCount, pendingAssignments, todayReminders, sentMessages, activeWeeks, pendingReminders, messagesSentToday] = await Promise.all([
       prisma.jwPublisher.count({ where: { isActive: true } }),
       prisma.jwAssignment.count({ where: { status: "PENDING" } }),
       prisma.jwAssignmentReminder.count({
         where: { status: "PENDING", scheduledAt: { lte: new Date() } },
       }),
       prisma.jwMessageLog.count({ where: { status: "SENT" } }),
+      prisma.jwMeetingWeek.count({ where: { meetingDate: { gte: startOfToday } } }),
+      prisma.jwAssignmentReminder.count({ where: { status: "PENDING" } }),
+      prisma.jwMessageLog.count({ where: { status: "SENT", createdAt: { gte: startOfToday, lt: startOfTomorrow } } }),
     ]);
 
     const assignments = await prisma.jwAssignment.findMany({
@@ -52,7 +59,10 @@ router.get("/", async (_req, res) => {
     res.json({
       stats: {
         publicadores: publisherCount,
+        activeWeeks: activeWeeks,
         asignacionesPendientes: pendingAssignments,
+        pendingReminders: pendingReminders,
+        messagesSentToday: messagesSentToday,
         recordatoriosHoy: todayReminders,
         mensajesEnviados: sentMessages,
       },
@@ -72,7 +82,7 @@ router.get("/", async (_req, res) => {
     });
   } catch (err) {
     res.json({
-      stats: { publicadores: 0, asignacionesPendientes: 0, recordatoriosHoy: 0, mensajesEnviados: 0 },
+      stats: { publicadores: 0, activeWeeks: 0, asignacionesPendientes: 0, pendingReminders: 0, messagesSentToday: 0, recordatoriosHoy: 0, mensajesEnviados: 0 },
       assignments: [],
       activity: [],
       systemStatus: { whatsapp: "disconnected", worker: "running", database: "connected" },
