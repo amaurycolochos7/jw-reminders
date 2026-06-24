@@ -4,6 +4,7 @@ import qrcode from "qrcode-terminal";
 import { prisma, WhatsappSessionStatus } from "@jw-reminders/database";
 import { existsSync, unlinkSync, readdirSync } from "fs";
 import { join } from "path";
+import { execSync } from "child_process";
 
 const dataPath = process.env.WHATSAPP_SESSION_PATH || ".wwebjs_auth";
 const INIT_TIMEOUT_MS = 90_000; // 90 seconds max for initialize
@@ -23,40 +24,35 @@ let currentClient: InstanceType<typeof Client>;
  */
 function cleanChromiumLocks() {
   try {
-    const sessionsDir = dataPath;
-    if (!existsSync(sessionsDir)) return;
-
-    // Walk through session directories looking for SingletonLock files
-    const entries = readdirSync(sessionsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const sessionPath = join(sessionsDir, entry.name);
-        const lockFile = join(sessionPath, "SingletonLock");
-        if (existsSync(lockFile)) {
-          console.log(`[WhatsApp] Removing stale lock: ${lockFile}`);
-          unlinkSync(lockFile);
-        }
-        // Also check nested Default profile directory
-        const defaultDir = join(sessionPath, "Default");
-        if (existsSync(defaultDir)) {
-          const nestedLock = join(defaultDir, "SingletonLock");
-          if (existsSync(nestedLock)) {
-            console.log(`[WhatsApp] Removing stale lock: ${nestedLock}`);
-            unlinkSync(nestedLock);
-          }
-        }
-      }
-    }
-
-    // Also check root level
-    const rootLock = join(sessionsDir, "SingletonLock");
-    if (existsSync(rootLock)) {
-      console.log(`[WhatsApp] Removing stale lock: ${rootLock}`);
-      unlinkSync(rootLock);
+    // Use find command to locate all Singleton* files (most reliable in Linux containers)
+    try {
+      execSync(`find ${dataPath} -name "Singleton*" -delete 2>/dev/null`, { stdio: 'ignore' });
+      console.log(`[WhatsApp] Cleaned Singleton locks in ${dataPath}`);
+    } catch {
+      // Fallback: manual recursive search
+      removeLockFilesRecursive(dataPath, 0);
     }
   } catch (e) {
     console.error("[WhatsApp] Error cleaning locks:", e);
   }
+}
+
+function removeLockFilesRecursive(dir: string, depth: number) {
+  if (depth > 6 || !existsSync(dir)) return;
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.name.startsWith("Singleton")) {
+        try {
+          unlinkSync(fullPath);
+          console.log(`[WhatsApp] Removed stale lock: ${fullPath}`);
+        } catch {}
+      } else if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        removeLockFilesRecursive(fullPath, depth + 1);
+      }
+    }
+  } catch {}
 }
 
 function createClient(): InstanceType<typeof Client> {
