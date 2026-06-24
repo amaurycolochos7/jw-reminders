@@ -20,5 +20,26 @@ export async function updateMeetingWeek(id: string, data: any) {
 }
 
 export async function deleteMeetingWeek(id: string) {
+  // Get all assignments for this week
+  const assignments = await prisma.jwAssignment.findMany({
+    where: { meetingWeekId: id },
+    select: { id: true },
+  });
+
+  const assignmentIds = assignments.map((a) => a.id);
+
+  // Delete in order: reminders → message logs → assignments → week
+  if (assignmentIds.length > 0) {
+    await prisma.jwAssignmentReminder.deleteMany({
+      where: { assignmentId: { in: assignmentIds } },
+    });
+    await prisma.jwMessageLog.deleteMany({
+      where: { assignmentId: { in: assignmentIds } },
+    });
+    await prisma.jwAssignment.deleteMany({
+      where: { meetingWeekId: id },
+    });
+  }
+
   return prisma.jwMeetingWeek.delete({ where: { id } });
 }

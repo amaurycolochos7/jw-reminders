@@ -13,6 +13,24 @@ interface MeetingWeek {
   _count?: { assignments: number }
 }
 
+/**
+ * Formats an ISO date string without timezone shift.
+ * "2026-06-22T00:00:00.000Z" → "22 jun 2026"
+ */
+function formatDate(iso: string): string {
+  const [datePart] = iso.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  return `${d} ${months[m - 1]} ${y}`
+}
+
+function formatDateShort(iso: string): string {
+  const [datePart] = iso.split('T')
+  const [, m, d] = datePart.split('-').map(Number)
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  return `${d}-${months[m - 1]}`
+}
+
 const emptyForm = { weekStartDate: '', meetingDate: '', meetingTime: '', congregationName: '', notes: '' }
 
 export default function SemanasPage() {
@@ -23,6 +41,8 @@ export default function SemanasPage() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<MeetingWeek | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   async function load() {
     try {
@@ -79,6 +99,22 @@ export default function SemanasPage() {
     } catch { setError('Error de conexion') } finally { setSaving(false) }
   }
 
+  async function handleDelete() {
+    if (!confirmDelete) return
+    setDeleting(true)
+    try {
+      const res = await api(`/api/meeting-weeks/${confirmDelete.id}`, { method: 'DELETE' })
+      if (res.ok || res.status === 204) {
+        setConfirmDelete(null)
+        await load()
+      } else {
+        const data = await res.json()
+        alert(data.error || 'No se pudo eliminar')
+        setConfirmDelete(null)
+      }
+    } catch { setConfirmDelete(null) } finally { setDeleting(false) }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -99,7 +135,7 @@ export default function SemanasPage() {
         </button>
       </div>
 
-      {/* Modal */}
+      {/* Create/Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-card p-7 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
@@ -139,6 +175,45 @@ export default function SemanasPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white rounded-card p-7 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold text-ink tracking-tight">Eliminar semana</h2>
+            </div>
+            <p className="text-sm text-graphite mb-2">
+              Vas a eliminar la semana del <strong className="text-ink">{formatDateShort(confirmDelete.weekStartDate)}</strong>.
+            </p>
+            {(confirmDelete._count?.assignments || 0) > 0 && (
+              <p className="text-sm text-red-600 mb-4">
+                Esta semana tiene {confirmDelete._count?.assignments} asignaciones que tambien se eliminaran.
+              </p>
+            )}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-red-600 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cards */}
       {weeks.length === 0 ? (
         <div className="bg-white rounded-card p-7 text-center py-16">
@@ -150,24 +225,35 @@ export default function SemanasPage() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {weeks.map((w) => (
-            <div key={w.id} className="bg-white rounded-card p-7 group">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                  </svg>
-                  <span className="text-sm font-medium text-ink">
-                    Semana del {new Date(w.weekStartDate).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
-                  </span>
-                </div>
-                <button onClick={() => openEdit(w)} className="text-xs text-azure opacity-0 group-hover:opacity-100 transition-opacity">Editar</button>
+            <div key={w.id} className="bg-white rounded-card p-7">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                <span className="text-sm font-medium text-ink">Semana del {formatDateShort(w.weekStartDate)}</span>
               </div>
               <p className="text-sm text-graphite">
-                Reunion: {new Date(w.meetingDate).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })} a las {w.meetingTime}
+                Reunion: {formatDate(w.meetingDate)} a las {w.meetingTime}
               </p>
               {w.congregationName && <p className="text-xs text-graphite mt-1">{w.congregationName}</p>}
               <p className="text-xs text-graphite mt-1">{w._count?.assignments || 0} asignaciones</p>
               {w.notes && <p className="text-xs text-graphite/70 mt-2 italic">{w.notes}</p>}
+
+              {/* Actions - always visible */}
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-silver-mist">
+                <button
+                  onClick={() => openEdit(w)}
+                  className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(w)}
+                  className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
           ))}
         </div>
