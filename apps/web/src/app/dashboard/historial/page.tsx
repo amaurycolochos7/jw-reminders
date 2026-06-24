@@ -70,44 +70,74 @@ export default function HistorialPage() {
           <p className="text-graphite text-sm">No hay mensajes en el historial</p>
         </div>
       ) : (
-        <div className="bg-white rounded-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-silver-mist">
-                  <th className="text-left px-7 py-4 font-medium text-graphite">Fecha</th>
-                  <th className="text-left px-7 py-4 font-medium text-graphite">Destinatario</th>
-                  <th className="text-left px-7 py-4 font-medium text-graphite">Tipo</th>
-                  <th className="text-left px-7 py-4 font-medium text-graphite">Estado</th>
-                  <th className="text-left px-7 py-4 font-medium text-graphite">Telefono</th>
-                  <th className="text-left px-7 py-4 font-medium text-graphite">Mensaje</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id} className="border-b border-silver-mist last:border-0">
-                    <td className="px-7 py-4 text-ink whitespace-nowrap">
-                      {new Date(log.sentAt || log.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td className="px-7 py-4 text-ink font-medium">
-                      {log.publisher?.displayName || log.publisher?.fullName || '—'}
-                    </td>
-                    <td className="px-7 py-4 text-graphite">{log.messageType || '—'}</td>
-                    <td className="px-7 py-4">
-                      <span className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-pill ${statusConfig[log.status]?.className ?? 'bg-gray-100 text-gray-600'}`}>
-                        {statusConfig[log.status]?.label ?? log.status}
-                      </span>
-                    </td>
-                    <td className="px-7 py-4 text-graphite">{log.phone}</td>
-                    <td className="px-7 py-4 text-graphite max-w-[200px] truncate" title={log.messageBody}>
-                      {log.messageBody?.substring(0, 50) || '—'}{log.messageBody && log.messageBody.length > 50 ? '...' : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Mobile card layout */}
+          <div className="space-y-3 lg:hidden">
+            {logs.map((log) => (
+              <div key={log.id} className="bg-white rounded-card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink truncate">
+                      {log.publisher?.displayName || log.publisher?.fullName || log.phone}
+                    </p>
+                    <p className="text-xs text-graphite mt-0.5">
+                      {new Date(log.sentAt || log.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-pill flex-shrink-0 ${statusConfig[log.status]?.className ?? 'bg-gray-100 text-gray-600'}`}>
+                    {statusConfig[log.status]?.label ?? log.status}
+                  </span>
+                </div>
+                <p className="text-xs text-graphite mt-2 line-clamp-2">
+                  {log.messageBody || '—'}
+                </p>
+                {log.errorMessage && (
+                  <p className="text-xs text-red-600 mt-1">{log.errorMessage}</p>
+                )}
+              </div>
+            ))}
           </div>
-        </div>
+
+          {/* Desktop table */}
+          <div className="hidden lg:block bg-white rounded-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-silver-mist">
+                    <th className="text-left px-7 py-4 font-medium text-graphite">Fecha</th>
+                    <th className="text-left px-7 py-4 font-medium text-graphite">Destinatario</th>
+                    <th className="text-left px-7 py-4 font-medium text-graphite">Tipo</th>
+                    <th className="text-left px-7 py-4 font-medium text-graphite">Estado</th>
+                    <th className="text-left px-7 py-4 font-medium text-graphite">Telefono</th>
+                    <th className="text-left px-7 py-4 font-medium text-graphite">Mensaje</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((log) => (
+                    <tr key={log.id} className="border-b border-silver-mist last:border-0">
+                      <td className="px-7 py-4 text-ink whitespace-nowrap">
+                        {new Date(log.sentAt || log.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-7 py-4 text-ink font-medium">
+                        {log.publisher?.displayName || log.publisher?.fullName || '—'}
+                      </td>
+                      <td className="px-7 py-4 text-graphite">{log.messageType || '—'}</td>
+                      <td className="px-7 py-4">
+                        <span className={`inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-pill ${statusConfig[log.status]?.className ?? 'bg-gray-100 text-gray-600'}`}>
+                          {statusConfig[log.status]?.label ?? log.status}
+                        </span>
+                      </td>
+                      <td className="px-7 py-4 text-graphite">{log.phone}</td>
+                      <td className="px-7 py-4 text-graphite max-w-[200px] truncate" title={log.messageBody}>
+                        {log.messageBody?.substring(0, 50) || '—'}{log.messageBody && log.messageBody.length > 50 ? '...' : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

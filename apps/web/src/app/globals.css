@@ -3,10 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-x: hidden;
+  }
   body {
     @apply bg-fog text-ink antialiased;
     font-family: 'Inter', 'SF Pro Text', system-ui, sans-serif;
     letter-spacing: -0.003em;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
   }
   h1, h2, h3 { letter-spacing: -0.02em; }
   input, select, textarea {
@@ -14,5 +19,15 @@
   }
   button:focus-visible {
     @apply outline-none ring-2 ring-azure/40 ring-offset-2;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }

@@ -36,23 +36,23 @@ export default function MetricsPanel({ stats, whatsappStatus }: MetricsPanelProp
   const { dot, label: statusLabel } = statusConfig[whatsappStatus]
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       {metrics.map(({ icon: Icon, value, label }) => (
-        <div key={label} className="bg-white rounded-card p-7">
-          <Icon className="w-6 h-6 text-graphite mb-3" />
-          <p className="text-3xl font-bold text-ink tracking-tight">{value}</p>
-          <p className="text-sm text-graphite mt-1">{label}</p>
+        <div key={label} className="bg-white rounded-card p-5">
+          <Icon className="w-5 h-5 text-graphite mb-2" />
+          <p className="text-2xl font-bold text-ink tracking-tight">{value}</p>
+          <p className="text-xs text-graphite mt-0.5 leading-tight">{label}</p>
         </div>
       ))}
 
       {/* WhatsApp status card */}
-      <div className="bg-white rounded-card p-7">
-        <PhoneIcon className="w-6 h-6 text-graphite mb-3" />
-        <div className="flex items-center gap-2">
-          <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
-          <p className="text-3xl font-bold text-ink tracking-tight">{statusLabel}</p>
+      <div className="bg-white rounded-card p-5">
+        <PhoneIcon className="w-5 h-5 text-graphite mb-2" />
+        <div className="flex items-center gap-1.5">
+          <span className={`w-2 h-2 rounded-full ${dot}`} />
+          <p className="text-sm font-semibold text-ink">{statusLabel}</p>
         </div>
-        <p className="text-sm text-graphite mt-1">WhatsApp</p>
+        <p className="text-xs text-graphite mt-0.5">WhatsApp</p>
       </div>
     </div>
   )

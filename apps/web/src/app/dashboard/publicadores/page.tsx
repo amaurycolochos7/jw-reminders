@@ -311,7 +311,7 @@ export default function PublicadoresPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* List - responsive card/table */}
       {publishers.length === 0 ? (
         <div className="bg-white rounded-card p-7 text-center py-16">
           <svg className="w-10 h-10 text-graphite/40 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -320,75 +320,95 @@ export default function PublicadoresPage() {
           <p className="text-graphite text-sm">No hay publicadores registrados</p>
         </div>
       ) : (
-        <div className="bg-white rounded-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-silver-mist">
-                  <th className="text-left px-6 py-4 font-medium text-graphite">Nombre</th>
-                  <th className="text-left px-6 py-4 font-medium text-graphite">Telefono</th>
-                  <th className="text-left px-6 py-4 font-medium text-graphite">Estado</th>
-                  <th className="text-left px-6 py-4 font-medium text-graphite">Asignaciones</th>
-                  <th className="text-left px-6 py-4 font-medium text-graphite">Acompanante</th>
-                  <th className="text-right px-6 py-4 font-medium text-graphite">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {publishers.map((p) => (
-                  <tr key={p.id} className="border-b border-silver-mist last:border-0 hover:bg-fog/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className="text-ink font-medium">{p.fullName}</span>
-                      {p.displayName && <span className="text-graphite text-xs ml-2">({p.displayName})</span>}
-                    </td>
-                    <td className="px-6 py-4 text-graphite font-mono text-xs">{toNational(p.phone)}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-pill ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                        {p.isActive ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs ${p.canReceiveAssignments ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        {p.canReceiveAssignments ? 'Si' : 'No'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs ${p.canBeCompanion ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        {p.canBeCompanion ? 'Si' : 'No'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEdit(p)}
-                          className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => toggleActive(p.id)}
-                          className={`text-xs font-medium px-3 py-1.5 rounded-pill transition-colors ${
-                            p.isActive
-                              ? 'text-amber-700 hover:bg-amber-50'
-                              : 'text-emerald-700 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {p.isActive ? 'Desactivar' : 'Activar'}
-                        </button>
-                        <button
-                          onClick={() => setConfirmDelete(p)}
-                          className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors"
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Mobile card layout */}
+          <div className="space-y-3 lg:hidden">
+            {publishers.map((p) => (
+              <div key={p.id} className="bg-white rounded-card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink truncate">{p.fullName}</p>
+                    {p.displayName && <p className="text-xs text-graphite">{p.displayName}</p>}
+                    <p className="text-xs text-graphite font-mono mt-1">{toNational(p.phone)}</p>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-pill flex-shrink-0 ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                    {p.isActive ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-silver-mist">
+                  <button onClick={() => openEdit(p)} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors">
+                    Editar
+                  </button>
+                  <button onClick={() => toggleActive(p.id)} className={`text-xs font-medium px-3 py-1.5 rounded-pill transition-colors ${p.isActive ? 'text-amber-700 hover:bg-amber-50' : 'text-emerald-700 hover:bg-emerald-50'}`}>
+                    {p.isActive ? 'Desactivar' : 'Activar'}
+                  </button>
+                  <button onClick={() => setConfirmDelete(p)} className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors">
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+
+          {/* Desktop table */}
+          <div className="hidden lg:block bg-white rounded-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-silver-mist">
+                    <th className="text-left px-6 py-4 font-medium text-graphite">Nombre</th>
+                    <th className="text-left px-6 py-4 font-medium text-graphite">Telefono</th>
+                    <th className="text-left px-6 py-4 font-medium text-graphite">Estado</th>
+                    <th className="text-left px-6 py-4 font-medium text-graphite">Asignaciones</th>
+                    <th className="text-left px-6 py-4 font-medium text-graphite">Acompanante</th>
+                    <th className="text-right px-6 py-4 font-medium text-graphite">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {publishers.map((p) => (
+                    <tr key={p.id} className="border-b border-silver-mist last:border-0 hover:bg-fog/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <span className="text-ink font-medium">{p.fullName}</span>
+                        {p.displayName && <span className="text-graphite text-xs ml-2">({p.displayName})</span>}
+                      </td>
+                      <td className="px-6 py-4 text-graphite font-mono text-xs">{toNational(p.phone)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-pill ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                          {p.isActive ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs ${p.canReceiveAssignments ? 'text-emerald-600' : 'text-gray-400'}`}>
+                          {p.canReceiveAssignments ? 'Si' : 'No'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs ${p.canBeCompanion ? 'text-emerald-600' : 'text-gray-400'}`}>
+                          {p.canBeCompanion ? 'Si' : 'No'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => openEdit(p)} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors">
+                            Editar
+                          </button>
+                          <button onClick={() => toggleActive(p.id)} className={`text-xs font-medium px-3 py-1.5 rounded-pill transition-colors ${p.isActive ? 'text-amber-700 hover:bg-amber-50' : 'text-emerald-700 hover:bg-emerald-50'}`}>
+                            {p.isActive ? 'Desactivar' : 'Activar'}
+                          </button>
+                          <button onClick={() => setConfirmDelete(p)} className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors">
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

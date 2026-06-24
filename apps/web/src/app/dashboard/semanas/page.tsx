@@ -249,7 +249,7 @@ export default function SemanasPage() {
           {weeks.map((w) => (
             <div
               key={w.id}
-              className="bg-white rounded-card p-7 cursor-pointer hover:shadow-md transition-shadow"
+              className="bg-white rounded-card p-5 sm:p-7 cursor-pointer hover:bg-fog/30 transition-colors"
               onClick={() => router.push(`/dashboard/semanas/${w.id}`)}
             >
               <div className="flex items-center gap-2 mb-3">

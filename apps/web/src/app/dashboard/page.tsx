@@ -80,21 +80,21 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 w-48 bg-silver-mist rounded-pill" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-32 bg-white rounded-card" />)}
+      <div className="space-y-5 animate-pulse">
+        <div className="h-7 w-40 bg-silver-mist rounded-pill" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => <div key={i} className="h-24 bg-white rounded-card" />)}
         </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="h-64 bg-white rounded-card" />
-          <div className="h-64 bg-white rounded-card" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="h-56 bg-white rounded-card" />
+          <div className="h-56 bg-white rounded-card" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <h1 className="text-2xl font-semibold text-ink tracking-tight">Panel de control</h1>
 
       {/* Workflow Guide */}
@@ -113,21 +113,21 @@ export default function DashboardPage() {
       />
 
       {/* Upcoming assignments + System status */}
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Upcoming assignments */}
-        <div className="bg-white rounded-card p-7">
-          <h2 className="text-lg font-semibold text-ink tracking-tight mb-4">Proximas asignaciones</h2>
+        <div className="bg-white rounded-card p-5 sm:p-7">
+          <h2 className="text-base font-semibold text-ink tracking-tight mb-4">Proximas asignaciones</h2>
           {assignments.length === 0 ? (
-            <p className="text-sm text-graphite py-8 text-center">Sin asignaciones pendientes</p>
+            <p className="text-sm text-graphite py-6 text-center">Sin asignaciones pendientes</p>
           ) : (
             <ul className="space-y-3">
               {assignments.map((a) => (
                 <li key={a.id} className="flex items-center justify-between border-b border-silver-mist pb-3 last:border-0 last:pb-0">
-                  <div>
-                    <span className="text-sm text-ink font-medium">{a.title}</span>
-                    <p className="text-xs text-graphite mt-0.5">{a.assignee}</p>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm text-ink font-medium block truncate">{a.title}</span>
+                    <p className="text-xs text-graphite mt-0.5 truncate">{a.assignee}</p>
                   </div>
-                  <span className="text-xs text-graphite whitespace-nowrap ml-4">
+                  <span className="text-xs text-graphite whitespace-nowrap ml-3 flex-shrink-0">
                     {new Date(a.date).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
                   </span>
                 </li>
@@ -137,17 +137,17 @@ export default function DashboardPage() {
         </div>
 
         {/* System status */}
-        <div className="bg-white rounded-card p-7">
-          <h2 className="text-lg font-semibold text-ink tracking-tight mb-4">Estado del sistema</h2>
-          <div className="space-y-4">
+        <div className="bg-white rounded-card p-5 sm:p-7">
+          <h2 className="text-base font-semibold text-ink tracking-tight mb-4">Estado del sistema</h2>
+          <div className="space-y-3">
             {([
               { label: 'WhatsApp', status: systemStatus.whatsapp },
               { label: 'Worker', status: systemStatus.worker },
               { label: 'Base de datos', status: systemStatus.database },
             ] as const).map((item) => (
               <div key={item.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className={`w-2.5 h-2.5 rounded-full ${statusColor(item.status)}`} />
+                <div className="flex items-center gap-2.5">
+                  <span className={`w-2 h-2 rounded-full ${statusColor(item.status)}`} />
                   <span className="text-sm text-ink">{item.label}</span>
                 </div>
                 <span className="text-sm text-graphite">{statusText(item.status)}</span>
@@ -157,13 +157,13 @@ export default function DashboardPage() {
 
           {/* Recent activity */}
           {activity.length > 0 && (
-            <div className="mt-6 pt-5 border-t border-silver-mist">
+            <div className="mt-5 pt-4 border-t border-silver-mist">
               <h3 className="text-sm font-semibold text-ink mb-3">Actividad reciente</h3>
               <ul className="space-y-2">
                 {activity.slice(0, 5).map((a) => (
-                  <li key={a.id} className="flex items-center justify-between">
-                    <span className="text-xs text-graphite">{a.description}</span>
-                    <span className="text-xs text-graphite/60 whitespace-nowrap ml-2">
+                  <li key={a.id} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-graphite truncate min-w-0">{a.description}</span>
+                    <span className="text-xs text-graphite/60 whitespace-nowrap flex-shrink-0">
                       {new Date(a.time).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </li>

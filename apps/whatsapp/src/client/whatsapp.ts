@@ -64,3 +64,27 @@ export async function restartSession() {
   status = "STARTING";
   await client.initialize();
 }
+
+export async function disconnectSession() {
+  try {
+    await client.logout();
+  } catch {
+    await client.destroy();
+  }
+  lastQR = null;
+  connectedNumber = null;
+  lastDisconnected = new Date().toISOString();
+  status = "DISCONNECTED";
+  await logStatus("DISCONNECTED", "Manual disconnect");
+}
+
+export async function generateQR() {
+  // If already connected, disconnect first to generate a new QR
+  if (status === "READY" || status === "AUTHENTICATED") {
+    await disconnectSession();
+  }
+  // Restart to trigger QR generation
+  lastQR = null;
+  status = "STARTING";
+  await client.initialize();
+}

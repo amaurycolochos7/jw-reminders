@@ -57,40 +57,42 @@ const steps = [
 
 export default function WorkflowGuide() {
   return (
-    <div className="bg-white rounded-card p-7">
-      <h2 className="text-lg font-semibold text-ink tracking-tight mb-6">
+    <div className="bg-white rounded-card p-5 sm:p-7">
+      <h2 className="text-base font-semibold text-ink tracking-tight mb-4">
         Flujo de trabajo
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {steps.map((step) => (
-          <div key={step.number} className="flex flex-col">
-            <step.Icon className="w-6 h-6 text-graphite mb-2" />
-            <span className="text-xs font-medium text-azure">
-              Paso {step.number}
-            </span>
-            <span className="text-sm font-medium text-ink">{step.label}</span>
-            <p className="text-xs text-graphite mt-1">{step.description}</p>
-            <Link
-              href={step.href}
-              aria-label={`Ir a ${step.label}`}
-              className="text-azure text-xs font-medium mt-2 inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+          <Link
+            key={step.number}
+            href={step.href}
+            aria-label={`Ir a ${step.label}`}
+            className="flex items-start gap-3 p-3 rounded-xl hover:bg-fog transition-colors group"
+          >
+            <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-fog flex items-center justify-center group-hover:bg-silver-mist transition-colors">
+              <step.Icon className="w-4.5 h-4.5 text-graphite" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="text-[11px] font-medium text-azure leading-none">
+                Paso {step.number}
+              </span>
+              <span className="text-sm font-medium text-ink block mt-0.5 leading-tight">
+                {step.label}
+              </span>
+              <p className="text-xs text-graphite mt-0.5 leading-tight">
+                {step.description}
+              </p>
+            </div>
+            <svg
+              className="w-4 h-4 text-graphite/40 flex-shrink-0 mt-1 group-hover:text-azure transition-colors"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
             >
-              Ir
-              <svg
-                className="w-3 h-3"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                />
-              </svg>
-            </Link>
-          </div>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          </Link>
         ))}
       </div>
     </div>

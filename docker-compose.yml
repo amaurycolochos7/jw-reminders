@@ -40,7 +40,8 @@ services:
     container_name: jw-reminders-web
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: https://jw-reminders.duckdns.org
+      NEXT_PUBLIC_API_URL: ""
+      INTERNAL_API_URL: http://jw-reminders-api:4000
       NODE_ENV: production
     depends_on:
       - api
