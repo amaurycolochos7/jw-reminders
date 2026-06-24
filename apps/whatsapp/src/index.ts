@@ -1,5 +1,5 @@
 import express from "express";
-import { initWhatsApp, status, lastQR, connectedNumber, lastConnected, lastDisconnected, restartSession, disconnectSession, generateQR, client } from "./client/whatsapp.js";
+import { initWhatsApp, status, lastQR, connectedNumber, lastConnected, lastDisconnected, lastError, restartSession, disconnectSession, generateQR, getClient } from "./client/whatsapp.js";
 import { sendMessage } from "./services/message-sender.js";
 
 const app = express();
@@ -10,7 +10,8 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/status", (_req, res) => {
   let deviceName: string | null = null;
   try {
-    deviceName = client?.info?.pushname || null;
+    const c = getClient();
+    deviceName = c?.info?.pushname || null;
   } catch {}
 
   res.json({
@@ -20,7 +21,7 @@ app.get("/status", (_req, res) => {
     deviceName,
     lastConnected,
     lastDisconnected,
-    error: null,
+    error: lastError,
   });
 });
 
@@ -34,7 +35,7 @@ app.post("/send", async (req, res) => {
 app.post("/restart", async (_req, res) => {
   try {
     await restartSession();
-    res.json({ success: true, message: "Session restarting" });
+    res.json({ success: true, message: "Session restarted" });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -61,4 +62,7 @@ app.post("/generate-qr", async (_req, res) => {
 const PORT = Number(process.env.PORT) || 3010;
 app.listen(PORT, () => console.log(`[WhatsApp] Server listening on port ${PORT}`));
 
-initWhatsApp().catch((err) => console.error("[WhatsApp] Init failed:", err));
+// Initialize WhatsApp - don't crash if it fails
+initWhatsApp().catch((err) => {
+  console.error("[WhatsApp] Init failed:", err);
+});
