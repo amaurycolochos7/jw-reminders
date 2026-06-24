@@ -1,0 +1,533 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { api } from '@/lib/api'
+import AssignmentForm from './AssignmentForm'
+import AssignmentReminders from './AssignmentReminders'
+
+// ─── Types ───────────────────────────────────────────────
+
+interface Publisher {
+  id: string
+  fullName: string
+  displayName: string | null
+  phone: string
+  isActive: boolean
+  canBeCompanion: boolean
+}
+
+interface Assignment {
+  id: string
+  assignmentNumber: number
+  section: string
+  assignmentType: string
+  title: string
+  durationMinutes: number | null
+  context: string | null
+  reference: string | null
+  room: string
+  notes: string | null
+  status: string
+  assignedPublisherId: string
+  companionPublisherId: string | null
+  assigned: Publisher
+  companion: Publisher | null
+  reminders?: Reminder[]
+}
+
+interface Reminder {
+  id: string
+  publisherId: string
+  reminderDay: string
+  scheduledAt: string
+  sentAt: string | null
+  status: string
+  publisher: Publisher
+}
+
+interface MeetingWeek {
+  id: string
+  weekStartDate: string
+  meetingDate: string
+  meetingTime: string
+  congregationName: string | null
+  notes: string | null
+  assignments: Assignment[]
+}
+
+// ─── Helpers ─────────────────────────────────────────────
+
+function formatDate(iso: string): string {
+  const [datePart] = iso.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  return `${d} ${months[m - 1]} ${y}`
+}
+
+function sectionLabel(section: string): string {
+  const map: Record<string, string> = {
+    BIBLE_READING: 'Lectura de la Biblia',
+    APPLY_YOURSELF: 'Seamos mejores maestros',
+  }
+  return map[section] || section
+}
+
+function typeLabel(type: string): string {
+  const map: Record<string, string> = {
+    BIBLE_READING: 'Lectura de la Biblia',
+    START_CONVERSATION: 'Empiece conversaciones',
+    MAKE_RETURN_VISIT: 'Haga revisitas',
+    BIBLE_STUDY: 'Haga discipulos',
+    EXPLAIN_BELIEFS: 'Explique sus creencias',
+    MAKE_DISCIPLES: 'Haga discipulos',
+    TALK: 'Discurso',
+    OTHER: 'Otro',
+  }
+  return map[type] || type
+}
+
+function roomLabel(room: string): string {
+  return room === 'MAIN' ? 'Principal' : 'Auxiliar'
+}
+
+function statusVariant(status: string): { label: string; classes: string } {
+  const map: Record<string, { label: string; classes: string }> = {
+    PENDING: { label: 'Pendiente', classes: 'bg-amber-50 text-amber-700' },
+    NOTIFIED: { label: 'Notificado', classes: 'bg-blue-50 text-blue-700' },
+    CANCELLED: { label: 'Cancelada', classes: 'bg-red-50 text-red-700' },
+    COMPLETED: { label: 'Completada', classes: 'bg-emerald-50 text-emerald-700' },
+  }
+  return map[status] || { label: status, classes: 'bg-slate-100 text-slate-600' }
+}
+
+// ─── Page ────────────────────────────────────────────────
+
+export default function SemanaDetallePage() {
+  const params = useParams()
+  const router = useRouter()
+  const weekId = params.id as string
+
+  const [week, setWeek] = useState<MeetingWeek | null>(null)
+  const [publishers, setPublishers] = useState<Publisher[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // Form state
+  const [showForm, setShowForm] = useState(false)
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null)
+
+  // Reminders view
+  const [viewingReminders, setViewingReminders] = useState<Assignment | null>(null)
+
+  // Actions
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<{ type: 'cancel' | 'complete' | 'delete'; assignment: Assignment } | null>(null)
+
+  const loadWeek = useCallback(async () => {
+    try {
+      const res = await api(`/api/meeting-weeks/${weekId}`)
+      if (res.ok) {
+        setWeek(await res.json())
+      } else {
+        setError('No se pudo cargar la semana')
+      }
+    } catch {
+      setError('Error de conexion')
+    } finally {
+      setLoading(false)
+    }
+  }, [weekId])
+
+  const loadPublishers = useCallback(async () => {
+    try {
+      const res = await api('/api/publishers')
+      if (res.ok) {
+        const data = await res.json()
+        setPublishers(data.filter((p: Publisher) => p.isActive))
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    loadWeek()
+    loadPublishers()
+  }, [loadWeek, loadPublishers])
+
+  // ─── Assignment Actions ──────────────────────────────────
+
+  async function handleGenerateReminders(assignmentId: string) {
+    setActionLoading(assignmentId)
+    try {
+      const res = await api(`/api/assignments/${assignmentId}/generate-reminders`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        alert(`Recordatorios creados: ${data.created}`)
+        await loadWeek()
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Error al generar recordatorios')
+      }
+    } catch {
+      alert('Error de conexion')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleCancelAssignment() {
+    if (!confirmAction || confirmAction.type !== 'cancel') return
+    setActionLoading(confirmAction.assignment.id)
+    try {
+      const res = await api(`/api/assignments/${confirmAction.assignment.id}/cancel`, { method: 'PATCH' })
+      if (res.ok) {
+        setConfirmAction(null)
+        await loadWeek()
+      } else {
+        alert('Error al cancelar')
+      }
+    } catch {
+      alert('Error de conexion')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleCompleteAssignment() {
+    if (!confirmAction || confirmAction.type !== 'complete') return
+    setActionLoading(confirmAction.assignment.id)
+    try {
+      const res = await api(`/api/assignments/${confirmAction.assignment.id}/complete`, { method: 'PATCH' })
+      if (res.ok) {
+        setConfirmAction(null)
+        await loadWeek()
+      } else {
+        alert('Error al completar')
+      }
+    } catch {
+      alert('Error de conexion')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleFormSuccess() {
+    setShowForm(false)
+    setEditingAssignment(null)
+    await loadWeek()
+  }
+
+  // ─── Render ──────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-8 w-64 bg-silver-mist rounded-pill" />
+        <div className="h-48 bg-white rounded-card" />
+        <div className="h-96 bg-white rounded-card" />
+      </div>
+    )
+  }
+
+  if (error || !week) {
+    return (
+      <div className="bg-white rounded-card p-7 text-center py-16">
+        <p className="text-graphite text-sm">{error || 'Semana no encontrada'}</p>
+        <button onClick={() => router.push('/dashboard/semanas')} className="mt-4 text-azure text-sm font-medium hover:underline">
+          Volver a semanas
+        </button>
+      </div>
+    )
+  }
+
+  const totalReminders = week.assignments.reduce((acc, a) => acc + (a.reminders?.length || 0), 0)
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={() => router.push('/dashboard/semanas')} className="p-2 rounded-xl hover:bg-fog transition-colors" aria-label="Volver">
+          <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          </svg>
+        </button>
+        <div>
+          <h1 className="text-2xl font-semibold text-ink tracking-tight">Semana del {formatDate(week.weekStartDate)}</h1>
+          <p className="text-sm text-graphite mt-0.5">Detalle de semana y asignaciones</p>
+        </div>
+      </div>
+
+      {/* Week Info Card */}
+      <div className="bg-white rounded-card p-7">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div>
+            <p className="text-xs font-medium text-graphite uppercase tracking-wide">Fecha de reunion</p>
+            <p className="text-sm text-ink mt-1 font-medium">{formatDate(week.meetingDate)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-graphite uppercase tracking-wide">Hora</p>
+            <p className="text-sm text-ink mt-1 font-medium">{week.meetingTime}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-graphite uppercase tracking-wide">Congregacion</p>
+            <p className="text-sm text-ink mt-1 font-medium">{week.congregationName || 'Sin especificar'}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-graphite uppercase tracking-wide">Asignaciones / Recordatorios</p>
+            <p className="text-sm text-ink mt-1 font-medium">{week.assignments.length} asignaciones / {totalReminders} recordatorios</p>
+          </div>
+        </div>
+        {week.notes && (
+          <div className="mt-4 pt-4 border-t border-silver-mist">
+            <p className="text-xs font-medium text-graphite uppercase tracking-wide">Notas</p>
+            <p className="text-sm text-graphite mt-1">{week.notes}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Assignments Section */}
+      <div className="bg-white rounded-card p-7">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-ink tracking-tight">Asignaciones</h2>
+          <button
+            onClick={() => { setEditingAssignment(null); setShowForm(true) }}
+            className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity"
+          >
+            Agregar asignacion
+          </button>
+        </div>
+
+        {week.assignments.length === 0 ? (
+          <div className="text-center py-12">
+            <svg className="w-10 h-10 text-graphite/40 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+            </svg>
+            <p className="text-graphite text-sm">No hay asignaciones en esta semana</p>
+            <p className="text-graphite/70 text-xs mt-1">Agrega la primera asignacion para comenzar</p>
+          </div>
+        ) : (
+          <>
+            {/* Desktop table */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-silver-mist">
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">No.</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Seccion</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Tipo</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Titulo</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Asignado</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Acompanante</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Sala</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Estado</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {week.assignments.map((a) => {
+                    const sv = statusVariant(a.status)
+                    return (
+                      <tr key={a.id} className="border-b border-silver-mist/50 last:border-0">
+                        <td className="py-3 px-2 font-medium text-ink">{a.assignmentNumber}</td>
+                        <td className="py-3 px-2 text-graphite">{sectionLabel(a.section)}</td>
+                        <td className="py-3 px-2 text-graphite">{typeLabel(a.assignmentType)}</td>
+                        <td className="py-3 px-2 text-ink font-medium">{a.title}</td>
+                        <td className="py-3 px-2 text-ink">{a.assigned?.displayName || a.assigned?.fullName || '---'}</td>
+                        <td className="py-3 px-2 text-graphite">{a.companion?.displayName || a.companion?.fullName || '---'}</td>
+                        <td className="py-3 px-2 text-graphite">{roomLabel(a.room)}</td>
+                        <td className="py-3 px-2">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${sv.classes}`}>{sv.label}</span>
+                        </td>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => { setEditingAssignment(a); setShowForm(true) }}
+                              className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5 transition-colors"
+                              title="Editar"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => setViewingReminders(a)}
+                              className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors"
+                              title="Recordatorios"
+                            >
+                              Recordatorios
+                            </button>
+                            {a.status === 'PENDING' && (
+                              <>
+                                <button
+                                  onClick={() => handleGenerateReminders(a.id)}
+                                  disabled={actionLoading === a.id}
+                                  className="text-emerald-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                                  title="Generar recordatorios"
+                                >
+                                  Generar
+                                </button>
+                                <button
+                                  onClick={() => setConfirmAction({ type: 'complete', assignment: a })}
+                                  className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors"
+                                  title="Completar"
+                                >
+                                  Completar
+                                </button>
+                                <button
+                                  onClick={() => setConfirmAction({ type: 'cancel', assignment: a })}
+                                  className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                                  title="Cancelar"
+                                >
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                            {a.status === 'NOTIFIED' && (
+                              <>
+                                <button
+                                  onClick={() => setConfirmAction({ type: 'complete', assignment: a })}
+                                  className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors"
+                                >
+                                  Completar
+                                </button>
+                                <button
+                                  onClick={() => setConfirmAction({ type: 'cancel', assignment: a })}
+                                  className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="lg:hidden space-y-3">
+              {week.assignments.map((a) => {
+                const sv = statusVariant(a.status)
+                return (
+                  <div key={a.id} className="border border-silver-mist rounded-2xl p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-ink">{a.assignmentNumber}. {a.title}</p>
+                        <p className="text-xs text-graphite mt-0.5">{sectionLabel(a.section)} / {typeLabel(a.assignmentType)}</p>
+                      </div>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sv.classes}`}>{sv.label}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-graphite">Asignado:</span>
+                        <span className="text-ink ml-1">{a.assigned?.displayName || a.assigned?.fullName || '---'}</span>
+                      </div>
+                      <div>
+                        <span className="text-graphite">Acompanante:</span>
+                        <span className="text-ink ml-1">{a.companion?.displayName || a.companion?.fullName || '---'}</span>
+                      </div>
+                      <div>
+                        <span className="text-graphite">Sala:</span>
+                        <span className="text-ink ml-1">{roomLabel(a.room)}</span>
+                      </div>
+                      {a.durationMinutes && (
+                        <div>
+                          <span className="text-graphite">Duracion:</span>
+                          <span className="text-ink ml-1">{a.durationMinutes} min</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-silver-mist/50">
+                      <button onClick={() => { setEditingAssignment(a); setShowForm(true) }} className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5">Editar</button>
+                      <button onClick={() => setViewingReminders(a)} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog">Recordatorios</button>
+                      {a.status === 'PENDING' && (
+                        <>
+                          <button onClick={() => handleGenerateReminders(a.id)} disabled={actionLoading === a.id} className="text-emerald-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 disabled:opacity-50">Generar</button>
+                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog">Completar</button>
+                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50">Cancelar</button>
+                        </>
+                      )}
+                      {a.status === 'NOTIFIED' && (
+                        <>
+                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog">Completar</button>
+                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50">Cancelar</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Assignment Form Modal */}
+      {showForm && (
+        <AssignmentForm
+          weekId={weekId}
+          publishers={publishers}
+          assignment={editingAssignment}
+          onClose={() => { setShowForm(false); setEditingAssignment(null) }}
+          onSuccess={handleFormSuccess}
+        />
+      )}
+
+      {/* Reminders Modal */}
+      {viewingReminders && (
+        <AssignmentReminders
+          assignment={viewingReminders}
+          onClose={() => setViewingReminders(null)}
+        />
+      )}
+
+      {/* Confirm Action Modal */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmAction(null)}>
+          <div className="bg-white rounded-card p-7 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${confirmAction.type === 'cancel' ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                {confirmAction.type === 'cancel' ? (
+                  <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                )}
+              </div>
+              <h2 className="text-lg font-semibold text-ink tracking-tight">
+                {confirmAction.type === 'cancel' ? 'Cancelar asignacion' : 'Completar asignacion'}
+              </h2>
+            </div>
+            <p className="text-sm text-graphite mb-2">
+              {confirmAction.type === 'cancel'
+                ? 'Esta accion cancelara la asignacion y todos los recordatorios pendientes.'
+                : 'Esta accion marcara la asignacion como completada y cancelara recordatorios pendientes.'}
+            </p>
+            <p className="text-sm text-ink font-medium">
+              {confirmAction.assignment.assignmentNumber}. {confirmAction.assignment.title}
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={confirmAction.type === 'cancel' ? handleCancelAssignment : handleCompleteAssignment}
+                disabled={actionLoading === confirmAction.assignment.id}
+                className={`text-white text-sm font-medium px-5 py-2.5 rounded-pill disabled:opacity-50 ${confirmAction.type === 'cancel' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+              >
+                {actionLoading === confirmAction.assignment.id ? 'Procesando...' : confirmAction.type === 'cancel' ? 'Cancelar asignacion' : 'Completar'}
+              </button>
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog"
+              >
+                Volver
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

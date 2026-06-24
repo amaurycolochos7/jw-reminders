@@ -7,7 +7,7 @@ export async function listMeetingWeeks() {
 export async function getMeetingWeek(id: string) {
   return prisma.jwMeetingWeek.findUniqueOrThrow({
     where: { id },
-    include: { assignments: { include: { assigned: true, companion: true } } },
+    include: { assignments: { include: { assigned: true, companion: true, reminders: { include: { publisher: true } } }, orderBy: { assignmentNumber: "asc" } } },
   });
 }
 

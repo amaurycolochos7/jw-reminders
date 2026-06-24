@@ -24,10 +24,20 @@ export async function updateAssignment(id: string, data: any) {
 }
 
 export async function cancelAssignment(id: string) {
+  // Cancel all pending reminders for this assignment
+  await prisma.jwAssignmentReminder.updateMany({
+    where: { assignmentId: id, status: "PENDING" },
+    data: { status: "CANCELLED" },
+  });
   return prisma.jwAssignment.update({ where: { id }, data: { status: "CANCELLED" } });
 }
 
 export async function completeAssignment(id: string) {
+  // Cancel all pending reminders for this assignment
+  await prisma.jwAssignmentReminder.updateMany({
+    where: { assignmentId: id, status: "PENDING" },
+    data: { status: "CANCELLED" },
+  });
   return prisma.jwAssignment.update({ where: { id }, data: { status: "COMPLETED" } });
 }
 

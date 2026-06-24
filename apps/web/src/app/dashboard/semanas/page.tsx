@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 
 interface MeetingWeek {
@@ -34,6 +35,7 @@ function formatDateShort(iso: string): string {
 const emptyForm = { weekStartDate: '', meetingDate: '', meetingTime: '', congregationName: '', notes: '' }
 
 export default function SemanasPage() {
+  const router = useRouter()
   const [weeks, setWeeks] = useState<MeetingWeek[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -225,7 +227,11 @@ export default function SemanasPage() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {weeks.map((w) => (
-            <div key={w.id} className="bg-white rounded-card p-7">
+            <div
+              key={w.id}
+              className="bg-white rounded-card p-7 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => router.push(`/dashboard/semanas/${w.id}`)}
+            >
               <div className="flex items-center gap-2 mb-3">
                 <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
@@ -242,13 +248,19 @@ export default function SemanasPage() {
               {/* Actions - always visible */}
               <div className="flex items-center gap-2 mt-4 pt-4 border-t border-silver-mist">
                 <button
-                  onClick={() => openEdit(w)}
+                  onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/semanas/${w.id}`) }}
                   className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors"
+                >
+                  Ver detalle
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); openEdit(w) }}
+                  className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors"
                 >
                   Editar
                 </button>
                 <button
-                  onClick={() => setConfirmDelete(w)}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(w) }}
                   className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors"
                 >
                   Eliminar
