@@ -114,3 +114,41 @@ export function calculateReminderScheduledAt(input: ReminderScheduleInput): Date
   return zonedLocalTimeToUtc(scheduledLocalDate, sendHour, 0, timezone);
 }
 
+
+
+
+/**
+ * Local calendar day (YYYY-MM-DD) in the given IANA timezone for "now".
+ */
+export function localToday(timeZone: string): string {
+  return localDateLabel(new Date(), timeZone);
+}
+
+/**
+ * Local calendar day (YYYY-MM-DD) of an instant in the given IANA timezone.
+ */
+export function localDateLabel(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== "literal") values[part.type] = part.value;
+  }
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+/**
+ * Local 24h time (HH:mm) of an instant in the given IANA timezone.
+ */
+export function localTimeLabel(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("es-MX", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}

@@ -1,23 +1,9 @@
 import { Router, Request, Response } from "express";
 import { prisma, ReminderRecipientRole, ReminderStatus } from "@jw-reminders/database";
-import { addDaysToLocalDate, zonedLocalTimeToUtc } from "../../services/date-utils.js";
+import { addDaysToLocalDate, localDateLabel, localTimeLabel, localToday, zonedLocalTimeToUtc } from "../../services/date-utils.js";
 import { getAutomationConfig } from "../../services/automation.service.js";
 
 const router = Router();
-
-function localToday(timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const values: Record<string, string> = {};
-  for (const part of parts) {
-    if (part.type !== "literal") values[part.type] = part.value;
-  }
-  return `${values.year}-${values.month}-${values.day}`;
-}
 
 function rangeToDates(range: string | undefined, timeZone: string, dateFrom?: string, dateTo?: string) {
   const today = localToday(timeZone);
@@ -44,29 +30,6 @@ function rangeToDates(range: string | undefined, timeZone: string, dateFrom?: st
     start,
     endExclusive,
   };
-}
-
-function localDateLabel(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const values: Record<string, string> = {};
-  for (const part of parts) {
-    if (part.type !== "literal") values[part.type] = part.value;
-  }
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function localTimeLabel(date: Date, timeZone: string) {
-  return new Intl.DateTimeFormat("es-MX", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
 }
 
 router.get("/", async (req: Request, res: Response) => {

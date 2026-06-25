@@ -27,6 +27,7 @@ export default function HistorialPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('')
   const [publisherFilter, setPublisherFilter] = useState('')
+  const [publishers, setPublishers] = useState<{ id: string; fullName: string; displayName: string | null }[]>([])
 
   async function load() {
     try {
@@ -39,7 +40,17 @@ export default function HistorialPage() {
     } catch { /* ignore */ } finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [statusFilter])
+  useEffect(() => { load() }, [statusFilter, publisherFilter])
+
+  useEffect(() => {
+    async function loadPublishers() {
+      try {
+        const res = await api('/api/publishers')
+        if (res.ok) setPublishers(await res.json())
+      } catch { /* ignore */ }
+    }
+    loadPublishers()
+  }, [])
 
   if (loading) {
     return (
@@ -54,12 +65,20 @@ export default function HistorialPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-semibold text-ink tracking-tight">Historial de mensajes</h1>
-        <select value={statusFilter} onChange={(e) => { setLoading(true); setStatusFilter(e.target.value) }} className="px-4 py-2.5 border border-silver-mist rounded-pill text-sm text-ink bg-white focus:outline-none focus:ring-2 focus:ring-azure/30">
-          <option value="">Todos los estados</option>
-          <option value="SENT">Enviado</option>
-          <option value="FAILED">Fallido</option>
-          <option value="SKIPPED">Omitido</option>
-        </select>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <select value={publisherFilter} onChange={(e) => { setLoading(true); setPublisherFilter(e.target.value) }} className="px-4 py-2.5 border border-silver-mist rounded-pill text-sm text-ink bg-white focus:outline-none focus:ring-2 focus:ring-azure/30">
+            <option value="">Todos los publicadores</option>
+            {publishers.map((p) => (
+              <option key={p.id} value={p.id}>{p.displayName || p.fullName}</option>
+            ))}
+          </select>
+          <select value={statusFilter} onChange={(e) => { setLoading(true); setStatusFilter(e.target.value) }} className="px-4 py-2.5 border border-silver-mist rounded-pill text-sm text-ink bg-white focus:outline-none focus:ring-2 focus:ring-azure/30">
+            <option value="">Todos los estados</option>
+            <option value="SENT">Enviado</option>
+            <option value="FAILED">Fallido</option>
+            <option value="SKIPPED">Omitido</option>
+          </select>
+        </div>
       </div>
 
       {logs.length === 0 ? (

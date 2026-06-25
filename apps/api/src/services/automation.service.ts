@@ -38,14 +38,6 @@ const COMPANION_RULES: ReminderType[] = [
   "SAME_DAY",
 ];
 
-const NORMAL_REMINDERS: ReminderType[] = [
-  "INITIAL_NOTICE",
-  "SEVEN_DAYS_BEFORE",
-  "THREE_DAYS_BEFORE",
-  "ONE_DAY_BEFORE",
-  "SAME_DAY",
-];
-
 const CANCELLABLE_STATUSES: ReminderStatus[] = ["PENDING", "QUEUED", "FAILED"];
 
 const SPANISH_MONTHS = [
@@ -374,7 +366,7 @@ export async function supersedeActivePlansForAssignment(tx: Tx, assignmentId: st
     });
   }
 
-  await cancelPendingDeliveriesForAssignment(tx, assignmentId, reason, NORMAL_REMINDERS);
+  await cancelPendingDeliveriesForAssignment(tx, assignmentId, reason);
   return activePlans.length;
 }
 
@@ -398,7 +390,7 @@ export async function cancelAssignmentAutomation(tx: Tx, assignmentId: string, r
   });
   const hadAutomation = activePlans.length > 0;
 
-  await cancelPendingDeliveriesForAssignment(tx, assignmentId, reason, NORMAL_REMINDERS);
+  await cancelPendingDeliveriesForAssignment(tx, assignmentId, reason);
 
   for (const plan of activePlans) {
     await tx.automationPlan.update({
@@ -439,7 +431,7 @@ export async function cancelAssignmentAutomation(tx: Tx, assignmentId: string, r
 }
 
 export async function archiveAssignmentAutomation(tx: Tx, assignmentId: string, reason: string) {
-  await cancelPendingDeliveriesForAssignment(tx, assignmentId, reason, NORMAL_REMINDERS);
+  await cancelPendingDeliveriesForAssignment(tx, assignmentId, reason);
   await tx.automationPlan.updateMany({
     where: { assignmentId, status: "ACTIVE" },
     data: { status: "ARCHIVED", archivedAt: new Date() },

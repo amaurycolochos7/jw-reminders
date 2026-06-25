@@ -1,40 +1,17 @@
 import { Router } from "express";
 import { prisma } from "@jw-reminders/database";
-import { addDaysToLocalDate, zonedLocalTimeToUtc } from "../../services/date-utils.js";
+import { addDaysToLocalDate, localTimeLabel, localToday, zonedLocalTimeToUtc } from "../../services/date-utils.js";
 import { getAutomationConfig } from "../../services/automation.service.js";
 
 const router = Router();
 
 const WA_URL = process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:3010";
 
-function localToday(timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const values: Record<string, string> = {};
-  for (const part of parts) {
-    if (part.type !== "literal") values[part.type] = part.value;
-  }
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
 function rangeBounds(startLocal: string, days: number, timeZone: string) {
   return {
     startUtc: zonedLocalTimeToUtc(startLocal, 0, 0, timeZone),
     endUtc: zonedLocalTimeToUtc(addDaysToLocalDate(startLocal, days), 0, 0, timeZone),
   };
-}
-
-function localTime(date: Date, timeZone: string) {
-  return new Intl.DateTimeFormat("es-MX", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
 }
 
 function summarizeDeliveries(deliveries: any[], timeZone: string) {
@@ -54,7 +31,7 @@ function summarizeDeliveries(deliveries: any[], timeZone: string) {
     ...summary,
     deliveries: deliveries.slice(0, 8).map((delivery) => ({
       id: delivery.id,
-      localTime: localTime(delivery.scheduledAt, timeZone),
+      localTime: localTimeLabel(delivery.scheduledAt, timeZone),
       reminderType: delivery.reminderType,
       recipientRole: delivery.recipientRole,
       status: delivery.status,
@@ -77,7 +54,7 @@ router.get("/", async (_req, res) => {
 
     const [publisherCount, pendingAssignments, todayReminders, sentMessages, activeWeeks, pendingReminders, messagesSentToday, failedReminders] = await Promise.all([
       prisma.jwPublisher.count({ where: { isActive: true } }),
-      prisma.jwAssignment.count({ where: { status: { in: ["DRAFT", "SCHEDULED"] } } }),
+      prisma.jwAssignment.count({ where: { status: "DRAFT" } }),
       prisma.reminderDelivery.count({
         where: { status: { in: ["PENDING", "QUEUED", "SENDING"] }, scheduledAt: { gte: todayRange.startUtc, lt: todayRange.endUtc } },
       }),
