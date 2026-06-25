@@ -411,3 +411,34 @@ No se detectaron roturas de layout adicionales por codigo. Queda pendiente la ve
 | Hash | Deploy |
 |------|--------|
 | `89e5738` | done |
+
+
+
+### Lote 4 (`28890df`)
+
+11. Robustez del motor: generacion de recordatorios resiliente. Antes, una regla invalida (por ejemplo `SAME_DAY` cuando la hora de envio es mayor o igual a la hora de reunion) lanzaba excepcion y abortaba TODA la generacion de la asignacion. Ahora cada entrega se calcula de forma independiente: si una regla falla, se omite y se registra, y el resto se generan normalmente.
+    - Verificado en produccion: reunion 09:00 con hora de envio 09:00 genera 4 entregas (INITIAL/7d/3d/1d) y omite solo `SAME_DAY` (antes habria fallado con 400).
+
+## Revision de login
+
+Revisado `login/page.tsx`: funciona correctamente (usa ruta relativa `/api/auth/login` proxeada por Next; login validado en produccion). Observacion menor no bloqueante: usa colores hex en linea en lugar de tokens de DESIGN; valores identicos a la paleta, sin impacto visual. Se deja como limpieza opcional futura.
+
+## Deuda tecnica restante (recomendada, no critica)
+
+- Centralizar los mapas de etiquetas/estados del frontend (`typeLabels`, `statusLabels`, `statusClasses`, estados de semana) en un modulo compartido. Hoy estan duplicados en dashboard, automatizaciones, semanas/[id] y AssignmentReminders. No causa bugs activos (la unica inconsistencia, color slate en SKIPPED, ya se corrigio), pero centralizar evitaria drift. Se pospone para no introducir cambios de texto visibles durante el QA manual.
+
+## Commits y deploys (continuacion)
+
+| Hash | Deploy |
+|------|--------|
+| `28890df` | done |
+
+## Estado RC1
+
+Pasada de estabilizacion por auditoria de codigo COMPLETA: 11 correcciones (bugs de correctitud, metricas, filtros, paleta DESIGN, responsive, fuente de verdad de configuracion y robustez del motor), todas probadas localmente, desplegadas y validadas en produccion. El reporte, los commits y los deploys quedan al dia.
+
+Pendiente de cierre de RC1 (depende del entorno del usuario, no de codigo):
+
+- WhatsApp con dispositivo real: escanear QR para validar READY, envio real, reconexion y persistencia.
+- Validacion responsive visual en dispositivos (auditoria por codigo ya realizada y corregida).
+- QA manual del usuario: cada reporte se atendera con el ciclo corregir-probar-deploy-validar-reportar.
