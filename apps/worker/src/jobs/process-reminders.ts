@@ -3,9 +3,27 @@ import { WHATSAPP_SEND_DELAY_MS } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
 
-const TEST_MODE = process.env.TEST_MODE === "true";
-const TEST_PHONE = process.env.TEST_PHONE || "";
 const BATCH_SIZE = Number(process.env.WORKER_BATCH_SIZE || 50);
+
+/**
+ * Send configuration. Source of truth is AppConfig (DB), set from the admin panel.
+ * Falls back to environment variables when a value is missing/invalid.
+ * Read on every run so changes apply on the next cron tick without a redeploy.
+ */
+async function getSendConfig(): Promise<{ testMode: boolean; testPhone: string }> {
+  let testMode = process.env.TEST_MODE === "true";
+  let testPhone = process.env.TEST_PHONE || "";
+  try {
+    const rows = await prisma.appConfig.findMany({ where: { key: { in: ["TEST_MODE", "TEST_PHONE"] } } });
+    const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    if (map.TEST_MODE === "true") testMode = true;
+    else if (map.TEST_MODE === "false") testMode = false;
+    if (typeof map.TEST_PHONE === "string" && map.TEST_PHONE.trim()) testPhone = map.TEST_PHONE.trim();
+  } catch (err) {
+    console.error("[Worker] Failed to read AppConfig, using env fallback for send config:", err);
+  }
+  return { testMode, testPhone };
+}
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,6 +68,7 @@ async function markCancelled(id: string, reason: string) {
 
 export async function processReminders() {
   const now = new Date();
+  const sendConfig = await getSendConfig();
   const due = await prisma.reminderDelivery.findMany({
     where: {
       OR: [
@@ -148,6 +167,12 @@ export async function processReminders() {
         continue;
       }
 
+      const phone = sendConfig.testMode ? sendConfig.testPhone : (publisher.whatsappPhone || publisher.phone);
+      if (!phone) {
+        await markSkipped(fresh.id, sendConfig.testMode ? "TEST_MODE activo pero TEST_PHONE no configurado" : "Destinatario sin telefono valido");
+        continue;
+      }
+
       await prisma.reminderDelivery.update({
         where: { id: fresh.id },
         data: { status: "SENDING", lastAttemptAt: new Date() },
@@ -155,7 +180,6 @@ export async function processReminders() {
       await event("REMINDER_SENDING", "ReminderDelivery", fresh.id, { reminderType: fresh.reminderType });
 
       const message = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
-      const phone = TEST_MODE ? TEST_PHONE : (publisher.whatsappPhone || publisher.phone);
       const result = await sendWhatsappMessage(phone, message);
       const attemptCount = fresh.attemptCount + 1;
       const terminalFailure = !result.success && attemptCount >= fresh.maxAttempts;

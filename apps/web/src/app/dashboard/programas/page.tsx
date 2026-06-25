@@ -124,6 +124,25 @@ export default function ProgramasPage() {
     await load()
   }
 
+  function renderProgramActions(program: MonthlySchedule) {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => generateWeeks(program.id)} disabled={generatingWeeks === program.id || program.status === 'ARCHIVED'} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 disabled:opacity-50">
+          {generatingWeeks === program.id ? 'Generando...' : 'Generar semanas'}
+        </button>
+        <button onClick={() => generateAssignments(program.id)} disabled={generating === program.id || program.status === 'ARCHIVED'} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 disabled:opacity-50">
+          {generating === program.id ? 'Generando...' : 'Generar asignaciones'}
+        </button>
+        <Link href={`/dashboard/automatizaciones?range=month&monthlyScheduleId=${program.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog">
+          Ver agenda
+        </Link>
+        <button onClick={() => archiveProgram(program.id)} disabled={program.status === 'ARCHIVED'} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog disabled:opacity-50">
+          Archivar
+        </button>
+      </div>
+    )
+  }
+
   if (loading) {
     return <div className="h-40 bg-white rounded-card animate-pulse" />
   }
@@ -183,49 +202,68 @@ export default function ProgramasPage() {
           <p className="text-sm text-graphite">No hay programas mensuales todavia</p>
         </div>
       ) : (
-        <div className="bg-white rounded-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-silver-mist">
-                  <th className="text-left px-5 py-4 font-medium text-graphite">Programa</th>
-                  <th className="text-left px-5 py-4 font-medium text-graphite">Estado</th>
-                  <th className="text-left px-5 py-4 font-medium text-graphite">Semanas</th>
-                  <th className="text-left px-5 py-4 font-medium text-graphite">Asignaciones</th>
-                  <th className="text-left px-5 py-4 font-medium text-graphite">Entregas</th>
-                  <th className="text-left px-5 py-4 font-medium text-graphite">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {programs.map((program) => (
-                  <tr key={program.id} className="border-b border-silver-mist last:border-0">
-                    <td className="px-5 py-4 text-ink font-medium">{program.name}</td>
-                    <td className="px-5 py-4"><span className={`text-xs font-medium px-2.5 py-1 rounded-pill ${statusClass(program.status)}`}>{program.status}</span></td>
-                    <td className="px-5 py-4 text-graphite">{program.weekCount}</td>
-                    <td className="px-5 py-4 text-graphite">{program.assignmentCount}</td>
-                    <td className="px-5 py-4 text-graphite">{program.deliveryCount}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button onClick={() => generateWeeks(program.id)} disabled={generatingWeeks === program.id || program.status === 'ARCHIVED'} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 disabled:opacity-50">
-                          {generatingWeeks === program.id ? 'Generando...' : 'Generar semanas'}
-                        </button>
-                        <button onClick={() => generateAssignments(program.id)} disabled={generating === program.id || program.status === 'ARCHIVED'} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 disabled:opacity-50">
-                          {generating === program.id ? 'Generando...' : 'Generar asignaciones'}
-                        </button>
-                        <Link href={`/dashboard/automatizaciones?range=month&monthlyScheduleId=${program.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog">
-                          Ver agenda
-                        </Link>
-                        <button onClick={() => archiveProgram(program.id)} disabled={program.status === 'ARCHIVED'} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog disabled:opacity-50">
-                          Archivar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* Mobile cards */}
+          <div className="space-y-3 lg:hidden">
+            {programs.map((program) => (
+              <div key={program.id} className="bg-white rounded-card p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink">{program.name}</p>
+                  <span className={`text-[11px] font-medium px-2.5 py-1 rounded-pill flex-shrink-0 ${statusClass(program.status)}`}>{program.status}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-4 text-center">
+                  <div className="bg-fog rounded-xl py-2">
+                    <p className="text-sm font-semibold text-ink">{program.weekCount}</p>
+                    <p className="text-[11px] text-graphite">Semanas</p>
+                  </div>
+                  <div className="bg-fog rounded-xl py-2">
+                    <p className="text-sm font-semibold text-ink">{program.assignmentCount}</p>
+                    <p className="text-[11px] text-graphite">Asignaciones</p>
+                  </div>
+                  <div className="bg-fog rounded-xl py-2">
+                    <p className="text-sm font-semibold text-ink">{program.deliveryCount}</p>
+                    <p className="text-[11px] text-graphite">Entregas</p>
+                  </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-silver-mist">
+                  {renderProgramActions(program)}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+
+          {/* Desktop table */}
+          <div className="hidden lg:block bg-white rounded-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-silver-mist">
+                    <th className="text-left px-5 py-4 font-medium text-graphite">Programa</th>
+                    <th className="text-left px-5 py-4 font-medium text-graphite">Estado</th>
+                    <th className="text-left px-5 py-4 font-medium text-graphite">Semanas</th>
+                    <th className="text-left px-5 py-4 font-medium text-graphite">Asignaciones</th>
+                    <th className="text-left px-5 py-4 font-medium text-graphite">Entregas</th>
+                    <th className="text-left px-5 py-4 font-medium text-graphite">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {programs.map((program) => (
+                    <tr key={program.id} className="border-b border-silver-mist last:border-0">
+                      <td className="px-5 py-4 text-ink font-medium">{program.name}</td>
+                      <td className="px-5 py-4"><span className={`text-xs font-medium px-2.5 py-1 rounded-pill ${statusClass(program.status)}`}>{program.status}</span></td>
+                      <td className="px-5 py-4 text-graphite">{program.weekCount}</td>
+                      <td className="px-5 py-4 text-graphite">{program.assignmentCount}</td>
+                      <td className="px-5 py-4 text-graphite">{program.deliveryCount}</td>
+                      <td className="px-5 py-4">
+                        {renderProgramActions(program)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   )

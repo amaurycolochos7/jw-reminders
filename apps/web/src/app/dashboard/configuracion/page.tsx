@@ -91,7 +91,7 @@ export default function ConfiguracionPage() {
                 Modo prueba activo
               </label>
             </div>
-            <p className="text-xs text-graphite mb-3">Cuando esta activo, todos los mensajes se envian al numero de prueba en lugar del numero real del publicador.</p>
+            <p className="text-xs text-graphite mb-3">Cuando esta activo, todos los mensajes se envian al numero de prueba en lugar del numero real del publicador. Los cambios se aplican en el siguiente ciclo del worker (hasta 10 min), sin necesidad de redeploy.</p>
             <div>
               <label className="block text-sm font-medium text-ink mb-1.5">Numero de prueba</label>
               <input type="tel" value={config.testPhone} onChange={(e) => setConfig({ ...config, testPhone: e.target.value })} placeholder="5219611234567" className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30" />
