@@ -4,10 +4,11 @@ import { renderTemplate, ASSIGNMENT_TYPE_LABELS, ROOM_LABELS, formatDateSpanish 
 export async function renderReminderMessage(reminder: any): Promise<string> {
   const { assignment, publisher } = reminder;
   const isCompanion = publisher.id === assignment.companionPublisherId;
+  const reminderType = reminder.reminderType || reminder.reminderDay;
 
   // Determine template type
-  let templateType = reminder.reminderDay;
-  if (reminder.reminderDay === "INITIAL_NOTICE") {
+  let templateType = reminderType;
+  if (reminderType === "INITIAL_NOTICE") {
     templateType = isCompanion ? "INITIAL_NOTICE_COMPANION" : "INITIAL_NOTICE_ASSIGNED";
   }
 

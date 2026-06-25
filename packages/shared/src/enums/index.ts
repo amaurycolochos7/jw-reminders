@@ -20,10 +20,10 @@ export enum Room {
 }
 
 export enum AssignmentStatus {
-  PENDING = "PENDING",
-  NOTIFIED = "NOTIFIED",
-  CANCELLED = "CANCELLED",
+  DRAFT = "DRAFT",
+  SCHEDULED = "SCHEDULED",
   COMPLETED = "COMPLETED",
+  CANCELLED = "CANCELLED",
 }
 
 export enum ReminderType {
@@ -38,10 +38,13 @@ export enum ReminderType {
 
 export enum ReminderStatus {
   PENDING = "PENDING",
+  QUEUED = "QUEUED",
+  SENDING = "SENDING",
   SENT = "SENT",
   FAILED = "FAILED",
   SKIPPED = "SKIPPED",
   CANCELLED = "CANCELLED",
+  DEAD = "DEAD",
 }
 
 export enum MessageLogStatus {
@@ -57,4 +60,33 @@ export enum WhatsappSessionStatus {
   READY = "READY",
   DISCONNECTED = "DISCONNECTED",
   FAILED = "FAILED",
+}
+
+export enum MonthlyScheduleStatus {
+  DRAFT = "DRAFT",
+  ACTIVE = "ACTIVE",
+  ARCHIVED = "ARCHIVED",
+  CANCELLED = "CANCELLED",
+}
+
+export enum MeetingWeekStatus {
+  DRAFT = "DRAFT",
+  READY = "READY",
+  ACTIVE = "ACTIVE",
+  COMPLETED = "COMPLETED",
+  ARCHIVED = "ARCHIVED",
+  CANCELLED = "CANCELLED",
+}
+
+export enum AutomationPlanStatus {
+  DRAFT = "DRAFT",
+  ACTIVE = "ACTIVE",
+  SUPERSEDED = "SUPERSEDED",
+  CANCELLED = "CANCELLED",
+  ARCHIVED = "ARCHIVED",
+}
+
+export enum ReminderRecipientRole {
+  ASSIGNED = "ASSIGNED",
+  COMPANION = "COMPANION",
 }

@@ -151,13 +151,6 @@ export default function AssignmentForm({ weekId, publishers, assignment, onClose
       const res = await api(url, { method, body: JSON.stringify(body) })
 
       if (res.ok) {
-        // If editing and assigned/companion changed, regenerate reminders
-        if (isEditing && (
-          form.assignedPublisherId !== assignment!.assignedPublisherId ||
-          form.companionPublisherId !== (assignment!.companionPublisherId || '')
-        )) {
-          await api(`/api/assignments/${assignment!.id}/generate-reminders`, { method: 'POST' })
-        }
         onSuccess()
       } else {
         const data = await res.json()

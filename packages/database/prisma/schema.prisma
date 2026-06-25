@@ -37,10 +37,10 @@ enum Room {
 }
 
 enum AssignmentStatus {
-  PENDING
-  NOTIFIED
-  CANCELLED
+  DRAFT
+  SCHEDULED
   COMPLETED
+  CANCELLED
 }
 
 enum ReminderType {
@@ -55,10 +55,13 @@ enum ReminderType {
 
 enum ReminderStatus {
   PENDING
+  QUEUED
+  SENDING
   SENT
   FAILED
   SKIPPED
   CANCELLED
+  DEAD
 }
 
 enum MessageLogStatus {
@@ -74,6 +77,35 @@ enum WhatsappSessionStatus {
   READY
   DISCONNECTED
   FAILED
+}
+
+enum MonthlyScheduleStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  CANCELLED
+}
+
+enum MeetingWeekStatus {
+  DRAFT
+  READY
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+  CANCELLED
+}
+
+enum AutomationPlanStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  CANCELLED
+  ARCHIVED
+}
+
+enum ReminderRecipientRole {
+  ASSIGNED
+  COMPANION
 }
 
 // ─── Models ──────────────────────────────────────────────
@@ -110,27 +142,55 @@ model JwPublisher {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  assignedAssignments  JwAssignment[]          @relation("AssignedPublisher")
-  companionAssignments JwAssignment[]          @relation("CompanionPublisher")
+  assignedAssignments  JwAssignment[]         @relation("AssignedPublisher")
+  companionAssignments JwAssignment[]         @relation("CompanionPublisher")
   reminders            JwAssignmentReminder[]
+  reminderDeliveries   ReminderDelivery[]
   messageLogs          JwMessageLog[]
 }
 
-model JwMeetingWeek {
-  id               String   @id @default(cuid())
-  weekStartDate    DateTime
-  meetingDate      DateTime
-  meetingTime      String
-  congregationName String?
-  notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+model MonthlySchedule {
+  id          String                @id @default(cuid())
+  year        Int
+  month       Int
+  name        String
+  status      MonthlyScheduleStatus @default(DRAFT)
+  archivedAt  DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
 
-  assignments JwAssignment[]
+  weeks JwMeetingWeek[]
+
+  @@unique([year, month])
+}
+
+model JwMeetingWeek {
+  id                 String            @id @default(cuid())
+  monthlyScheduleId  String?
+  weekStartDate      DateTime
+  weekStartDateLocal String?
+  meetingDate        DateTime
+  meetingDateLocal   String?
+  meetingTime        String
+  congregationName   String?
+  notes              String?
+  status             MeetingWeekStatus @default(DRAFT)
+  archivedAt         DateTime?
+  cancelledAt        DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  monthlySchedule MonthlySchedule? @relation(fields: [monthlyScheduleId], references: [id])
+  assignments     JwAssignment[]
+
+  @@index([monthlyScheduleId])
+  @@index([status])
 }
 
 model JwAssignment {
-  id                     String           @id @default(cuid())
+  id                     String            @id @default(cuid())
   meetingWeekId          String
   assignmentNumber       Int
   section                AssignmentSection
@@ -147,33 +207,106 @@ model JwAssignment {
   companionPhoneSnapshot String?
   room                   Room
   notes                  String?
-  status                 AssignmentStatus @default(PENDING)
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  status                 AssignmentStatus  @default(DRAFT)
+  version                Int               @default(1)
+  completedAt            DateTime?
+  cancelledAt            DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
-  meetingWeek JwMeetingWeek @relation(fields: [meetingWeekId], references: [id])
-  assigned    JwPublisher   @relation("AssignedPublisher", fields: [assignedPublisherId], references: [id])
-  companion   JwPublisher?  @relation("CompanionPublisher", fields: [companionPublisherId], references: [id])
-  reminders   JwAssignmentReminder[]
-  messageLogs JwMessageLog[]
+  meetingWeek        JwMeetingWeek          @relation(fields: [meetingWeekId], references: [id])
+  assigned           JwPublisher            @relation("AssignedPublisher", fields: [assignedPublisherId], references: [id])
+  companion          JwPublisher?           @relation("CompanionPublisher", fields: [companionPublisherId], references: [id])
+  reminders          JwAssignmentReminder[]
+  automationPlans    AutomationPlan[]
+  reminderDeliveries ReminderDelivery[]
+  messageLogs        JwMessageLog[]
+
+  @@index([meetingWeekId, status])
+  @@index([assignedPublisherId])
+  @@index([companionPublisherId])
+}
+
+model AutomationPlan {
+  id               String               @id @default(cuid())
+  assignmentId     String
+  status           AutomationPlanStatus @default(DRAFT)
+  version          Int                  @default(1)
+  timezone         String
+  sendHour         Int
+  meetingDateLocal String
+  meetingTimeLocal String
+  rules            Json
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  cancelledAt      DateTime?
+  supersededAt     DateTime?
+  archivedAt       DateTime?
+
+  assignment         JwAssignment       @relation(fields: [assignmentId], references: [id])
+  reminderDeliveries ReminderDelivery[]
+  messageLogs        JwMessageLog[]
+
+  @@unique([assignmentId, version])
+  @@index([assignmentId, status])
+}
+
+model ReminderDelivery {
+  id               String                @id @default(cuid())
+  automationPlanId String
+  assignmentId     String
+  publisherId      String
+  recipientRole    ReminderRecipientRole
+  reminderType     ReminderType
+  scheduledAt      DateTime
+  sentAt           DateTime?
+  status           ReminderStatus        @default(PENDING)
+  attemptCount     Int                   @default(0)
+  maxAttempts      Int                   @default(3)
+  nextRetryAt      DateTime?
+  lastAttemptAt    DateTime?
+  deadAt           DateTime?
+  errorMessage     String?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  automationPlan AutomationPlan @relation(fields: [automationPlanId], references: [id])
+  assignment     JwAssignment   @relation(fields: [assignmentId], references: [id])
+  publisher      JwPublisher    @relation(fields: [publisherId], references: [id])
+  messageLogs    JwMessageLog[]
+
+  @@unique([automationPlanId, publisherId, reminderType])
+  @@index([status, scheduledAt])
+  @@index([assignmentId, status])
+  @@index([publisherId, status])
+  @@index([automationPlanId, status])
 }
 
 model JwAssignmentReminder {
-  id           String         @id @default(cuid())
-  assignmentId String
-  publisherId  String
-  reminderDay  ReminderType
-  scheduledAt  DateTime
-  sentAt       DateTime?
-  status       ReminderStatus @default(PENDING)
-  errorMessage String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id               String                 @id @default(cuid())
+  automationPlanId String?
+  recipientRole    ReminderRecipientRole?
+  assignmentId     String
+  publisherId      String
+  reminderDay      ReminderType
+  scheduledAt      DateTime
+  sentAt           DateTime?
+  status           ReminderStatus         @default(PENDING)
+  errorMessage     String?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  generationKey    String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   assignment JwAssignment @relation(fields: [assignmentId], references: [id])
   publisher  JwPublisher  @relation(fields: [publisherId], references: [id])
 
   @@unique([assignmentId, publisherId, reminderDay])
+  @@index([automationPlanId, status])
+  @@index([status, scheduledAt])
 }
 
 model JwMessageTemplate {
@@ -187,20 +320,42 @@ model JwMessageTemplate {
 }
 
 model JwMessageLog {
-  id                String           @id @default(cuid())
-  assignmentId      String?
-  publisherId       String?
-  phone             String
-  messageType       String?
-  messageBody       String
-  providerMessageId String?
-  status            MessageLogStatus
-  errorMessage      String?
-  sentAt            DateTime?
-  createdAt         DateTime         @default(now())
+  id                 String           @id @default(cuid())
+  assignmentId       String?
+  publisherId        String?
+  automationPlanId   String?
+  reminderDeliveryId String?
+  phone              String
+  messageType        String?
+  messageBody        String
+  providerMessageId  String?
+  status             MessageLogStatus
+  errorMessage       String?
+  sentAt             DateTime?
+  createdAt          DateTime         @default(now())
 
-  assignment JwAssignment? @relation(fields: [assignmentId], references: [id])
-  publisher  JwPublisher?  @relation(fields: [publisherId], references: [id])
+  assignment       JwAssignment?     @relation(fields: [assignmentId], references: [id])
+  publisher        JwPublisher?      @relation(fields: [publisherId], references: [id])
+  automationPlan   AutomationPlan?   @relation(fields: [automationPlanId], references: [id])
+  reminderDelivery ReminderDelivery? @relation(fields: [reminderDeliveryId], references: [id])
+
+  @@index([automationPlanId])
+  @@index([reminderDeliveryId])
+}
+
+model JwAutomationEvent {
+  id         String   @id @default(cuid())
+  eventType  String
+  entityType String
+  entityId   String
+  actorType  String?
+  actorId    String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([eventType])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
 
 model JwWhatsappSessionLog {

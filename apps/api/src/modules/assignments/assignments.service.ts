@@ -1,79 +1,186 @@
 import { prisma } from "@jw-reminders/database";
+import {
+  applyAssignmentSnapshots,
+  archiveAssignmentAutomation,
+  cancelAssignmentAutomation,
+  createAutomationEvent,
+  createAutomationPlanForAssignment,
+  hasAssignmentAutomation,
+  publisherSnapshot,
+  regenerateAssignmentAutomation,
+} from "../../services/automation.service.js";
+
+const RELEVANT_FIELDS = [
+  "assignmentNumber",
+  "section",
+  "assignmentType",
+  "title",
+  "durationMinutes",
+  "context",
+  "reference",
+  "assignedPublisherId",
+  "companionPublisherId",
+  "room",
+  "notes",
+];
 
 export async function listAssignments(meetingWeekId?: string) {
   return prisma.jwAssignment.findMany({
     where: meetingWeekId ? { meetingWeekId } : undefined,
-    include: { assigned: true, companion: true, meetingWeek: true },
+    include: { assigned: true, companion: true, meetingWeek: true, reminderDeliveries: true },
     orderBy: { assignmentNumber: "asc" },
   });
 }
 
 export async function getAssignment(id: string) {
-  return prisma.jwAssignment.findUniqueOrThrow({
+  const assignment = await prisma.jwAssignment.findUniqueOrThrow({
     where: { id },
-    include: { assigned: true, companion: true, meetingWeek: true, reminders: true },
+    include: {
+      assigned: true,
+      companion: true,
+      meetingWeek: true,
+      reminderDeliveries: { include: { publisher: true }, orderBy: { scheduledAt: "asc" } },
+    },
   });
+
+  return {
+    ...assignment,
+    reminders: assignment.reminderDeliveries.map((delivery) => ({
+      id: delivery.id,
+      publisherId: delivery.publisherId,
+      reminderDay: delivery.reminderType,
+      scheduledAt: delivery.scheduledAt,
+      sentAt: delivery.sentAt,
+      status: delivery.status,
+      errorMessage: delivery.errorMessage,
+      publisher: delivery.publisher,
+    })),
+  };
 }
 
 export async function createAssignment(data: any) {
-  return prisma.jwAssignment.create({ data });
+  return prisma.$transaction(async (tx) => {
+    const [assigned, companion] = await Promise.all([
+      tx.jwPublisher.findUniqueOrThrow({ where: { id: data.assignedPublisherId } }),
+      data.companionPublisherId ? tx.jwPublisher.findUnique({ where: { id: data.companionPublisherId } }) : null,
+    ]);
+    const assignedSnapshot = publisherSnapshot(assigned);
+    const companionSnapshot = publisherSnapshot(companion);
+    const assignment = await tx.jwAssignment.create({
+      data: {
+        ...data,
+        status: "DRAFT",
+        assignedNameSnapshot: assignedSnapshot.name,
+        assignedPhoneSnapshot: assignedSnapshot.phone,
+        companionNameSnapshot: companionSnapshot.name,
+        companionPhoneSnapshot: companionSnapshot.phone,
+      },
+    });
+
+    await createAutomationEvent(tx, {
+      eventType: "ASSIGNMENT_CREATED",
+      entityType: "JwAssignment",
+      entityId: assignment.id,
+      metadata: { meetingWeekId: assignment.meetingWeekId },
+    });
+
+    return assignment;
+  });
+}
+
+function changedRelevantFields(before: any, data: any) {
+  return RELEVANT_FIELDS.filter((field) => Object.prototype.hasOwnProperty.call(data, field) && data[field] !== before[field]);
 }
 
 export async function updateAssignment(id: string, data: any) {
-  return prisma.jwAssignment.update({ where: { id }, data });
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.jwAssignment.findUniqueOrThrow({ where: { id } });
+    const changedFields = changedRelevantFields(before, data);
+    const assignment = await tx.jwAssignment.update({
+      where: { id },
+      data: {
+        ...data,
+        version: { increment: 1 },
+      },
+    });
+    await applyAssignmentSnapshots(tx, id);
+
+    await createAutomationEvent(tx, {
+      eventType: "ASSIGNMENT_UPDATED",
+      entityType: "JwAssignment",
+      entityId: id,
+      metadata: { changedFields },
+    });
+
+    if (changedFields.length > 0 && (await hasAssignmentAutomation(tx, id))) {
+      await regenerateAssignmentAutomation(tx, id, "assignment_changed");
+    }
+
+    return assignment;
+  });
 }
 
 export async function cancelAssignment(id: string) {
-  // Cancel all pending reminders for this assignment
-  await prisma.jwAssignmentReminder.updateMany({
-    where: { assignmentId: id, status: "PENDING" },
-    data: { status: "CANCELLED" },
+  return prisma.$transaction(async (tx) => {
+    await cancelAssignmentAutomation(tx, id, "assignment_cancelled");
+    const assignment = await tx.jwAssignment.update({
+      where: { id },
+      data: { status: "CANCELLED", cancelledAt: new Date(), version: { increment: 1 } },
+    });
+    await createAutomationEvent(tx, {
+      eventType: "ASSIGNMENT_CANCELLED",
+      entityType: "JwAssignment",
+      entityId: id,
+      metadata: {},
+    });
+    return assignment;
   });
-  return prisma.jwAssignment.update({ where: { id }, data: { status: "CANCELLED" } });
 }
 
 export async function completeAssignment(id: string) {
-  // Cancel all pending reminders for this assignment
-  await prisma.jwAssignmentReminder.updateMany({
-    where: { assignmentId: id, status: "PENDING" },
-    data: { status: "CANCELLED" },
+  return prisma.$transaction(async (tx) => {
+    await archiveAssignmentAutomation(tx, id, "assignment_completed");
+    const assignment = await tx.jwAssignment.update({
+      where: { id },
+      data: { status: "COMPLETED", completedAt: new Date(), version: { increment: 1 } },
+    });
+    await createAutomationEvent(tx, {
+      eventType: "ASSIGNMENT_COMPLETED",
+      entityType: "JwAssignment",
+      entityId: id,
+      metadata: {},
+    });
+    return assignment;
   });
-  return prisma.jwAssignment.update({ where: { id }, data: { status: "COMPLETED" } });
 }
 
 export async function generateReminders(id: string) {
-  const assignment = await prisma.jwAssignment.findUniqueOrThrow({
-    where: { id },
-    include: { meetingWeek: true },
-  });
-
-  const meetingDate = new Date(assignment.meetingWeek.meetingDate);
-  const reminderDays: { type: "SEVEN_DAYS_BEFORE" | "THREE_DAYS_BEFORE" | "ONE_DAY_BEFORE" | "SAME_DAY"; offset: number }[] = [
-    { type: "SEVEN_DAYS_BEFORE", offset: 7 },
-    { type: "THREE_DAYS_BEFORE", offset: 3 },
-    { type: "ONE_DAY_BEFORE", offset: 1 },
-    { type: "SAME_DAY", offset: 0 },
-  ];
-
-  // Generate reminders for the assigned publisher
-  const reminders = reminderDays.map(({ type, offset }) => ({
-    assignmentId: id,
-    publisherId: assignment.assignedPublisherId,
-    reminderDay: type,
-    scheduledAt: new Date(meetingDate.getTime() - offset * 24 * 60 * 60 * 1000),
-  }));
-
-  // Also generate reminders for the companion if present
-  if (assignment.companionPublisherId) {
-    reminderDays.forEach(({ type, offset }) => {
-      reminders.push({
-        assignmentId: id,
-        publisherId: assignment.companionPublisherId!,
-        reminderDay: type,
-        scheduledAt: new Date(meetingDate.getTime() - offset * 24 * 60 * 60 * 1000),
-      });
+  return prisma.$transaction(async (tx) => {
+    await applyAssignmentSnapshots(tx, id);
+    const existingActive = await tx.automationPlan.findFirst({
+      where: { assignmentId: id, status: "ACTIVE" },
     });
-  }
+    if (existingActive) {
+      return { count: 0, planId: existingActive.id };
+    }
 
-  return prisma.jwAssignmentReminder.createMany({ data: reminders, skipDuplicates: true });
+    const result = await createAutomationPlanForAssignment(tx, id, {
+      includeInitial: true,
+      includeNormal: true,
+      reason: "manual_generate",
+      actorType: "admin",
+    });
+
+    const assignment = await tx.jwAssignment.findUniqueOrThrow({
+      where: { id },
+      select: { meetingWeekId: true },
+    });
+    await tx.jwMeetingWeek.update({
+      where: { id: assignment.meetingWeekId },
+      data: { status: "ACTIVE" },
+    });
+
+    return { count: result.created, planId: result.plan.id };
+  });
 }
+

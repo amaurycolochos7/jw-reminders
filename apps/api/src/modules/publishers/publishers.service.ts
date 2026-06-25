@@ -151,6 +151,7 @@ export async function deletePublisher(id: string) {
           assignedAssignments: true,
           companionAssignments: true,
           reminders: true,
+          reminderDeliveries: true,
           messageLogs: true,
         },
       },
@@ -161,6 +162,7 @@ export async function deletePublisher(id: string) {
     pub._count.assignedAssignments > 0 ||
     pub._count.companionAssignments > 0 ||
     pub._count.reminders > 0 ||
+    pub._count.reminderDeliveries > 0 ||
     pub._count.messageLogs > 0;
 
   if (hasHistory) {

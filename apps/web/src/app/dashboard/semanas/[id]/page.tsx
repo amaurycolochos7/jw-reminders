@@ -93,12 +93,34 @@ function roomLabel(room: string): string {
 
 function statusVariant(status: string): { label: string; classes: string } {
   const map: Record<string, { label: string; classes: string }> = {
-    PENDING: { label: 'Pendiente', classes: 'bg-amber-50 text-amber-700' },
-    NOTIFIED: { label: 'Notificado', classes: 'bg-fog text-azure' },
+    DRAFT: { label: 'Borrador', classes: 'bg-amber-50 text-amber-700' },
+    SCHEDULED: { label: 'Programada', classes: 'bg-fog text-azure' },
     CANCELLED: { label: 'Cancelada', classes: 'bg-red-50 text-red-700' },
     COMPLETED: { label: 'Completada', classes: 'bg-emerald-50 text-emerald-700' },
   }
   return map[status] || { label: status, classes: 'bg-fog text-graphite' }
+}
+
+function reminderStatusVariant(status: string): { label: string; classes: string } {
+  const map: Record<string, { label: string; classes: string }> = {
+    PENDING: { label: 'Pendiente', classes: 'bg-amber-50 text-amber-700' },
+    QUEUED: { label: 'En cola', classes: 'bg-amber-50 text-amber-700' },
+    SENDING: { label: 'Enviando', classes: 'bg-fog text-azure' },
+    SENT: { label: 'Enviado', classes: 'bg-emerald-50 text-emerald-700' },
+    FAILED: { label: 'Fallido', classes: 'bg-red-50 text-red-700' },
+    DEAD: { label: 'Agotado', classes: 'bg-red-50 text-red-700' },
+    CANCELLED: { label: 'Cancelado', classes: 'bg-red-50 text-red-600' },
+    SKIPPED: { label: 'Omitido', classes: 'bg-fog text-graphite' },
+  }
+  return map[status] || { label: status, classes: 'bg-fog text-graphite' }
+}
+
+function canGenerate(status: string) {
+  return status === 'DRAFT'
+}
+
+function canClose(status: string) {
+  return status === 'DRAFT' || status === 'SCHEDULED'
 }
 
 // ─── Page ────────────────────────────────────────────────
@@ -232,7 +254,7 @@ export default function SemanaDetallePage() {
 
   async function handleBulkGenerateReminders() {
     if (!week) return
-    const pendingAssignments = week.assignments.filter(a => a.status === 'PENDING')
+    const pendingAssignments = week.assignments.filter(a => a.status === 'DRAFT')
     if (pendingAssignments.length === 0) {
       setNotification({ type: 'error', message: 'No hay asignaciones pendientes para generar recordatorios' })
       setTimeout(() => setNotification(null), 4000)
@@ -469,7 +491,7 @@ export default function SemanaDetallePage() {
                             >
                               Recordatorios
                             </button>
-                            {a.status === 'PENDING' && (
+                            {canGenerate(a.status) && (
                               <>
                                 <button
                                   onClick={() => handleGenerateReminders(a.id)}
@@ -479,23 +501,9 @@ export default function SemanaDetallePage() {
                                 >
                                   Generar
                                 </button>
-                                <button
-                                  onClick={() => setConfirmAction({ type: 'complete', assignment: a })}
-                                  className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors"
-                                  title="Completar"
-                                >
-                                  Completar
-                                </button>
-                                <button
-                                  onClick={() => setConfirmAction({ type: 'cancel', assignment: a })}
-                                  className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
-                                  title="Cancelar"
-                                >
-                                  Cancelar
-                                </button>
                               </>
                             )}
-                            {a.status === 'NOTIFIED' && (
+                            {canClose(a.status) && (
                               <>
                                 <button
                                   onClick={() => setConfirmAction({ type: 'complete', assignment: a })}
@@ -556,14 +564,12 @@ export default function SemanaDetallePage() {
                     <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-silver-mist/50">
                       <button onClick={() => { setEditingAssignment(a); setShowForm(true) }} className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5 transition-colors">Editar</button>
                       <button onClick={() => setViewingReminders(a)} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Recordatorios</button>
-                      {a.status === 'PENDING' && (
+                      {canGenerate(a.status) && (
                         <>
                           <button onClick={() => handleGenerateReminders(a.id)} disabled={actionLoading === a.id} className="text-emerald-700 text-xs font-medium px-2 py-1 rounded-lg hover:bg-emerald-50 transition-colors disabled:opacity-50">Generar</button>
-                          <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Completar</button>
-                          <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancelar</button>
                         </>
                       )}
-                      {a.status === 'NOTIFIED' && (
+                      {canClose(a.status) && (
                         <>
                           <button onClick={() => setConfirmAction({ type: 'complete', assignment: a })} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Completar</button>
                           <button onClick={() => setConfirmAction({ type: 'cancel', assignment: a })} className="text-red-600 text-xs font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancelar</button>
@@ -664,17 +670,20 @@ export default function SemanaDetallePage() {
                   <div key={a.id}>
                     <p className="text-sm font-medium text-ink mb-2">{a.assignmentNumber}. {a.title}</p>
                     <div className="space-y-2">
-                      {a.reminders!.map(r => (
-                        <div key={r.id} className="flex items-center justify-between px-4 py-2.5 border border-silver-mist/70 rounded-xl">
-                          <div>
-                            <p className="text-sm text-ink">{r.reminderDay}</p>
-                            <p className="text-xs text-graphite">{r.publisher?.displayName || r.publisher?.fullName || 'Publicador'}</p>
+                      {a.reminders!.map(r => {
+                        const rs = reminderStatusVariant(r.status)
+                        return (
+                          <div key={r.id} className="flex items-center justify-between px-4 py-2.5 border border-silver-mist/70 rounded-xl">
+                            <div>
+                              <p className="text-sm text-ink">{r.reminderDay}</p>
+                              <p className="text-xs text-graphite">{r.publisher?.displayName || r.publisher?.fullName || 'Publicador'}</p>
+                            </div>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rs.classes}`}>
+                              {rs.label}
+                            </span>
                           </div>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${r.status === 'SENT' ? 'bg-emerald-50 text-emerald-700' : r.status === 'PENDING' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
-                            {r.status === 'SENT' ? 'Enviado' : r.status === 'PENDING' ? 'Pendiente' : r.status}
-                          </span>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 ))}

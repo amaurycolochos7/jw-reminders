@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/tsconfig.tsbuildinfo
+.git
+.kiro
+.env
+.env.*
+!.env.example
+!.env.local.example
+*.log
+*.tmp
+coverage
