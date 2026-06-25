@@ -240,3 +240,85 @@ Nota: las entregas heredadas (backfill de `JwAssignmentReminder`) conservan su `
 - La migracion usa `ALTER TYPE ... ADD VALUE` para `ReminderStatus` (QUEUED/SENDING/DEAD). En PostgreSQL 16 es valido dentro de transaccion siempre que los valores no se usen en la misma migracion; el backfill solo reutiliza valores existentes, por lo que es seguro. Verificar igualmente al aplicar `migrate deploy`.
 - El backfill asocia entregas historicas a un `AutomationPlan` por asignacion; revisar conteos tras migrar.
 - El modo prueba del worker (`TEST_MODE`/`TEST_PHONE`) se lee de entorno; alinear con la configuracion de UI antes de envios reales.
+
+
+---
+
+# P0.5 - Product Polish
+
+## Resumen
+
+Fase corta de consolidacion (sin features nuevas) para mejorar comprension, coherencia y experiencia antes de P1. Se atendieron las prioridades 1 de la auditoria final y una pasada de pulido visual.
+
+## Fecha
+
+2026-06-25
+
+## Estado de la fase
+
+- Implementacion: COMPLETA.
+- Verificacion local (build/typecheck/tests): APROBADA.
+- Commit y push a `main`: HECHO (`a6f3a9d`).
+- Deploy en produccion: HECHO (Dokploy `compose.deploy`, estado `done`).
+- Pruebas en produccion: APROBADAS.
+- Reporte: actualizado.
+
+## Cambios realizados
+
+1. WorkflowGuide al flujo real de 7 pasos: 1) Registrar publicadores, 2) Crear programa mensual, 3) Generar semanas, 4) Crear o revisar asignaciones, 5) Generar automatizaciones, 6) Verificar WhatsApp, 7) Supervisar Centro de Automatizaciones. Cada paso enlaza a la pantalla correcta con icono propio y subtitulo "camino recomendado de principio a fin".
+2. Flujo unificado con microcopy:
+   - `/programas` marcado como punto de partida recomendado, con banda que muestra el flujo completo Programa -> Generar semanas -> Revisar asignaciones -> Generar automatizaciones -> Centro de Automatizaciones.
+   - `/semanas` con aviso de que la creacion manual es una opcion avanzada y enlace a Programas.
+3. Lenguaje correcto Archivar vs Eliminar:
+   - Boton dinamico por tarjeta: "Archivar" cuando la semana tiene historial, "Eliminar" solo si esta vacia.
+   - Modal de confirmacion con copy correcto ("se archivara y se conservara el historial" / "se eliminara la semana vacia"). Ya no dice "se eliminaran" cuando en realidad archiva.
+4. Tarjetas de semana enriquecidas: programa mensual, badge de estado (Borrador/Lista/Activa/Completada/Archivada/Cancelada), barra de completitud en %, y conteos de automatizaciones Pendientes / Enviadas / con error. Las semanas ARCHIVED/CANCELLED se muestran atenuadas.
+5. Backend `listMeetingWeeks` ahora devuelve `pendingReminders`, `sentReminders`, `failedReminders` y `totalReminders` por semana (ademas de `status` y `monthlySchedule`).
+6. Pulido visual y de UX:
+   - Detalle de semana: badge de estado + programa en el encabezado; `alert()` reemplazados por el patron de notificacion (toast); modales con `max-h`/scroll en pantallas pequenas.
+   - `/programas` "Ver agenda" ahora filtra por ese programa (`monthlyScheduleId`), y `/automatizaciones` lee ese filtro desde la URL.
+
+## Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `apps/web/src/components/WorkflowGuide.tsx` | Flujo real de 7 pasos + subtitulo |
+| `apps/web/src/components/icons/workflow-icons.tsx` | Iconos LayersIcon y SquaresIcon |
+| `apps/web/src/app/dashboard/semanas/page.tsx` | Tarjetas enriquecidas, copy Archivar/Eliminar, microcopy de flujo |
+| `apps/web/src/app/dashboard/programas/page.tsx` | Microcopy de inicio recomendado, link de agenda por programa |
+| `apps/web/src/app/dashboard/automatizaciones/page.tsx` | Lee `monthlyScheduleId` desde URL |
+| `apps/web/src/app/dashboard/semanas/[id]/page.tsx` | Badge estado+programa, toasts, scroll en modales |
+| `apps/api/src/modules/meeting-weeks/meeting-weeks.service.ts` | Conteos pending/sent/failed por semana |
+
+## Commits
+
+| Hash | Mensaje |
+|------|---------|
+| `a6f3a9d` | feat(p0.5): product polish - 7-step workflow guide, unified flow microcopy, archive wording, enriched week cards |
+
+## Pruebas
+
+Locales:
+
+| Prueba | Resultado |
+|--------|-----------|
+| Build/typecheck API (`tsc`) | PASS (0 errores) |
+| Pruebas unitarias API | PASS (6/6) |
+| Typecheck Web (`tsc --noEmit`) | PASS (0 errores) |
+| Build Web (`next build`) | Compilacion OK + 14/14 paginas (falla solo el symlink standalone en Windows, no afecta Linux/Dokploy) |
+
+Produccion (tras deploy):
+
+| Prueba | Resultado |
+|--------|-----------|
+| `GET /api/meeting-weeks` (auth) | Devuelve `monthlySchedule`, `status`, `pendingReminders`, `sentReminders`, `failedReminders`, `totalReminders` por semana |
+| Datos reales | Semanas con estados ACTIVE/ARCHIVED, nombre de programa y conteos correctos |
+| Paginas `/dashboard`, `/programas`, `/semanas`, `/automatizaciones`, `/whatsapp`, `/historial` | HTTP 200 |
+
+## Nota sobre responsive
+
+La revision responsive se realizo por inspeccion de codigo (breakpoints Tailwind mobile-first, drawer movil con overlay y scroll-lock, tablas con `overflow-x-auto` + variante de tarjetas en movil, modales con `max-h`/scroll). No se pudo verificar el render en vivo en dispositivos por indisponibilidad del navegador headless en esta sesion. Pendiente: verificacion visual en 1920/1366/iPad/iPhone cuando haya navegador.
+
+## Estado P0.5
+
+P0.5 cumple: compila, typecheck, build, pruebas locales, desplegado y pruebas en produccion aprobadas, reporte actualizado. Listo para revision/aprobacion antes de iniciar P1.
