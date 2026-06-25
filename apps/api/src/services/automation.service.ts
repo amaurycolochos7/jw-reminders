@@ -209,41 +209,31 @@ function buildDeliveryRows(
   const meetingDateLocal = assignment.meetingWeek.meetingDateLocal || dateToLocalDateString(assignment.meetingWeek.meetingDate);
   const rows: Prisma.ReminderDeliveryCreateManyInput[] = [];
 
-  for (const reminderType of rules.assigned) {
-    rows.push({
-      automationPlanId,
-      assignmentId: assignment.id,
-      publisherId: assignment.assignedPublisherId,
-      recipientRole: "ASSIGNED",
-      reminderType,
-      scheduledAt: calculateReminderScheduledAt({
+  const addRow = (publisherId: string, recipientRole: ReminderRecipientRole, reminderType: ReminderType) => {
+    try {
+      const scheduledAt = calculateReminderScheduledAt({
         meetingDateLocal,
         meetingTime: assignment.meetingWeek.meetingTime,
         reminderType,
         timezone: config.timezone,
         sendHour: config.sendHour,
         now,
-      }),
-    });
+      });
+      rows.push({ automationPlanId, assignmentId: assignment.id, publisherId, recipientRole, reminderType, scheduledAt });
+    } catch (err) {
+      // A single invalid rule (e.g. SAME_DAY when send hour >= meeting hour) must not
+      // abort the whole generation. Skip just this delivery and keep the rest.
+      console.error(`[automation] Omitiendo ${reminderType} para asignacion ${assignment.id}: ${(err as Error).message}`);
+    }
+  };
+
+  for (const reminderType of rules.assigned) {
+    addRow(assignment.assignedPublisherId, "ASSIGNED", reminderType);
   }
 
   if (assignment.companionPublisherId) {
     for (const reminderType of rules.companion) {
-      rows.push({
-        automationPlanId,
-        assignmentId: assignment.id,
-        publisherId: assignment.companionPublisherId,
-        recipientRole: "COMPANION",
-        reminderType,
-        scheduledAt: calculateReminderScheduledAt({
-          meetingDateLocal,
-          meetingTime: assignment.meetingWeek.meetingTime,
-          reminderType,
-          timezone: config.timezone,
-          sendHour: config.sendHour,
-          now,
-        }),
-      });
+      addRow(assignment.companionPublisherId, "COMPANION", reminderType);
     }
   }
 
