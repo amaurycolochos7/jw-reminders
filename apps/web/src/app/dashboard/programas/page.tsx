@@ -132,7 +132,15 @@ export default function ProgramasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-ink tracking-tight">Programas mensuales</h1>
-        <p className="text-sm text-graphite mt-1">Planificacion mensual, semanas y generacion base de asignaciones.</p>
+        <p className="text-sm text-graphite mt-1">Punto de partida recomendado: crea el programa del mes y genera sus semanas.</p>
+      </div>
+
+      <div className="bg-fog rounded-card px-5 py-4">
+        <p className="text-sm text-graphite">
+          Flujo recomendado: <span className="text-ink font-medium">Programa</span> &rarr; Generar semanas &rarr;{' '}
+          <Link href="/dashboard/semanas" className="text-azure font-medium hover:underline">Revisar asignaciones</Link> &rarr; Generar automatizaciones &rarr;{' '}
+          <Link href="/dashboard/automatizaciones" className="text-azure font-medium hover:underline">Centro de Automatizaciones</Link>.
+        </p>
       </div>
 
       <div className="bg-white rounded-card p-5 sm:p-7 space-y-5">
@@ -204,7 +212,7 @@ export default function ProgramasPage() {
                         <button onClick={() => generateAssignments(program.id)} disabled={generating === program.id || program.status === 'ARCHIVED'} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 disabled:opacity-50">
                           {generating === program.id ? 'Generando...' : 'Generar asignaciones'}
                         </button>
-                        <Link href={`/dashboard/automatizaciones?range=month`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog">
+                        <Link href={`/dashboard/automatizaciones?range=month&monthlyScheduleId=${program.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog">
                           Ver agenda
                         </Link>
                         <button onClick={() => archiveProgram(program.id)} disabled={program.status === 'ARCHIVED'} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog disabled:opacity-50">

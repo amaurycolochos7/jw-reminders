@@ -85,7 +85,7 @@ export default function AutomatizacionesPage() {
   const [status, setStatus] = useState(initialParams.get('status') || '')
   const [role, setRole] = useState('')
   const [publisherId, setPublisherId] = useState('')
-  const [monthlyScheduleId, setMonthlyScheduleId] = useState('')
+  const [monthlyScheduleId, setMonthlyScheduleId] = useState(initialParams.get('monthlyScheduleId') || '')
   const [publishers, setPublishers] = useState<Publisher[]>([])
   const [programs, setPrograms] = useState<MonthlySchedule[]>([])
   const [data, setData] = useState<ResponseData | null>(null)

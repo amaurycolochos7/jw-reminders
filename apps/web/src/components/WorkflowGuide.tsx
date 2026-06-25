@@ -4,73 +4,86 @@ import Link from 'next/link'
 import {
   PersonIcon,
   CalendarPlusIcon,
+  LayersIcon,
   ClipboardListIcon,
   BellAlertIcon,
   PhoneIcon,
-  InboxIcon,
+  SquaresIcon,
 } from '@/components/icons/workflow-icons'
 
 const steps = [
   {
     number: 1,
     label: 'Registrar publicadores',
-    description: 'Registra los publicadores que recibiran asignaciones',
+    description: 'Da de alta a quienes recibiran asignaciones',
     href: '/dashboard/publicadores',
     Icon: PersonIcon,
   },
   {
     number: 2,
-    label: 'Crear semana de reunion',
-    description: 'Crea la semana con fecha y hora de reunion',
-    href: '/dashboard/semanas',
+    label: 'Crear programa mensual',
+    description: 'Punto de partida: el programa del mes agrupa las semanas',
+    href: '/dashboard/programas',
     Icon: CalendarPlusIcon,
   },
   {
     number: 3,
-    label: 'Agregar asignaciones',
-    description: 'Agrega asignaciones dentro de cada semana',
+    label: 'Generar semanas',
+    description: 'Crea las semanas del mes desde el programa',
+    href: '/dashboard/programas',
+    Icon: LayersIcon,
+  },
+  {
+    number: 4,
+    label: 'Crear o revisar asignaciones',
+    description: 'Define participantes y acompanantes de cada semana',
     href: '/dashboard/semanas',
     Icon: ClipboardListIcon,
   },
   {
-    number: 4,
-    label: 'Generar recordatorios',
-    description: 'Genera los recordatorios automaticos',
+    number: 5,
+    label: 'Generar automatizaciones',
+    description: 'Programa los recordatorios de cada asignacion',
     href: '/dashboard/semanas',
     Icon: BellAlertIcon,
   },
   {
-    number: 5,
+    number: 6,
     label: 'Verificar WhatsApp',
-    description: 'Verifica la conexion de WhatsApp',
+    description: 'Confirma que la sesion este conectada y lista',
     href: '/dashboard/whatsapp',
     Icon: PhoneIcon,
   },
   {
-    number: 6,
-    label: 'Revisar historial',
-    description: 'Revisa los mensajes enviados y fallidos',
-    href: '/dashboard/historial',
-    Icon: InboxIcon,
+    number: 7,
+    label: 'Supervisar Centro de Automatizaciones',
+    description: 'Revisa que sale hoy, manana, pendientes y fallidos',
+    href: '/dashboard/automatizaciones',
+    Icon: SquaresIcon,
   },
 ]
 
 export default function WorkflowGuide() {
   return (
     <div className="bg-white rounded-card p-5 sm:p-7">
-      <h2 className="text-base font-semibold text-ink tracking-tight mb-4">
-        Flujo de trabajo
-      </h2>
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-ink tracking-tight">
+          Flujo de trabajo
+        </h2>
+        <p className="text-sm text-graphite mt-1">
+          El camino recomendado de principio a fin. Sigue los pasos en orden.
+        </p>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {steps.map((step) => (
           <Link
             key={step.number}
             href={step.href}
-            aria-label={`Ir a ${step.label}`}
+            aria-label={`Ir al paso ${step.number}: ${step.label}`}
             className="flex items-start gap-3 p-3 rounded-xl hover:bg-fog transition-colors group"
           >
             <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-fog flex items-center justify-center group-hover:bg-silver-mist transition-colors">
-              <step.Icon className="w-4.5 h-4.5 text-graphite" />
+              <step.Icon className="w-[18px] h-[18px] text-graphite" />
             </div>
             <div className="min-w-0 flex-1">
               <span className="text-[11px] font-medium text-azure leading-none">

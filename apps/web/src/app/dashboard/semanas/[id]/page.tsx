@@ -53,6 +53,8 @@ interface MeetingWeek {
   meetingTime: string
   congregationName: string | null
   notes: string | null
+  status?: string
+  monthlySchedule?: { id: string; name: string } | null
   assignments: Assignment[]
 }
 
@@ -195,16 +197,17 @@ export default function SemanaDetallePage() {
       const res = await api(`/api/assignments/${assignmentId}/generate-reminders`, { method: 'POST' })
       if (res.ok) {
         const data = await res.json()
-        alert(`Recordatorios creados: ${data.created}`)
+        setNotification({ type: 'success', message: data.created > 0 ? `${data.created} recordatorios creados` : 'Esta asignacion ya tiene automatizaciones activas' })
         await loadWeek()
       } else {
         const data = await res.json()
-        alert(data.error || 'Error al generar recordatorios')
+        setNotification({ type: 'error', message: data.error || 'Error al generar recordatorios' })
       }
     } catch {
-      alert('Error de conexion')
+      setNotification({ type: 'error', message: 'Error de conexion' })
     } finally {
       setActionLoading(null)
+      setTimeout(() => setNotification(null), 4000)
     }
   }
 
@@ -216,13 +219,15 @@ export default function SemanaDetallePage() {
       if (res.ok) {
         setConfirmAction(null)
         await loadWeek()
+        setNotification({ type: 'success', message: 'Asignacion cancelada' })
       } else {
-        alert('Error al cancelar')
+        setNotification({ type: 'error', message: 'Error al cancelar' })
       }
     } catch {
-      alert('Error de conexion')
+      setNotification({ type: 'error', message: 'Error de conexion' })
     } finally {
       setActionLoading(null)
+      setTimeout(() => setNotification(null), 4000)
     }
   }
 
@@ -234,13 +239,15 @@ export default function SemanaDetallePage() {
       if (res.ok) {
         setConfirmAction(null)
         await loadWeek()
+        setNotification({ type: 'success', message: 'Asignacion completada' })
       } else {
-        alert('Error al completar')
+        setNotification({ type: 'error', message: 'Error al completar' })
       }
     } catch {
-      alert('Error de conexion')
+      setNotification({ type: 'error', message: 'Error de conexion' })
     } finally {
       setActionLoading(null)
+      setTimeout(() => setNotification(null), 4000)
     }
   }
 
@@ -348,6 +355,8 @@ export default function SemanaDetallePage() {
   }
 
   const totalReminders = week.assignments.reduce((acc, a) => acc + (a.reminders?.length || 0), 0)
+  const WEEK_STATUS_LABEL: Record<string, string> = { DRAFT: 'Borrador', READY: 'Lista', ACTIVE: 'Activa', COMPLETED: 'Completada', ARCHIVED: 'Archivada', CANCELLED: 'Cancelada' }
+  const WEEK_STATUS_CLASS: Record<string, string> = { DRAFT: 'bg-amber-50 text-amber-700', READY: 'bg-fog text-azure', ACTIVE: 'bg-emerald-50 text-emerald-700', COMPLETED: 'bg-fog text-graphite', ARCHIVED: 'bg-fog text-graphite', CANCELLED: 'bg-red-50 text-red-700' }
 
   return (
     <div className="space-y-6">
@@ -359,8 +368,15 @@ export default function SemanaDetallePage() {
           </svg>
         </button>
         <div>
-          <h1 className="text-2xl font-semibold text-ink tracking-tight">Semana del {formatDate(week.weekStartDate)}</h1>
-          <p className="text-sm text-graphite mt-0.5">Detalle de semana y asignaciones</p>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-2xl font-semibold text-ink tracking-tight">Semana del {formatDate(week.weekStartDate)}</h1>
+            {week.status && (
+              <span className={`text-[11px] font-medium px-2.5 py-1 rounded-pill ${WEEK_STATUS_CLASS[week.status] || 'bg-fog text-graphite'}`}>
+                {WEEK_STATUS_LABEL[week.status] || week.status}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-graphite mt-0.5">{week.monthlySchedule?.name || 'Sin programa'} / Detalle y asignaciones</p>
         </div>
       </div>
 
@@ -696,7 +712,7 @@ export default function SemanaDetallePage() {
       {/* Editar semana Modal */}
       {showEditWeek && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowEditWeek(false)}>
-          <div className="bg-white rounded-card p-7 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-card p-7 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-ink tracking-tight mb-5">Editar semana</h2>
             {weekError && <p className="text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-xl">{weekError}</p>}
             <form onSubmit={handleEditWeekSubmit} className="space-y-4">

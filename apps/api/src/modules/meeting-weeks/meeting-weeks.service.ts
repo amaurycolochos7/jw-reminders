@@ -14,19 +14,20 @@ export async function listMeetingWeeks() {
       _count: { select: { assignments: true } },
       assignments: {
         select: {
-          _count: { select: { reminderDeliveries: true } },
+          reminderDeliveries: { select: { status: true } },
         },
       },
     },
   });
 
   return weeks.map((week) => {
-    const totalReminders = week.assignments.reduce(
-      (sum, assignment) => sum + assignment._count.reminderDeliveries,
-      0,
-    );
+    const deliveries = week.assignments.flatMap((assignment) => assignment.reminderDeliveries);
+    const totalReminders = deliveries.length;
+    const pendingReminders = deliveries.filter((d) => ["PENDING", "QUEUED", "SENDING"].includes(d.status)).length;
+    const sentReminders = deliveries.filter((d) => d.status === "SENT").length;
+    const failedReminders = deliveries.filter((d) => ["FAILED", "DEAD"].includes(d.status)).length;
     const { assignments, ...weekData } = week;
-    return { ...weekData, totalReminders };
+    return { ...weekData, totalReminders, pendingReminders, sentReminders, failedReminders };
   });
 }
 
