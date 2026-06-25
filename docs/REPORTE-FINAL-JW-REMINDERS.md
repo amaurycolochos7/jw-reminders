@@ -116,12 +116,13 @@ Correccion P0 del motor de automatizacion segun el contrato definido en `docs/AU
 
 - Implementacion: COMPLETA en codigo.
 - Verificacion local (compila / typecheck / build / pruebas): APROBADA.
-- Commit y push a `main`: HECHO (`158b521`).
-- Deploy en produccion: PENDIENTE (bloqueado por falta de acceso a Dokploy en esta sesion).
-- Pruebas en produccion: PENDIENTES (dependen del deploy).
+- Commit y push a `main`: HECHO (`158b521`, `5fbb751`).
+- Deploy en produccion: HECHO (Dokploy compose `jw-reminders-stack`, deploy con git pull de `main`, estado `done`).
+- Migraciones en produccion: APLICADAS (la API ejecuta `prisma migrate deploy` al iniciar; backfill confirmado con datos reales).
+- Pruebas en produccion: APROBADAS (ver seccion de deploy).
 - Reporte: actualizado (este documento).
 
-Segun el criterio de aceptacion del proyecto, la fase NO se marca como totalmente terminada hasta completar deploy + pruebas en produccion.
+Fase P0 TERMINADA: cumple compila, typecheck, build, pruebas locales, desplegada, pruebas en produccion y reporte actualizado.
 
 ## Arquitectura implementada
 
@@ -197,30 +198,42 @@ Reunion 2026-07-03 19:00 CDMX (UTC-6), envio 09:00 -> 15:00 UTC. Verificado.
 
 - En Windows, `next build` falla SOLO en el paso final de copiado del output `standalone` por restriccion de symlinks (EPERM). La compilacion, validacion de tipos y generacion de paginas se completan correctamente. No afecta el build en Linux/Dokploy.
 
-## Deploy y pruebas en produccion (PENDIENTE / BLOQUEADO)
+## Deploy y pruebas en produccion (COMPLETADO)
 
-Estado verificado de produccion el 2026-06-25:
+Deploy realizado el 2026-06-25 via Dokploy (proyecto `jw-reminders`, compose `jw-reminders-stack`, source git `github.com/amaurycolochos7/jw-reminders.git` rama `main`). Un primer "Rebuild" no actualizo el codigo porque no hace git pull; se disparo un deploy completo (`compose.deploy`) que descargo el ultimo commit de `main` y reconstruyo las imagenes. Estado final: `done`. La migracion se aplica automaticamente al iniciar el contenedor de API (`prisma migrate deploy`).
 
-- `GET https://jw-reminders.duckdns.org/api/health` -> 200 `{"status":"ok"}`
-- `GET /api/version` -> 200 `{"version":"1.0.0"}`
-- `GET /api/meeting-weeks` -> 401 (ruta existente, requiere auth)
-- `GET /api/monthly-schedules` -> 404 (ruta nueva NO desplegada todavia)
-- `GET /api/automation-center` -> 404 (ruta nueva NO desplegada todavia)
+Smoke tests en `https://jw-reminders.duckdns.org`:
 
-Conclusion: produccion sigue ejecutando el codigo anterior (`30b0990`). Tras el push, se esperaron ~6 minutos y no se disparo un redeploy automatico. El deploy en Dokploy requiere acceso al panel (`http://187.77.11.79:3000`) o SSH a `root@187.77.11.79`, credenciales no disponibles en esta sesion. No existe webhook ni token de Dokploy en el repositorio.
+| Prueba | Resultado |
+|--------|-----------|
+| `GET /api/health` | 200 |
+| `GET /api/monthly-schedules` (sin token) | 401 (antes 404; ruta nueva desplegada) |
+| `GET /api/automation-center` (sin token) | 401 (antes 404; ruta nueva desplegada) |
+| Login `POST /api/auth/login` | 200 (token emitido) |
+| `GET /api/monthly-schedules` (auth) | 200 - 2 programas, ej. "Programa 2026-07" ACTIVE con 2 semanas (backfill OK) |
+| `GET /api/automation-center?range=week` (auth) | 200 - 3 grupos, 12 entregas pendientes, tz America/Mexico_City |
+| `GET /api/dashboard` (auth) | 200 - activeWeeks=3, pendingReminders=15, programa activo "Programa 2026-06" |
+| Paginas `/dashboard`, `/dashboard/programas`, `/dashboard/automatizaciones`, `/dashboard/semanas`, `/dashboard/whatsapp`, `/dashboard/historial` | 200 |
 
-### Pasos pendientes para completar el deploy (requieren acceso del usuario)
+Prueba funcional Caso 1 ejecutada en produccion (semana 2026-07-03 19:00 CDMX, envio 09:00, publicador asignado):
 
-1. En Dokploy, abrir el proyecto `jw-reminders` y disparar Redeploy de la rama `main` (commit `158b521`).
-2. Esperar a que el build de los servicios (api, web, worker, whatsapp) termine.
-3. Ejecutar la migracion nueva dentro del contenedor de API:
-   - `docker exec jw-reminders-api /bin/sh -c "cd /app/packages/database && npx prisma migrate deploy"`
-4. Validar en produccion (smoke tests):
-   - `GET /api/monthly-schedules` debe responder 401 (ruta existente) en vez de 404.
-   - `GET /api/automation-center` debe responder 401 en vez de 404.
-   - Iniciar sesion y verificar `/dashboard/programas` y `/dashboard/automatizaciones` (HTTP 200).
-   - Crear semana futura y generar recordatorios; verificar que las entregas se programan a las 09:00 locales (15:00 UTC) segun el Caso 1.
-   - Confirmar que el historial (`JwMessageLog`) no se borra al archivar/cancelar.
+| Tipo | scheduledAt UTC obtenido | Esperado |
+|------|--------------------------|----------|
+| INITIAL_NOTICE | inmediato (now) | inmediato |
+| SEVEN_DAYS_BEFORE | 2026-06-26T15:00:00.000Z | 2026-06-26 09:00 CDMX |
+| THREE_DAYS_BEFORE | 2026-06-30T15:00:00.000Z | 2026-06-30 09:00 CDMX |
+| ONE_DAY_BEFORE | 2026-07-02T15:00:00.000Z | 2026-07-02 09:00 CDMX |
+| SAME_DAY | 2026-07-03T15:00:00.000Z | 2026-07-03 09:00 CDMX |
+
+Resultado: coincidencia exacta. El acompanante no aplica (asignacion sin acompanante) y el asignado recibio los 5 tipos correctos.
+
+Pruebas adicionales en produccion:
+
+- Completar asignacion (Caso 5): asignacion -> COMPLETED y las 5 entregas pendientes -> CANCELLED, sin generar CANCELLATION_NOTICE. Correcto.
+- Eliminar semana con historial (Caso 6): la semana paso a ARCHIVED en vez de borrarse; historial conservado. Correcto.
+- Los datos de verificacion quedaron cancelados/archivados, por lo que el worker no enviara mensajes de prueba.
+
+Nota: las entregas heredadas (backfill de `JwAssignmentReminder`) conservan su `scheduledAt` original (medianoche UTC del modelo anterior, que en CDMX se ve como 18:00). Es el comportamiento seguro definido en P0: el backfill no recalcula entregas existentes; solo las nuevas generaciones usan la hora corregida (09:00 local), como se verifico arriba.
 
 ## Riesgos
 
