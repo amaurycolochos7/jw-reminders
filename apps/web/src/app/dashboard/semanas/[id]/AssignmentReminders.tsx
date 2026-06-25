@@ -51,7 +51,7 @@ const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   SENDING: { label: 'Enviando', classes: 'bg-fog text-azure' },
   SENT: { label: 'Enviado', classes: 'bg-emerald-50 text-emerald-700' },
   FAILED: { label: 'Error', classes: 'bg-red-50 text-red-700' },
-  SKIPPED: { label: 'Omitido', classes: 'bg-slate-100 text-slate-600' },
+  SKIPPED: { label: 'Omitido', classes: 'bg-fog text-graphite' },
   CANCELLED: { label: 'Cancelado', classes: 'bg-red-50 text-red-600' },
   DEAD: { label: 'Agotado', classes: 'bg-red-50 text-red-700' },
 }

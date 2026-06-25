@@ -193,6 +193,13 @@ export default function AssignmentForm({ weekId, publishers, assignment, onClose
 
         {error && <p className="text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-xl">{error}</p>}
 
+        {isEditing && assignment?.status === 'SCHEDULED' && (
+          <div className="text-sm text-amber-700 mb-4 p-3 bg-amber-50 rounded-xl">
+            Esta asignacion ya tiene automatizaciones. Al guardar, se cancelaran los recordatorios pendientes y se
+            generaran nuevos con un aviso de cambio. Los mensajes ya enviados se conservan.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Row: Number + Section */}
           <div className="grid grid-cols-2 gap-4">

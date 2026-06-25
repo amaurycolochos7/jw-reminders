@@ -296,7 +296,7 @@ export default function PublicadoresPage() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="bg-red-600 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:bg-red-700 disabled:opacity-50"
+                className="bg-red-400 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {deleting ? 'Eliminando...' : 'Eliminar'}
               </button>
@@ -331,8 +331,8 @@ export default function PublicadoresPage() {
                     {p.displayName && <p className="text-xs text-graphite">{p.displayName}</p>}
                     <p className="text-xs text-graphite font-mono mt-1">{toNational(p.phone)}</p>
                   </div>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-pill flex-shrink-0 ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-pill flex-shrink-0 ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-fog text-graphite'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-silver-mist'}`} />
                     {p.isActive ? 'Activo' : 'Inactivo'}
                   </span>
                 </div>
@@ -374,18 +374,18 @@ export default function PublicadoresPage() {
                       </td>
                       <td className="px-6 py-4 text-graphite font-mono text-xs">{toNational(p.phone)}</td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-pill ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-pill ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-fog text-graphite'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-silver-mist'}`} />
                           {p.isActive ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-xs ${p.canReceiveAssignments ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        <span className={`text-xs ${p.canReceiveAssignments ? 'text-emerald-600' : 'text-graphite'}`}>
                           {p.canReceiveAssignments ? 'Si' : 'No'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-xs ${p.canBeCompanion ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        <span className={`text-xs ${p.canBeCompanion ? 'text-emerald-600' : 'text-graphite'}`}>
                           {p.canBeCompanion ? 'Si' : 'No'}
                         </span>
                       </td>
