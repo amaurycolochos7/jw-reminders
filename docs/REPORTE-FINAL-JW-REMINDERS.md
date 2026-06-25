@@ -322,3 +322,64 @@ La revision responsive se realizo por inspeccion de codigo (breakpoints Tailwind
 ## Estado P0.5
 
 P0.5 cumple: compila, typecheck, build, pruebas locales, desplegado y pruebas en produccion aprobadas, reporte actualizado. Listo para revision/aprobacion antes de iniciar P1.
+
+
+
+---
+
+# RC1 - Estabilizacion (Release Candidate 1)
+
+Etapa de estabilizacion (sin features nuevas): solo bugs, UX, responsive, visual, optimizaciones y correcciones funcionales.
+
+## Fecha
+
+2026-06-25
+
+## Correcciones aplicadas
+
+### Lote 1 (`000fdf2`)
+
+1. Bug de correctitud: avisos especiales obsoletos. Completar/cancelar/regenerar una asignacion ahora cancela TODAS las entregas pendientes (incluidos `CHANGE_NOTICE` y `CANCELLATION_NOTICE`), no solo los recordatorios normales. Antes, un `CHANGE_NOTICE` pendiente sobrevivia a "completar" y el worker lo habria enviado.
+   - Verificado en produccion: tras editar (crea CHANGE_NOTICE) y completar, las 7 entregas quedaron CANCELLED, incluida `CHANGE_NOTICE:CANCELLED=1`, 0 entregas no-terminales.
+2. Metrica de dashboard "Asignaciones pendientes" ahora cuenta solo `DRAFT` (sin automatizar) en vez de `DRAFT+SCHEDULED`. Verificado: devuelve 0 cuando todas estan SCHEDULED/COMPLETED.
+3. Historial: filtro por publicador funcional (antes era estado muerto sin control en UI). Se agrego dropdown de publicadores; el endpoint `message-logs` ya soportaba `publisherId`.
+4. Optimizacion: helpers de zona horaria (`localToday`, `localDateLabel`, `localTimeLabel`) centralizados en `date-utils.ts`; eliminada la duplicacion entre `dashboard.routes.ts` y `automation-center.routes.ts` (evita drift en el calculo de "hoy").
+5. Limpieza: eliminado componente sin uso `CompletionStatus.tsx`.
+
+### Lote 2 (`1f834b5`)
+
+6. Cumplimiento DESIGN.md: `AssignmentReminders` usaba `bg-slate-100 text-slate-600` para SKIPPED; corregido a `bg-fog text-graphite`.
+7. UX: al editar una asignacion ya automatizada (`SCHEDULED`), el formulario advierte que se cancelaran los pendientes, se regeneraran y se enviara un aviso de cambio, conservando lo ya enviado (alineado con DESIGN/AUTOMATION-MODEL-FIX).
+8. Cumplimiento DESIGN.md: `publicadores` usaba grises fuera de paleta (`gray-100/400/500`); corregido a `fog/graphite/silver-mist`; boton destructivo a `red-400`.
+
+## Pruebas
+
+- Local: API build (tsc) 0 errores; pruebas unitarias 6/6; Worker build 0; Web typecheck 0 + `next build` 14/14 paginas (solo falla el symlink standalone en Windows, no afecta Linux/Dokploy).
+- Produccion (tras `compose.deploy`):
+  - Fix de avisos obsoletos verificado end-to-end (ver arriba).
+  - `asignacionesPendientes` correcto (DRAFT).
+  - Automatizaciones con helpers centralizados OK.
+  - 9 paginas del dashboard responden HTTP 200.
+
+## Commits y deploys
+
+| Hash | Deploy |
+|------|--------|
+| `000fdf2` | done |
+| `1f834b5` | done |
+
+## Decision funcional pendiente (requiere al usuario)
+
+TEST_MODE / TEST_PHONE: la pantalla de Configuracion guarda `TEST_MODE` y `TEST_PHONE` en `AppConfig`, pero el Worker lee estos valores desde variables de entorno del contenedor, no desde `AppConfig`. Por lo tanto, hoy el interruptor de "Modo prueba" de la UI no controla el envio real.
+
+Riesgo y decision: unificar la fuente de verdad implica que el Worker lea `TEST_MODE`/`TEST_PHONE` desde `AppConfig` (con fallback a entorno). Eso es correcto para coherencia, pero cambia el mecanismo de seguridad de envios: un administrador podria desactivar el modo prueba desde la UI y enviar mensajes reales. Por ser una decision funcional y de seguridad de envios, NO se modifico unilateralmente. Opciones:
+
+- A) La UI controla el modo prueba real (Worker lee AppConfig con fallback a entorno).
+- B) El modo prueba queda bloqueado por entorno del servidor y la UI solo lo muestra como informativo (no editable).
+
+Pendiente de decision del usuario antes de tocar la ruta de envio.
+
+## Pendiente de validacion (entorno del usuario)
+
+- WhatsApp con dispositivo real (READY, envio real, reconexion, persistencia de sesion): requiere escanear el QR desde `/dashboard/whatsapp`.
+- Responsive en vivo (movil/tablet/escritorio): validado por inspeccion de codigo; falta verificacion visual con navegador.
