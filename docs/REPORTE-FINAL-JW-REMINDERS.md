@@ -442,3 +442,75 @@ Pendiente de cierre de RC1 (depende del entorno del usuario, no de codigo):
 - WhatsApp con dispositivo real: escanear QR para validar READY, envio real, reconexion y persistencia.
 - Validacion responsive visual en dispositivos (auditoria por codigo ya realizada y corregida).
 - QA manual del usuario: cada reporte se atendera con el ciclo corregir-probar-deploy-validar-reportar.
+
+
+
+---
+
+# P1 - Centro Global de Automatizaciones
+
+Pantalla operativa completa para administrar, supervisar y entender todas las automatizaciones del sistema.
+
+## Fecha
+
+2026-06-25
+
+## Estado de la fase
+
+- Implementacion: COMPLETA.
+- Verificacion local (typecheck/build/tests): APROBADA.
+- Commit y push a `main`: HECHO (`ad9c587`).
+- Deploy en produccion: HECHO (Dokploy `compose.deploy`, estado `done`).
+- Pruebas en produccion: APROBADAS.
+- Reporte: actualizado.
+
+## Backend (apps/api/src/modules/automation-center/automation-center.routes.ts)
+
+- `GET /api/automation-center` extendido: filtros `range` (today|tomorrow|week|month|overdue|custom), `month=YYYY-MM` (mes calendario), `status`, `role`, `reminderType`, `publisherId`, `monthlyScheduleId`, `meetingWeekId`, `dateFrom`/`dateTo`. Vista `overdue` (vencidas/no enviadas) = `scheduledAt < now` y estado abierto. Cada entrega incluye `localDate`, `localTime`, `overdue`, `attemptCount`, `maxAttempts`, `nextRetryAt`, `errorMessage`, `sentAt`. Resumen agrega `overdue`. Agrupado por dia local con etiquetas HOY/MANANA.
+- `GET /api/automation-center/overview`: resumen operativo (hoy con asignados/acompanantes, manana, vencidas, fallidas, enviadas hoy, programas con pendientes, proximos publicadores 7 dias).
+- `GET /api/automation-center/deliveries/:id`: detalle con plan e historial de intentos (`messageLogs`).
+- `POST /api/automation-center/deliveries/:id/retry`: reintenta entregas `FAILED`/`DEAD` (reset a `PENDING`, `attemptCount=0`, `scheduledAt=now`); evento `REMINDER_RETRY_REQUESTED`. Guarda 400 para estados no fallidos.
+- `POST /api/automation-center/deliveries/:id/cancel`: cancela entregas `PENDING`/`QUEUED`/`FAILED`; evento `REMINDER_CANCELLED`. Guarda 400 para estados no cancelables.
+
+## Frontend (apps/web/src/app/dashboard/automatizaciones/page.tsx)
+
+- Resumen operativo con tarjetas clicables (Hoy, Manana, Vencidas, Fallidas, Enviadas hoy) y paneles de Programas con pendientes y Proximos publicadores.
+- Conjunto completo de filtros: Vista (incluye Vencidas, Mes calendario y Rango personalizado), Estado, Tipo, Rol, Publicador, Programa, Semana; boton Limpiar filtros.
+- Resumen de conteos (pendientes/enviadas/fallidas/canceladas/vencidas).
+- Vista agrupada por dia con hora local, destinatario, rol, tipo, asignacion, programa, estado y marca de Vencida.
+- Acciones por entrega: Detalle, Reintentar (fallidas), Cancelar (pendientes), con toasts (sin alert/confirm).
+- Modal de detalle: estado, destinatario, rol, programado, intentos, plan; historial de intentos; navegacion a la semana, a la asignacion y al programa; botones de reintentar/cancelar.
+- Responsive: filas `flex-col` en movil y `lg:flex-row` en escritorio; filtros en grilla; modal con `max-h`/scroll.
+
+## Commits y deploys
+
+| Hash | Deploy |
+|------|--------|
+| `ad9c587` | done |
+
+## Pruebas
+
+Local: web typecheck 0, API build 0, pruebas unitarias 6/6, `next build` 14/14 paginas (solo symlink standalone en Windows, no afecta Linux/Dokploy).
+
+Produccion (despues del deploy):
+
+| Prueba | Resultado |
+|--------|-----------|
+| Pagina `/dashboard/automatizaciones` | HTTP 200 |
+| `GET /overview` | Completo (hoy=7, vencidas=1, fallidas=1, 4 programas, 5 publicadores) |
+| Filtros today/tomorrow/week/month/overdue | OK, agrupados |
+| Filtro `month=2026-07` y `custom` 2026-07-01..31 | Coinciden (14 entregas) |
+| Filtros status/role/reminderType | OK (failed=1, companion=6, SAME_DAY=9) |
+| `GET /deliveries/:id` | Devuelve estado, intentos, plan ACTIVO y `meetingWeekId` |
+| `POST retry` sobre PENDING | 400 (guarda correcta) |
+| `POST cancel` sobre PENDING | ok, estado CANCELLED |
+| `POST retry` sobre FAILED | ok, estado PENDING (reencolada) |
+| Navegacion semana/asignacion/programa | Enlaces presentes en el modal de detalle |
+| Errores 401/404/500 | Ninguno (401 solo sin token; 400 solo en guardas esperadas) |
+| Emojis | Ninguno |
+
+## Criterio de aceptacion P1
+
+Cumplido: el Centro carga sin errores; filtros y agrupamientos funcionan; se ve el detalle de una automatizacion con historial de intentos; se puede reintentar un fallo y cancelar una entrega pendiente; se navega a semana/asignacion/programa; responsive por codigo (movil y escritorio); sin 401/404/500; sin emojis; produccion probada tras el deploy; reporte actualizado.
+
+Nota: la verificacion visual en dispositivos reales y el envio real por WhatsApp siguen dependiendo del dispositivo (QR) y de la confirmacion visual del usuario, como en RC1.
