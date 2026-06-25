@@ -383,3 +383,31 @@ Pendiente de decision del usuario antes de tocar la ruta de envio.
 
 - WhatsApp con dispositivo real (READY, envio real, reconexion, persistencia de sesion): requiere escanear el QR desde `/dashboard/whatsapp`.
 - Responsive en vivo (movil/tablet/escritorio): validado por inspeccion de codigo; falta verificacion visual con navegador.
+
+
+
+### Lote 3 (`89e5738`)
+
+9. TEST_MODE / TEST_PHONE - Opcion A implementada. El Worker ahora lee `TEST_MODE` y `TEST_PHONE` desde `AppConfig` (BD) en cada ciclo, con fallback a variables de entorno si faltan o son invalidas. La UI de Configuracion es la fuente de verdad y los cambios se aplican en el siguiente ciclo del worker (hasta 10 min) sin redeploy. Salvaguarda: si `TEST_MODE` esta activo y no hay `TEST_PHONE`, la entrega se marca `SKIPPED` (no se envia a un numero real por error).
+   - Verificado: round-trip de `/api/config` (PUT entonces GET) persiste y devuelve `TEST_MODE`/`TEST_PHONE` en la misma `AppConfig` que el worker lee. TEST_MODE permanece `true`.
+   - Pendiente: verificacion de envio real depende del dispositivo WhatsApp.
+10. Responsive: la tabla de Programas era el unico listado siempre-tabla; se agrego layout de tarjetas en movil (`lg:hidden`) y la tabla quedo solo en escritorio (`hidden lg:block`), consistente con Publicadores/Historial/Semanas. Se extrajo `renderProgramActions` para evitar duplicacion.
+
+## Auditoria responsive por codigo (resultado)
+
+Revisado sin navegador:
+
+- Layout: `overflow-x-hidden` en el contenedor flex y en `html`/`body` (globals.css); `main` con `min-w-0`; padding superior movil `pt-[72px]` para el header fijo. No hay riesgo de scroll horizontal de pagina.
+- Grids: todos mobile-first (`grid-cols-1` y escalan en `sm`/`md`/`lg`/`xl`). Columnas fijas usan `min-w-0` + `truncate` en las celdas de texto.
+- Tablas: Publicadores, Historial, Semanas (detalle) y ahora Programas tienen variante de tarjetas en movil; las tablas de escritorio van dentro de `overflow-x-auto`.
+- Formularios: apilan en una columna en movil; inputs heredan `w-full` desde la capa base; checkboxes con `w-4 h-4` explicito.
+- Modales: todos con `max-h-[85-90vh]` + `overflow-y-auto` y `p-4` en el overlay.
+- Sidebar: drawer en movil con overlay, scroll-lock y cierre por Escape; fija en escritorio.
+
+No se detectaron roturas de layout adicionales por codigo. Queda pendiente la verificacion visual en dispositivos.
+
+## Commits y deploys (continuacion)
+
+| Hash | Deploy |
+|------|--------|
+| `89e5738` | done |
