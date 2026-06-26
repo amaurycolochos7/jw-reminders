@@ -793,3 +793,54 @@ La Directiva Maestra queda como referencia principal de calidad, arquitectura, U
 ## Nota de cumplimiento
 
 La revision inmediata no encontro `alert()` ni `confirm()` activos en `apps/`. El reporte previo ya documenta que los dialogos nativos fueron reemplazados por `ConfirmModal` y toasts en las pantallas operativas.
+
+
+
+---
+
+# P4.5 - Centro Operativo
+
+## Resumen
+
+El Dashboard deja de ser informativo y se convierte en un Centro Operativo: una sola pantalla desde la que el administrador gestiona practicamente toda la operacion diaria. Responde de inmediato a cinco preguntas: que hacer hoy, que esta mal, que sigue, que ya termino y que requiere atencion. Integra los modulos existentes sin reemplazarlos.
+
+## Fecha
+
+2026-06-25
+
+## Estado de la fase
+
+Completada. Verificada localmente y en produccion. Commits `607e86c` (codigo y changelog/release) en `main`. Desplegada en Dokploy via API (`POST /api/compose.deploy`, `composeStatus=done`). Sin migraciones nuevas.
+
+## Backend (apps/api/src/modules/dashboard/operational-center.service.ts)
+
+`getOperationalCenter()` arma en una sola respuesta:
+
+- Estado general: base de datos, worker (con deteccion de inactividad), scheduler (CRON), WhatsApp (consulta `/status` real), TEST_MODE, ultima sincronizacion y ultimo envio.
+- Programas: activos, pendientes, incompletos y archivados, con porcentaje de avance.
+- Semanas del mes: activas, pendientes, incompletas y listas, con completitud por semana.
+- Propuestas: pendientes (por programa), aprobadas y descartadas (desde eventos).
+- Automatizaciones: hoy, manana, proximas 7, vencidas, fallidas y canceladas, con resumen y ultimos items.
+- Publicadores: activos, inactivos, nuevos, sin telefono, sin permiso de asignaciones y sin permiso de acompanante.
+- Flujo recomendado dinamico (8 pasos) que detecta el paso actual y la siguiente accion.
+- Alertas inteligentes (criticas/aviso/info): WhatsApp desconectado, worker sin actividad, automatizaciones fallidas/vencidas, propuestas pendientes, programa incompleto, semana sin asignaciones, publicadores sin telefono.
+- Calendario operativo mensual con reuniones, mensajes y programas por dia.
+- Respuestas a las 5 preguntas de UX.
+
+`dashboard.routes.ts` expone el centro operativo en `GET /api/dashboard` manteniendo compatibilidad con los campos legacy (`stats`, `operations`, `systemStatus`).
+
+## Frontend (apps/web/src/app/dashboard/page.tsx)
+
+Dashboard reescrito como Centro Operativo: cabecera con accion siguiente, tira de respuestas (5 preguntas), metricas hero, panel de estado general, panel de alertas (tarjetas, sin `alert()`), flujo recomendado, automatizaciones (buckets + listas de hoy/fallidas), calendario operativo interactivo (seleccion de dia con reuniones/mensajes/programas), paneles de programas, semanas, propuestas y publicadores, y acciones rapidas (crear/importar programa, crear semana, ver propuestas/automatizaciones, WhatsApp, historial). Auto-actualizacion cada 30 s. Cumple DESIGN.md (paleta ink/fog/graphite/azure/caution), sin emojis, sin `alert()`/`confirm()`, responsive.
+
+Cambios de soporte: `next.config.js` permite `NEXT_OUTPUT=default` para builds locales sin standalone (evita el problema de symlink en Windows; en produccion sigue siendo standalone); `pnpm-workspace.yaml` agrega allowlist de dependencias con build nativo (prisma/esbuild/puppeteer).
+
+## Pruebas
+
+- `tsc --noEmit` limpio (api+web); 20 pruebas unitarias en verde; `next build` (NEXT_OUTPUT=default) compila todas las rutas incluido `/dashboard`.
+- Smoke local del endpoint contra imagen recien construida (red Docker, DB real): respuesta operativa completa (estado, programas, semanas, automatizaciones hoy/fallidas, publicadores, flujo, alertas, calendario de 30 dias, respuestas UX).
+- Produccion (tras deploy via API): `GET /api/dashboard` devuelve el centro operativo completo (worker Activo, WhatsApp estado real, TEST_MODE=true, 6 programas, automatizaciones hoy=17/fallidas=2, propuestas aprobadas=1, flujo y 3 alertas, calendario 2026-06); la pagina `/dashboard` responde HTTP 200.
+
+## Criterio de aceptacion P4.5
+
+Cumplido: el administrador gestiona la operacion diaria desde el Centro Operativo (estado, programas, semanas, propuestas, automatizaciones, publicadores, flujo, alertas, calendario y acciones rapidas) sin navegar constantemente entre modulos; responde las cinco preguntas de UX; cumple DESIGN.md sin emojis ni `alert()`/`confirm()`; responsive; typecheck/build/tests/deploy/produccion verificados; documentacion (reporte, CHANGELOG, RELEASE) actualizada.
