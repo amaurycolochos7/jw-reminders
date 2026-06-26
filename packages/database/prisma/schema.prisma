@@ -82,6 +82,7 @@ enum WhatsappSessionStatus {
 enum MonthlyScheduleStatus {
   DRAFT
   ACTIVE
+  COMPLETED
   ARCHIVED
   CANCELLED
 }
@@ -157,6 +158,7 @@ model MonthlySchedule {
   status      MonthlyScheduleStatus @default(DRAFT)
   archivedAt  DateTime?
   cancelledAt DateTime?
+  completedAt DateTime?
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 

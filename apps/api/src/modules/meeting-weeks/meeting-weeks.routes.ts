@@ -38,6 +38,12 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   } catch (err: any) { res.status(400).json({ error: err.message }); }
 });
 
+router.post("/:id/generate-automations", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.generateWeekAutomations(req.params.id));
+  } catch (err: any) { res.status(400).json({ error: err.message }); }
+});
+
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
     await service.deleteMeetingWeek(req.params.id);

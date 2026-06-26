@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@jw-reminders/database";
 import { addDaysToLocalDate } from "../../services/date-utils.js";
 import { createAutomationEvent, monthlyScheduleParts, publisherSnapshot } from "../../services/automation.service.js";
+import * as service from "./monthly-schedules.service.js";
 
 const router = Router();
 
@@ -14,7 +15,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().optional(),
-  status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED", "CANCELLED"]).optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "COMPLETED", "ARCHIVED", "CANCELLED"]).optional(),
 });
 
 const generateWeeksSchema = z.object({
@@ -47,46 +48,12 @@ function meetingDatesForMonth(year: number, month: number, meetingDayOfWeek: num
 }
 
 router.get("/", async (_req: Request, res: Response) => {
-  const schedules = await prisma.monthlySchedule.findMany({
-    orderBy: [{ year: "desc" }, { month: "desc" }],
-    include: {
-      weeks: {
-        include: {
-          _count: { select: { assignments: true } },
-          assignments: { select: { _count: { select: { reminderDeliveries: true } } } },
-        },
-      },
-    },
-  });
-
-  res.json(schedules.map((schedule) => {
-    const assignmentCount = schedule.weeks.reduce((sum, week) => sum + week._count.assignments, 0);
-    const deliveryCount = schedule.weeks.reduce(
-      (sum, week) => sum + week.assignments.reduce((inner, assignment) => inner + assignment._count.reminderDeliveries, 0),
-      0,
-    );
-    const { weeks, ...data } = schedule;
-    return { ...data, weekCount: weeks.length, assignmentCount, deliveryCount };
-  }));
+  res.json(await service.listMonthlySchedules());
 });
 
 router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
-    res.json(await prisma.monthlySchedule.findUniqueOrThrow({
-      where: { id: req.params.id },
-      include: {
-        weeks: {
-          orderBy: { weekStartDate: "asc" },
-          include: {
-            _count: { select: { assignments: true } },
-            assignments: {
-              include: { assigned: true, companion: true, reminderDeliveries: true },
-              orderBy: { assignmentNumber: "asc" },
-            },
-          },
-        },
-      },
-    }));
+    res.json(await service.getMonthlyScheduleDetail(req.params.id));
   } catch {
     res.status(404).json({ error: "Not found" });
   }
@@ -125,10 +92,18 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
         ...data,
         archivedAt: data.status === "ARCHIVED" ? new Date() : undefined,
         cancelledAt: data.status === "CANCELLED" ? new Date() : undefined,
+        completedAt: data.status === "COMPLETED" ? new Date() : undefined,
       },
     });
     await createAutomationEvent(prisma, {
-      eventType: data.status === "ARCHIVED" ? "MONTHLY_PROGRAM_ARCHIVED" : "MONTHLY_PROGRAM_UPDATED",
+      eventType:
+        data.status === "ARCHIVED"
+          ? "MONTHLY_PROGRAM_ARCHIVED"
+          : data.status === "COMPLETED"
+            ? "MONTHLY_PROGRAM_COMPLETED"
+            : data.status === "CANCELLED"
+              ? "MONTHLY_PROGRAM_CANCELLED"
+              : "MONTHLY_PROGRAM_UPDATED",
       entityType: "MonthlySchedule",
       entityId: schedule.id,
       actorType: "admin",
@@ -286,6 +261,30 @@ router.post("/:id/generate-assignments", async (req: Request<{ id: string }>, re
     });
 
     res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/:id/generate-automations", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.generateProgramAutomations(req.params.id));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/:id/regenerate-pending", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.regenerateProgramPending(req.params.id));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/:id/cancel-pending", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.cancelProgramPending(req.params.id));
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

@@ -30,6 +30,7 @@ function statusClass(status: string) {
   const map: Record<string, string> = {
     ACTIVE: 'bg-emerald-50 text-emerald-700',
     DRAFT: 'bg-amber-50 text-amber-700',
+    COMPLETED: 'bg-azure/10 text-azure',
     ARCHIVED: 'bg-fog text-graphite',
     CANCELLED: 'bg-red-50 text-red-700',
   }
@@ -127,6 +128,9 @@ export default function ProgramasPage() {
   function renderProgramActions(program: MonthlySchedule) {
     return (
       <div className="flex flex-wrap items-center gap-2">
+        <Link href={`/dashboard/programas/${program.id}`} className="bg-azure text-white text-xs font-medium px-3 py-1.5 rounded-pill hover:opacity-90 transition-opacity">
+          Ver detalle
+        </Link>
         <button onClick={() => generateWeeks(program.id)} disabled={generatingWeeks === program.id || program.status === 'ARCHIVED'} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 disabled:opacity-50">
           {generatingWeeks === program.id ? 'Generando...' : 'Generar semanas'}
         </button>

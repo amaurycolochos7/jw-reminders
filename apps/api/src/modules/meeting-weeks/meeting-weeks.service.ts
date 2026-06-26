@@ -1,6 +1,8 @@
 import { prisma } from "@jw-reminders/database";
 import {
+  applyAssignmentSnapshots,
   createAutomationEvent,
+  createAutomationPlanForAssignment,
   ensureMonthlyScheduleForDate,
   regenerateAssignmentAutomation,
 } from "../../services/automation.service.js";
@@ -136,6 +138,62 @@ export async function updateMeetingWeek(id: string, data: any) {
     return week;
   });
 }
+export async function generateWeekAutomations(id: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const week = await tx.jwMeetingWeek.findUniqueOrThrow({
+        where: { id },
+        include: { assignments: { select: { id: true, status: true } } },
+      });
+
+      if (week.status === "ARCHIVED" || week.status === "CANCELLED") {
+        throw new Error("No se pueden generar automatizaciones en una semana archivada o cancelada");
+      }
+
+      let created = 0;
+      let plans = 0;
+      let skipped = 0;
+
+      for (const assignment of week.assignments) {
+        if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED") continue;
+        const active = await tx.automationPlan.findFirst({
+          where: { assignmentId: assignment.id, status: "ACTIVE" },
+          select: { id: true },
+        });
+        if (active) {
+          skipped += 1;
+          continue;
+        }
+        await applyAssignmentSnapshots(tx, assignment.id);
+        const result = await createAutomationPlanForAssignment(tx, assignment.id, {
+          includeInitial: true,
+          includeNormal: true,
+          reason: "week_bulk_generate",
+          actorType: "admin",
+        });
+        created += result.created;
+        plans += 1;
+      }
+
+      if (plans > 0) {
+        await tx.jwMeetingWeek.update({ where: { id }, data: { status: "ACTIVE" } });
+      }
+
+      await createAutomationEvent(tx, {
+        eventType: "WEEK_AUTOMATIONS_GENERATED",
+        entityType: "JwMeetingWeek",
+        entityId: id,
+        actorType: "admin",
+        metadata: { created, plans, skipped },
+      });
+
+      return { created, plans, skipped };
+    },
+    { timeout: 30000 },
+  );
+}
+
+
 
 export async function deleteMeetingWeek(id: string) {
   return prisma.$transaction(async (tx) => {
