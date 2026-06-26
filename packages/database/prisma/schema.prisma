@@ -187,6 +187,7 @@ model JwMeetingWeek {
 
   monthlySchedule MonthlySchedule? @relation(fields: [monthlyScheduleId], references: [id])
   assignments     JwAssignment[]
+  assignmentTemplates AssignmentTemplate[]
 
   @@index([monthlyScheduleId])
   @@index([status])
@@ -228,6 +229,28 @@ model JwAssignment {
   @@index([meetingWeekId, status])
   @@index([assignedPublisherId])
   @@index([companionPublisherId])
+}
+
+model AssignmentTemplate {
+  id               String            @id @default(cuid())
+  meetingWeekId    String
+  order            Int
+  assignmentNumber Int
+  section          AssignmentSection
+  assignmentType   AssignmentType
+  title            String
+  durationMinutes  Int?
+  needsCompanion   Boolean           @default(false)
+  room             Room              @default(MAIN)
+  reference        String?
+  source           String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  meetingWeek JwMeetingWeek @relation(fields: [meetingWeekId], references: [id])
+
+  @@unique([meetingWeekId, assignmentNumber])
+  @@index([meetingWeekId])
 }
 
 model AutomationPlan {

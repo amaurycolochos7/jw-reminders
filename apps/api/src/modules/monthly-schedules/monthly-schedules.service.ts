@@ -369,6 +369,10 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
               assignments: {
                 select: { assignmentNumber: true, assignedPublisherId: true, companionPublisherId: true, status: true },
               },
+              assignmentTemplates: {
+                orderBy: { order: "asc" },
+                select: { assignmentNumber: true, section: true, assignmentType: true, title: true, durationMinutes: true, needsCompanion: true, room: true },
+              },
             },
           },
         },
@@ -394,6 +398,17 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
         existingPublisherIds: week.assignments
           .filter((a) => a.status !== "PROPOSED")
           .flatMap((a) => [a.assignedPublisherId, a.companionPublisherId].filter(Boolean) as string[]),
+        slots: week.assignmentTemplates.length > 0
+          ? week.assignmentTemplates.map((t) => ({
+              assignmentNumber: t.assignmentNumber,
+              section: t.section as any,
+              assignmentType: t.assignmentType as string,
+              title: t.title,
+              durationMinutes: t.durationMinutes ?? undefined,
+              room: t.room as any,
+              needsCompanion: t.needsCompanion,
+            }))
+          : undefined,
       }));
 
       const { assignments, warnings } = buildAssignmentProposal({ weeks: weeksInput, publishers, history, options });

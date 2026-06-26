@@ -85,3 +85,44 @@ El sistema no debe:
 - mostrar contenido descargado de JW.ORG como si fuera parte propia del producto;
 - ejecutar crawlers o jobs de extraccion contra JW.ORG.
 
+
+
+
+---
+
+## Actualizacion P4 - Arquitectura de Providers (2026-06-25)
+
+Reinvestigacion para la fase de arquitectura desacoplada. Hallazgos concretos adicionales:
+
+### Formatos oficiales publicados por issue
+
+Cada cuaderno "Vida y Ministerio" se publica en `jw.org/.../jw-meeting-workbook/<mes-mes-anio-mwb>/` en formatos: **PDF, EPUB, JWPUB, Screen Reader (RTF), Notetaker (BRL)**. Son descargables para uso personal y no comercial segun las condiciones de uso.
+
+### Fuentes tecnicas evaluadas (evidencia)
+
+| Fuente | Estado real | Viabilidad | Estabilidad | Riesgo legal | Decision |
+| --- | --- | --- | --- | --- | --- |
+| API publica oficial documentada para el programa | No existe (no se encontro documentacion oficial para terceros) | - | - | - | No usable |
+| API interna de jw.org / jw-cdn (usada por JW Library) | Existe pero **no documentada** (p. ej. `b.jw-cdn.org/apis/pub-media`, wrappers como `allejok96/jwlib`, `MrCyjaneK/jwapi`) | Media | Baja (puede cambiar sin aviso) | Alto (acceso no provisto explicitamente, ToS) | Rechazada |
+| Scraping HTML de jw.org | Tecnicamente posible | Alta | Muy baja (HTML cambia) | Alto (ToS prohibe scraping) | Rechazada |
+| EPUB oficial parseado (libreria comunitaria `jw-epub-parser`, MIT) | El admin descarga el EPUB oficial y lo parsea | Alta | Media (depende del formato EPUB) | Bajo-medio si el admin aporta su propio archivo y NO se redistribuye el contenido | Futuro (JWProvider), pendiente de revision legal |
+| Importacion estructurada aportada por el admin (JSON) | El admin pega/sube datos que el mismo prepara | Alta | Alta | Bajo | **Implementada (ImportProvider)** |
+| Carga manual / scaffold de estructura estandar | El sistema crea la estructura tipica del mes | Alta | Alta | Ninguno | **Implementada (ManualProvider)** |
+| RSS / GraphQL del programa | No se encontro feed estructurado del programa | - | - | - | No usable |
+
+### Conclusion para P4
+
+No existe una fuente automatica oficial y estable que se pueda consumir sin riesgo legal/ToS. Por lo tanto:
+
+- Se construye una **arquitectura desacoplada de Providers** (interfaz unica que consume todo el sistema).
+- Se implementan dos Providers seguros:
+  - **ManualProvider**: genera la estructura estandar del mes (semanas + partes tipicas) para que el admin la confirme y edite.
+  - **ImportProvider**: importa un payload estructurado (JSON con un esquema propio del proyecto) que el administrador prepara por su cuenta. El sistema no descarga ni redistribuye contenido protegido; solo guarda datos operativos (titulos de partes, duracion, seccion).
+- Se documenta **JWProvider** como implementacion futura: parsear el EPUB oficial que el admin descargue (via `jw-epub-parser` u otra), supeditado a revision legal y a que el admin aporte su propio archivo, sin redistribucion. No se implementa ahora para no introducir scraping fragil ni dependencias de HTML/APIs inestables.
+- La arquitectura permite agregar JWProvider (u otro) en el futuro **sin modificar** el motor de importacion ni el resto del sistema: basta con registrar un nuevo Provider que cumpla la interfaz.
+
+### Restricciones respetadas
+
+- No se hace scraping de jw.org ni se consumen APIs no documentadas.
+- No se almacena ni redistribuye contenido editorial protegido (solo datos operativos del programa).
+- Toda integracion es reemplazable por otra implementacion de la interfaz Provider.

@@ -39,6 +39,8 @@ export interface ProposalWeekInput {
   existingNumbers: number[];
   /** Publisher ids already used in the week (avoided to prevent duplicates). */
   existingPublisherIds: string[];
+  /** Per-week slots (e.g. from imported AssignmentTemplates). Falls back to global slots. */
+  slots?: ProposalSlot[];
 }
 
 export interface ProposalHistory {
@@ -132,8 +134,9 @@ export function buildAssignmentProposal(input: {
   for (const week of input.weeks) {
     const used = new Set<string>(week.existingPublisherIds);
     const existingNumbers = new Set(week.existingNumbers);
+    const weekSlots = week.slots ?? slots;
 
-    for (const slot of slots) {
+    for (const slot of weekSlots) {
       if (existingNumbers.has(slot.assignmentNumber)) continue;
 
       // Pick assigned publisher.
