@@ -612,3 +612,11 @@ Config de prod: `TEST_MODE=true`, `TEST_PHONE=5219611234567` (los envios solo va
 ## Criterio de aceptacion P2
 
 Cumplido: detalle completo del programa; generacion de semanas sin duplicados; metricas reales; acciones masivas seguras con modal de confirmacion; agenda por programa en el Centro de Automatizaciones; estados incluyendo `COMPLETED`; responsive. Probado localmente y en produccion; desplegado en Dokploy via API; migracion aplicada en prod; reporte actualizado.
+
+
+## Pendientes menores de P2 (cierre)
+
+1. **Programa de prueba `Diciembre 2099`**: quedo vacio (sus 4 semanas de prueba fueron eliminadas) y en estado `ARCHIVED`. No existe endpoint de borrado de programa en la API, por lo que se deja archivado e inofensivo (mes lejano, sin semanas, sin asignaciones, sin entregas; no aparece en operaciones activas).
+2. **Procedimiento de deploy via API documentado** en `docs/DEPLOY-DOKPLOY.md` (seccion "Cuando el webhook NO dispara el deploy").
+
+**Propuesta (no implementada) — endpoint de borrado seguro de programas vacios**: `DELETE /api/monthly-schedules/:id` que solo borre de forma permanente cuando el programa no tenga semanas con asignaciones ni entregas (mismo criterio que `meeting-weeks` usa para borrar semanas vacias). Si el programa tiene historial, responder 409 / archivar en lugar de borrar. Pendiente de aprobacion del admin antes de implementar.
