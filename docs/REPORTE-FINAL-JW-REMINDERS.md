@@ -692,3 +692,73 @@ Config de prod: `TEST_MODE=true`. No se generaron automatizaciones para las prop
 Cumplido: se genera una propuesta mensual; distribuye de forma razonable (balance + historial + parejas, validado por pruebas unitarias); el admin revisa y edita antes de aprobar; al aprobar se crean asignaciones reales; no se generan automatizaciones hasta que el admin lo pide; sin duplicados graves (dedup por slot); no se usan publicadores inactivos ni no elegibles; produccion probada; reporte actualizado.
 
 Nota de limpieza: quedaron dos programas de prueba archivados e inofensivos en produccion (`Diciembre 2099` vacio y `Noviembre 2099` con asignaciones en borrador en semanas archivadas, sin entregas ni mensajes), por no existir endpoint de borrado de programas.
+
+
+---
+
+# P4 - Integracion inteligente de programas (arquitectura de Providers)
+
+## Resumen
+
+Arquitectura de integracion desacoplada para obtener el contenido de "Seamos mejores maestros" y "Lectura de la Biblia" cuando sea viable. El sistema no depende de una API concreta: consume solo una interfaz `MeetingProgramProvider`. Se implementan ManualProvider e ImportProvider (seguros, sin scraping ni redistribucion de contenido protegido) y se documenta JWProvider como mejora futura. El motor de importacion sigue el flujo Provider -> Parser -> Validator -> Normalizer -> persistencia, creando programa, semanas y plantillas de asignaciones (sin asignar personas).
+
+## Fecha
+
+2026-06-25
+
+## Estado de la fase
+
+Completada. Verificada localmente y en produccion. Commit `3a13616` en `main`. Desplegada en Dokploy via API (`POST /api/compose.deploy`). Migracion `20260626040000_p4_assignment_template` aplicada automaticamente al desplegar.
+
+## Fase 1 - Investigacion (docs/P4-JW-SOURCE-RESEARCH.md)
+
+Conclusion basada en evidencia: no existe API oficial publica documentada para el programa Vida y Ministerio. jw.org publica cada cuaderno en PDF/EPUB/JWPUB/RTF para uso personal; existe una libreria comunitaria (`jw-epub-parser`) y wrappers no oficiales (`allejok96/jwlib`, `MrCyjaneK/jwapi`) que usan endpoints internos no documentados y de riesgo ToS. Decision: implementar Manual + Import ahora; documentar JWProvider (EPUB que el admin aporte, sujeto a revision legal) para el futuro. Sin scraping ni dependencia de HTML/APIs inestables.
+
+## Fase 2/4 - Arquitectura de Providers (apps/api/src/services/providers/)
+
+- `types.ts`: interfaz `MeetingProgramProvider` (id, name, available, fetchRaw) + formas canonicas `Raw/Parsed/Normalized` + presets `STANDARD_PARTS` (4) y `EXTENDED_PARTS` (6) + `NO_COMPANION_TYPES` (Lectura, Discurso).
+- `manual.provider.ts` (ManualProvider): genera la estructura estandar del mes (semanas + partes) para confirmar.
+- `import.provider.ts` (ImportProvider): ingiere un JSON estructurado que aporta el admin (objeto o texto).
+- `jw.provider.ts` (JWProvider): stub documentado, `available:false`, lanza error explicativo (futuro).
+- `registry.ts`: alta de un nuevo Provider en una linea; el resto del sistema no cambia.
+
+## Fase 3 - Motor de importacion (apps/api/src/services/import.service.ts)
+
+- `parseProgram` (lenient), `validateProgram` (errores/avisos), `normalizeProgram` (calcula lunes de la semana, numera secuencial, infiere seccion y acompanante) - funciones puras con pruebas unitarias.
+- `previewImport`: ejecuta Provider->Parser->Validator->Normalizer SIN persistir; marca que semanas ya existen.
+- `confirmImport`: persiste en transaccion -> upsert `MonthlySchedule`, crea `JwMeetingWeek` (READY) sin duplicar, crea filas `AssignmentTemplate`; no asigna personas. Evento `PROGRAM_IMPORTED`.
+- Endpoints `apps/api/src/modules/imports/`: `GET /api/imports/providers`, `POST /api/imports/preview`, `POST /api/imports/confirm`.
+
+## Fase 5 - Modelo de plantillas
+
+Nuevo modelo `AssignmentTemplate` (por semana): order, assignmentNumber, section, assignmentType, title, durationMinutes, needsCompanion, room, source. Unico por `meetingWeekId+assignmentNumber`. Migracion `20260626040000_p4_assignment_template`. El generador de propuestas (P3) usa las plantillas de la semana como slots cuando existen (si no, cae a los slots por defecto).
+
+## Fase 6 - UI (apps/web/src/app/dashboard/importar/page.tsx)
+
+Pantalla "Importar programa": seleccionar Provider, formulario (manual: ano/mes/dia/hora/preset; import: JSON), Previsualizar, ver validacion (errores/avisos) y preview por semana con sus plantillas (marcando las que ya existen), y Confirmar. La importacion nunca es directa: el boton Confirmar solo se habilita tras una previsualizacion valida con semanas nuevas. Item de menu "Importar" en la barra lateral.
+
+## Pruebas locales (todas OK)
+
+- `tsc --noEmit` limpio (api+web); 20 pruebas unitarias (incluye parser/validator/normalizer y los providers).
+- Smoke de extremo a extremo contra imagen recien construida (red Docker, DB real): listar providers (jw no disponible); ManualProvider preview (5 semanas, 6 partes extended) + confirm (30 plantillas) + reconfirm (0 duplicadas); la propuesta usa las plantillas importadas (30 = 5x6); ImportProvider rechaza payload invalido (3 errores) y confirma uno valido (2 plantillas); JWProvider rechazado. Datos de prueba eliminados.
+
+## Pruebas en produccion (tras deploy via API, OK)
+
+| Prueba | Resultado |
+|--------|-----------|
+| `GET /api/imports/providers` | manual:true, import:true, jw:false |
+| Manual preview (extended) | valido, 4 semanas, 6 partes/semana |
+| Manual confirm | Febrero 2096: 4 semanas, 24 plantillas |
+| Manual re-confirm | 0 creadas, 4 omitidas (sin duplicar) |
+| Import preview/confirm | Marzo 2096: 1 semana, 2 plantillas |
+| Import preview payload invalido | valido=false, 3 errores |
+| JWProvider | rechazado (no disponible) |
+| Limpieza | programas de prueba 2096 archivados |
+
+Migracion `AssignmentTemplate` confirmada viva en produccion (se crearon plantillas). Sin envio de mensajes (la importacion no genera automatizaciones).
+
+## Criterio de aceptacion P4
+
+Cumplido: existe una arquitectura de Providers (interfaz unica + registry); el sistema importa mediante un Provider (Manual e Import); las semanas se generan correctamente y sin duplicar; las plantillas de asignaciones se crean automaticamente; la arquitectura permite agregar nuevos Providers en el futuro (JWProvider documentado) sin tocar el motor ni la UI; probado localmente y en produccion; desplegado en Dokploy via API; reporte actualizado.
+
+Nota de limpieza: quedaron dos programas de prueba archivados e inofensivos en produccion (`Febrero 2096`, `Marzo 2096`) por no existir endpoint de borrado de programas (mejora futura ya documentada).
