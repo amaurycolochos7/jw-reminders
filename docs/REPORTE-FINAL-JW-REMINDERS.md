@@ -514,3 +514,74 @@ Produccion (despues del deploy):
 Cumplido: el Centro carga sin errores; filtros y agrupamientos funcionan; se ve el detalle de una automatizacion con historial de intentos; se puede reintentar un fallo y cancelar una entrega pendiente; se navega a semana/asignacion/programa; responsive por codigo (movil y escritorio); sin 401/404/500; sin emojis; produccion probada tras el deploy; reporte actualizado.
 
 Nota: la verificacion visual en dispositivos reales y el envio real por WhatsApp siguen dependiendo del dispositivo (QR) y de la confirmacion visual del usuario, como en RC1.
+
+
+
+---
+
+# P2 - Programa mensual inteligente
+
+## Resumen
+
+El modulo de Programas mensuales pasa a ser el centro de planificacion del mes. Se agrega una pantalla de detalle completa por programa con metricas reales, generacion/revision de semanas sin duplicados, completitud por semana y del programa, acciones masivas seguras con modal de confirmacion (sin alert/confirm nativos) y la relacion clara programa -> semanas -> asignaciones -> automatizaciones -> Centro de Automatizaciones.
+
+## Fecha
+
+2026-06-25
+
+## Estado de la fase
+
+Codigo completo y verificado localmente. Commit `25fe5de` en `main` (push hecho). Deploy en Dokploy: el redeploy se dispara desde el panel de Dokploy / webhook de GitHub; el contenedor de API ejecuta `prisma migrate deploy` al arrancar, por lo que la migracion `20260626000000_p2_monthly_completed` (enum `COMPLETED` + columna `completedAt`) se aplica automaticamente en produccion al desplegar.
+
+## Estados del programa
+
+`DRAFT`, `ACTIVE`, `COMPLETED` (nuevo), `ARCHIVED`, `CANCELLED`. Se agrego `MonthlyScheduleStatus.COMPLETED` y `MonthlySchedule.completedAt` al esquema; `PUT /:id` con `status=COMPLETED` fija `completedAt` y emite `MONTHLY_PROGRAM_COMPLETED`.
+
+## Archivos creados
+
+- `packages/database/prisma/migrations/20260626000000_p2_monthly_completed/migration.sql`: `ALTER TYPE ... ADD VALUE 'COMPLETED'` + `ADD COLUMN "completedAt"`.
+- `apps/api/src/modules/monthly-schedules/monthly-schedules.service.ts`: metricas y acciones masivas.
+- `apps/web/src/app/dashboard/programas/[id]/page.tsx`: pantalla de detalle del programa.
+- `apps/web/src/components/ConfirmModal.tsx`: modal de confirmacion reutilizable (tonos default/danger/warning, cierre con Esc/overlay).
+
+## Archivos modificados
+
+- `packages/database/prisma/schema.prisma`: enum `COMPLETED` + `completedAt`.
+- `apps/api/src/modules/monthly-schedules/monthly-schedules.routes.ts`: `GET /` y `GET /:id` usan el servicio; `updateSchema` admite `COMPLETED`; nuevos `POST /:id/generate-automations`, `/:id/regenerate-pending`, `/:id/cancel-pending`.
+- `apps/api/src/modules/meeting-weeks/meeting-weeks.service.ts` y `meeting-weeks.routes.ts`: `generateWeekAutomations` + `POST /:id/generate-automations` (nivel semana).
+- `apps/web/src/app/dashboard/programas/page.tsx`: enlace "Ver detalle" + estado `COMPLETED`.
+- `apps/web/src/components/index.ts`: exporta `ConfirmModal`.
+
+## API
+
+- `GET /api/monthly-schedules`: lista enriquecida (weekCount, assignmentCount, deliveryCount, pending, sent, failed, cancelled, completion).
+- `GET /api/monthly-schedules/:id`: detalle con `metrics` (totalWeeks, activeWeeks, totalAssignments, totalAutomations, automationPlanCount, pending, sent, failed, cancelled, skipped, completion) y `weeks[]` con conteos por semana y completitud.
+- `POST /api/monthly-schedules/:id/generate-automations`: genera planes para todas las asignaciones sin plan activo en semanas activas; idempotente (omite las que ya tienen). Evento `MONTHLY_AUTOMATIONS_GENERATED`.
+- `POST /api/monthly-schedules/:id/regenerate-pending`: supersede planes activos y regenera. Evento `MONTHLY_AUTOMATIONS_REGENERATED`.
+- `POST /api/monthly-schedules/:id/cancel-pending`: cancela entregas `PENDING`/`QUEUED`/`FAILED` del programa (sin borrar historial). Evento `MONTHLY_AUTOMATIONS_CANCELLED`.
+- `POST /api/meeting-weeks/:id/generate-automations`: genera automatizaciones de una sola semana.
+- Buckets de entrega: pending=`PENDING`/`QUEUED`/`SENDING`, sent=`SENT`, failed=`FAILED`/`DEAD`, cancelled=`CANCELLED`, skipped=`SKIPPED`.
+- Completitud por semana = 4 pasos (existe, tiene asignaciones, tiene automatizaciones, sin pendientes); completitud del programa = promedio de semanas activas.
+
+## Frontend (detalle del programa)
+
+- Cabecera con nombre, mes, estado visual y barra de completitud.
+- 8 tarjetas de metricas: Semanas, Asignaciones, Automatizaciones, Pendientes, Enviadas, Fallidas, Canceladas, Completitud.
+- Acciones del programa con `ConfirmModal`: Generar automatizaciones, Regenerar pendientes, Cancelar pendientes, Marcar completado, Archivar programa, y enlace "Ver agenda en Centro de Automatizaciones" (`?range=month&monthlyScheduleId=`).
+- Generacion de semanas (dia/hora) con confirmacion; no duplica semanas existentes.
+- Lista de semanas: tarjetas en movil y tabla en escritorio (rango, reunion, estado, asignaciones, pendientes, enviadas, fallidas, completitud). Acciones por semana: Ver semana, Editar (fecha/hora con regeneracion automatica), Generar automatizaciones, Archivar/Eliminar.
+- Responsive (movil/tablet/escritorio) sin scroll horizontal roto; toasts para feedback.
+
+## Pruebas locales (todas OK)
+
+- `prisma generate` y migracion aplicada en DB local (enum `COMPLETED` + `completedAt` verificados).
+- `tsc --noEmit` limpio en `apps/api` y `apps/web`; pruebas unitarias API 6/6; `next build`: "Compiled successfully" + tipos validos + 14/14 paginas (solo falla el copiado standalone por symlink en Windows, no afecta Docker/Linux).
+- Smoke test de extremo a extremo contra imagen recien construida (red Docker, DB real): crear programa, generar semanas (5), generar de nuevo (0 = sin duplicar), generar asignaciones (20), detalle con metricas, generar automatizaciones (160 en 20 planes), regenerar de nuevo (0, omitidas 20), agenda filtrada por programa (35 avisos iniciales inmediatos), generar por semana (idempotente), regenerar pendientes (160 / 20 supersede), cancelar pendientes (160), marcar `COMPLETED` (fija `completedAt`), archivar, lista enriquecida. Datos de prueba eliminados al final.
+
+## Pruebas en produccion
+
+Pendiente de confirmar tras el redeploy de Dokploy (el push a `main` esta hecho; la migracion se aplica sola al desplegar). Verificacion prevista: pantalla `/dashboard/programas/:id` HTTP 200, `GET /:id` con `metrics`, generacion de semanas sin duplicados, acciones masivas y agenda filtrada por programa.
+
+## Criterio de aceptacion P2
+
+Codigo: cumplido (detalle completo, generacion de semanas sin duplicados, metricas reales, acciones masivas seguras con modal, agenda por programa en el Centro de Automatizaciones, estados incluyendo `COMPLETED`, responsive). Local: probado y aprobado. Produccion: queda pendiente disparar el redeploy en Dokploy y la verificacion final en `https://jw-reminders.duckdns.org`.
