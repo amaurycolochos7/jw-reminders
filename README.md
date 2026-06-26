@@ -87,6 +87,7 @@ Con `TEST_MODE=true`, todos los mensajes van a `TEST_PHONE` en lugar de los núm
 ## Documentación
 
 - [Directiva Maestra](docs/MASTER-PROJECT-DIRECTIVE.md)
+- [Vision del producto](docs/VISION.md)
 - [Arquitectura](ARCHITECTURE.md)
 - [Release](RELEASE.md)
 - [Changelog](CHANGELOG.md)
