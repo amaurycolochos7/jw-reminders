@@ -620,3 +620,75 @@ Cumplido: detalle completo del programa; generacion de semanas sin duplicados; m
 2. **Procedimiento de deploy via API documentado** en `docs/DEPLOY-DOKPLOY.md` (seccion "Cuando el webhook NO dispara el deploy").
 
 **Propuesta (no implementada) — endpoint de borrado seguro de programas vacios**: `DELETE /api/monthly-schedules/:id` que solo borre de forma permanente cuando el programa no tenga semanas con asignaciones ni entregas (mismo criterio que `meeting-weeks` usa para borrar semanas vacias). Si el programa tiene historial, responder 409 / archivar en lugar de borrar. Pendiente de aprobacion del admin antes de implementar.
+
+
+---
+
+# P3 - Generador automatico de asignaciones
+
+## Resumen
+
+Generador automatico que distribuye publicadores de forma equilibrada en Lectura de la Biblia y Seamos mejores maestros, considerando el historial previo. No envia mensajes: primero crea una PROPUESTA revisable (estado `PROPOSED`) que el admin revisa, edita, aprueba o descarta. Solo al aprobar se crean asignaciones reales (`DRAFT`); las automatizaciones se generan despues, cuando el admin lo pide.
+
+## Fecha
+
+2026-06-25
+
+## Estado de la fase
+
+Completada. Verificada localmente y en produccion. Commit `2ef9bc4` en `main`. Desplegada en Dokploy via API (`POST /api/compose.deploy`). La migracion `20260626020000_p3_assignment_proposed` (valor `PROPOSED` en `AssignmentStatus`) se aplico automaticamente al arrancar (`prisma migrate deploy`).
+
+## Flujo
+
+Programa mensual -> Generar semanas -> Generar propuesta -> Revisar / editar -> Aprobar -> (volver al programa) Generar automatizaciones.
+
+## Algoritmo de scoring (`apps/api/src/services/assignment-proposal.ts`)
+
+Funcion pura y determinista `buildAssignmentProposal(weeks, publishers, history, slots?, options?)` -> `{ assignments, warnings }`:
+
+- Elegibilidad: asignado = `isActive && !deletedAt && canReceiveAssignments`; acompanante = lo anterior **mas** `canBeCompanion` (ser acompanante tambien es recibir asignacion).
+- Balance: puntaje = `historial + usoEnElMes * 1000` (el balance dentro del mes domina; el historial desempata) -> elige siempre al de menor carga.
+- Parejas frecuentes: penalizacion por pareja (`historial de pareja + pareja en el mes * 1000`) para evitarlas cuando hay alternativa.
+- No repite la misma persona dos veces en la semana, salvo `allowSamePersonTwicePerWeek`.
+- Lectura de la Biblia y TALK sin acompanante; Seamos mejores maestros con acompanante.
+- Cuando no hay suficientes personas/acompanantes, emite `warnings` y reutiliza solo lo imprescindible.
+- 8 pruebas unitarias cubren: exclusion de inactivos/no-elegibles/borrados, no usar acompanante no apto, lectura individual, no repetir en la semana, distribucion equilibrada, prioridad por historial, respeto de slots existentes y evitar pareja frecuente.
+
+## Backend
+
+- `AssignmentStatus` + `PROPOSED` (migracion `20260626020000_p3_assignment_proposed`).
+- `monthly-schedules.service.ts`: `generateProposal`, `discardProposal`, `regenerateProposal`, `approveProposal` (PROPOSED -> DRAFT), `getProposal`. El historial para el scoring se toma solo de `DRAFT/SCHEDULED/COMPLETED` (no de propuestas ni canceladas).
+- Endpoints: `GET /api/monthly-schedules/:id/proposal`, `POST /:id/generate-proposal`, `/:id/regenerate-proposal`, `/:id/discard-proposal`, `/:id/approve-proposal` (cuerpo opcional `{ allowSamePersonTwicePerWeek }`).
+- Edicion manual: reutiliza `PUT /api/assignments/:id` (cambia asignado/acompanante y recalcula snapshots; la fila sigue en `PROPOSED`).
+- Gating: la generacion de automatizaciones **omite** asignaciones `PROPOSED` (programa y semana) y la generacion por asignacion las **rechaza**; nada se vuelve definitivo ni envia mensajes hasta aprobar.
+
+## Frontend (`apps/web/src/app/dashboard/programas/[id]/propuesta/page.tsx`)
+
+- Vista de propuesta por semana con asignado y acompanante editables (selects). Bandera "permitir repetir persona en la misma semana".
+- Acciones con `ConfirmModal` (sin alert/confirm nativos): Generar, Regenerar, Aprobar, Descartar. Muestra avisos de la generacion y toasts.
+- Enlace de entrada desde el detalle del programa ("Abrir propuesta").
+
+## Pruebas locales (todas OK)
+
+- `tsc --noEmit` limpio (api+web); 14 pruebas unitarias (6 date-utils + 8 propuesta) en verde.
+- Smoke de extremo a extremo contra imagen recien construida (red Docker, DB real): crear -> semanas (5) -> generar propuesta (20) -> `GET proposal` -> generar automatizaciones sobre PROPOSED = 0 (omitidas) -> generar por asignacion = rechazada -> edicion manual conserva PROPOSED -> regenerar (20) -> aprobar (20) -> proposedCount=0 -> detalle 20 DRAFT -> generar automatizaciones tras aprobar = 160 -> generar propuesta de nuevo = 0 (sin duplicar) -> descartar. Datos de prueba eliminados.
+
+## Pruebas en produccion (tras deploy via API, OK)
+
+| Prueba | Resultado |
+|--------|-----------|
+| Migracion `PROPOSED` viva | Si (endpoints de propuesta responden) |
+| Crear programa (Noviembre 2099) + generar semanas | created=4 |
+| `POST /generate-proposal` | created=16, warnings=12 (prod tiene 1 publicador activo: reutiliza y avisa) |
+| `GET /proposal` | hasProposal=true, proposedCount=16, weeks=4 |
+| `POST /generate-automations` sobre PROPOSED | created=0 (omitidas; sin mensajes) |
+| `POST /approve-proposal` | approved=16; proposedCount -> 0 (asignaciones reales) |
+| Limpieza | Semanas eliminadas/archivadas; programa archivado |
+
+Config de prod: `TEST_MODE=true`. No se generaron automatizaciones para las propuestas, por lo que no se enviaron mensajes.
+
+## Criterio de aceptacion P3
+
+Cumplido: se genera una propuesta mensual; distribuye de forma razonable (balance + historial + parejas, validado por pruebas unitarias); el admin revisa y edita antes de aprobar; al aprobar se crean asignaciones reales; no se generan automatizaciones hasta que el admin lo pide; sin duplicados graves (dedup por slot); no se usan publicadores inactivos ni no elegibles; produccion probada; reporte actualizado.
+
+Nota de limpieza: quedaron dos programas de prueba archivados e inofensivos en produccion (`Diciembre 2099` vacio y `Noviembre 2099` con asignaciones en borrador en semanas archivadas, sin entregas ni mensajes), por no existir endpoint de borrado de programas.
