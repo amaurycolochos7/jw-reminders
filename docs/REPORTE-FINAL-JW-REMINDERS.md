@@ -531,7 +531,7 @@ El modulo de Programas mensuales pasa a ser el centro de planificacion del mes. 
 
 ## Estado de la fase
 
-Codigo completo y verificado localmente. Commit `25fe5de` en `main` (push hecho). Deploy en Dokploy: el redeploy se dispara desde el panel de Dokploy / webhook de GitHub; el contenedor de API ejecuta `prisma migrate deploy` al arrancar, por lo que la migracion `20260626000000_p2_monthly_completed` (enum `COMPLETED` + columna `completedAt`) se aplica automaticamente en produccion al desplegar.
+Completada. Codigo verificado localmente y en produccion. Commits `25fe5de` (codigo) y `4a84334` (reporte) en `main`. Desplegado en Dokploy via API (`POST /api/compose.deploy`); la migracion `20260626000000_p2_monthly_completed` (enum `COMPLETED` + columna `completedAt`) se aplico automaticamente al arrancar el contenedor de API (`prisma migrate deploy`).
 
 ## Estados del programa
 
@@ -578,10 +578,37 @@ Codigo completo y verificado localmente. Commit `25fe5de` en `main` (push hecho)
 - `tsc --noEmit` limpio en `apps/api` y `apps/web`; pruebas unitarias API 6/6; `next build`: "Compiled successfully" + tipos validos + 14/14 paginas (solo falla el copiado standalone por symlink en Windows, no afecta Docker/Linux).
 - Smoke test de extremo a extremo contra imagen recien construida (red Docker, DB real): crear programa, generar semanas (5), generar de nuevo (0 = sin duplicar), generar asignaciones (20), detalle con metricas, generar automatizaciones (160 en 20 planes), regenerar de nuevo (0, omitidas 20), agenda filtrada por programa (35 avisos iniciales inmediatos), generar por semana (idempotente), regenerar pendientes (160 / 20 supersede), cancelar pendientes (160), marcar `COMPLETED` (fija `completedAt`), archivar, lista enriquecida. Datos de prueba eliminados al final.
 
-## Pruebas en produccion
+## Deploy en produccion (Dokploy API)
 
-Pendiente de confirmar tras el redeploy de Dokploy (el push a `main` esta hecho; la migracion se aplica sola al desplegar). Verificacion prevista: pantalla `/dashboard/programas/:id` HTTP 200, `GET /:id` con `metrics`, generacion de semanas sin duplicados, acciones masivas y agenda filtrada por programa.
+El redeploy NO se disparo solo con el push a `main`. Causa raiz verificada via API de Dokploy (`http://187.77.11.79:3000`, token `x-api-key` valido):
+
+- Proyecto `jw-reminders` (id `U5Ic_HIvn7KMmrwixyE2J`), entorno `production`, servicio compose `jw-reminders-stack` (id `z6xyxXGM1QTnRlFs_2Lmc`), `composePath=./docker-compose.yml`.
+- `sourceType=git` con `customGitUrl=https://github.com/amaurycolochos7/jw-reminders.git`, `customGitBranch=main`, `githubId` vacio (no usa la integracion GitHub App, sino git custom + webhook por `refreshToken`). `autoDeploy=true`, `triggerType=push`.
+- El historial de deployments mostraba como ultimo el de P1 (`2026-06-25T23:56:55Z`); no existia ningun deployment para los commits P2 (`25fe5de`, `4a84334`): el webhook de GitHub no disparo el deploy esta vez.
+- La API de Dokploy sigue siendo valida (lista 10 proyectos, lectura completa de configuracion). Se redesplego con `POST /api/compose.deploy` `{composeId}` -> `{success:true,"Deployment queued"}`, igual que en fases anteriores. Build finalizado con `composeStatus=done`.
+- El contenedor de API ejecuta `prisma migrate deploy` al arrancar; la migracion `20260626000000_p2_monthly_completed` se aplico sola en la DB de produccion (enum `COMPLETED` + `completedAt`).
+
+## Pruebas en produccion (todas OK, tras redeploy)
+
+| Prueba | Resultado |
+|--------|-----------|
+| `GET /api/monthly-schedules` | Incluye `completion`, `pending`, `sent`, `failed`, `cancelled` (codigo nuevo vivo) |
+| `GET /api/monthly-schedules/:id` | Incluye `metrics` + `weeks[]` con conteos por semana (migracion viva) |
+| Crear programa (Diciembre 2099 de prueba) | ACTIVE |
+| Generar semanas | created=4 |
+| Generar semanas de nuevo | created=0 (sin duplicar) |
+| Generar asignaciones | Guarda correcta: 400 "se necesitan al menos 2 publicadores activos" (no hay 2 activos en prod) |
+| `POST /:id/generate-automations` | Desplegado, created=0 (sin asignaciones) |
+| `POST /:id/regenerate-pending` | Desplegado, 0/0 |
+| `POST /:id/cancel-pending` | Desplegado, cancelled=0 |
+| `POST /api/meeting-weeks/:id/generate-automations` | Desplegado, created=0 |
+| Agenda filtrada `?range=month&monthlyScheduleId=` | OK (groups=0 sin entregas) |
+| `PUT /:id status=COMPLETED` | status=COMPLETED, `completedAt` fijado (confirma enum+columna en prod) |
+| `PUT /:id status=ARCHIVED` | status=ARCHIVED |
+| Limpieza | Semanas de prueba (vacias) eliminadas; queda solo el cascaron archivado "Diciembre 2099" (la API no expone borrado de programa) |
+
+Config de prod: `TEST_MODE=true`, `TEST_PHONE=5219611234567` (los envios solo van al telefono de prueba).
 
 ## Criterio de aceptacion P2
 
-Codigo: cumplido (detalle completo, generacion de semanas sin duplicados, metricas reales, acciones masivas seguras con modal, agenda por programa en el Centro de Automatizaciones, estados incluyendo `COMPLETED`, responsive). Local: probado y aprobado. Produccion: queda pendiente disparar el redeploy en Dokploy y la verificacion final en `https://jw-reminders.duckdns.org`.
+Cumplido: detalle completo del programa; generacion de semanas sin duplicados; metricas reales; acciones masivas seguras con modal de confirmacion; agenda por programa en el Centro de Automatizaciones; estados incluyendo `COMPLETED`; responsive. Probado localmente y en produccion; desplegado en Dokploy via API; migracion aplicada en prod; reporte actualizado.
