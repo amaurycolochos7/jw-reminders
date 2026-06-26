@@ -9,6 +9,7 @@ JW-REMINDERS tiene implementadas y desplegadas las fases:
 - P2 - Programa mensual;
 - P3 - Generador automatico de asignaciones con propuesta revisable;
 - P4 - Arquitectura de Providers e importacion segura.
+- P4.5 - Centro Operativo (dashboard operativo unificado).
 
 ## Ultimos commits funcionales
 
