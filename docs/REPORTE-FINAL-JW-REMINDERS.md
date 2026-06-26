@@ -762,3 +762,34 @@ Migracion `AssignmentTemplate` confirmada viva en produccion (se crearon plantil
 Cumplido: existe una arquitectura de Providers (interfaz unica + registry); el sistema importa mediante un Provider (Manual e Import); las semanas se generan correctamente y sin duplicar; las plantillas de asignaciones se crean automaticamente; la arquitectura permite agregar nuevos Providers en el futuro (JWProvider documentado) sin tocar el motor ni la UI; probado localmente y en produccion; desplegado en Dokploy via API; reporte actualizado.
 
 Nota de limpieza: quedaron dos programas de prueba archivados e inofensivos en produccion (`Febrero 2096`, `Marzo 2096`) por no existir endpoint de borrado de programas (mejora futura ya documentada).
+
+
+---
+
+# Directiva Maestra del Proyecto
+
+## Fecha
+
+2026-06-25
+
+## Estado
+
+Integrada como documento versionado en `docs/MASTER-PROJECT-DIRECTIVE.md`.
+
+## Alcance
+
+La Directiva Maestra queda como referencia principal de calidad, arquitectura, UX, QA, DevOps, documentacion y definicion de terminado para JW-REMINDERS.
+
+## Documentos agregados
+
+| Archivo | Proposito |
+|---------|-----------|
+| `docs/MASTER-PROJECT-DIRECTIVE.md` | Directiva principal del proyecto |
+| `ARCHITECTURE.md` | Resumen raiz de arquitectura vigente |
+| `CHANGELOG.md` | Historial de cambios por fase |
+| `DEPLOY.md` | Entrada rapida al proceso de despliegue |
+| `RELEASE.md` | Estado actual de release y criterio de cierre |
+
+## Nota de cumplimiento
+
+La revision inmediata no encontro `alert()` ni `confirm()` activos en `apps/`. El reporte previo ya documenta que los dialogos nativos fueron reemplazados por `ConfirmModal` y toasts en las pantallas operativas.

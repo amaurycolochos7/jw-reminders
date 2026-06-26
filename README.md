@@ -86,7 +86,12 @@ Con `TEST_MODE=true`, todos los mensajes van a `TEST_PHONE` en lugar de los núm
 
 ## Documentación
 
+- [Directiva Maestra](docs/MASTER-PROJECT-DIRECTIVE.md)
+- [Arquitectura](ARCHITECTURE.md)
+- [Release](RELEASE.md)
+- [Changelog](CHANGELOG.md)
 - [Deploy en Dokploy](docs/DEPLOY-DOKPLOY.md)
+- [Deploy rapido](DEPLOY.md)
 - [Sesión WhatsApp](docs/WHATSAPP-SESSION.md)
 - [Checklist de pruebas](docs/TESTING-CHECKLIST.md)
 - [Plan completo](PLAN-JW-REMINDERS.md)
