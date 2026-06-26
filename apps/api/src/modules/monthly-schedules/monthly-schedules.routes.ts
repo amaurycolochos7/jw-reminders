@@ -290,4 +290,46 @@ router.post("/:id/cancel-pending", async (req: Request<{ id: string }>, res: Res
   }
 });
 
+router.get("/:id/proposal", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.getProposal(req.params.id));
+  } catch {
+    res.status(404).json({ error: "Not found" });
+  }
+});
+
+router.post("/:id/generate-proposal", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const allow = req.body?.allowSamePersonTwicePerWeek === true;
+    res.json(await service.generateProposal(req.params.id, { allowSamePersonTwicePerWeek: allow }));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/:id/regenerate-proposal", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const allow = req.body?.allowSamePersonTwicePerWeek === true;
+    res.json(await service.regenerateProposal(req.params.id, { allowSamePersonTwicePerWeek: allow }));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/:id/discard-proposal", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.discardProposal(req.params.id));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post("/:id/approve-proposal", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.approveProposal(req.params.id));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 export default router;

@@ -37,6 +37,7 @@ enum Room {
 }
 
 enum AssignmentStatus {
+  PROPOSED
   DRAFT
   SCHEDULED
   COMPLETED

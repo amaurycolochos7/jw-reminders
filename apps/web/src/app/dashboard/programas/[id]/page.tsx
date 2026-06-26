@@ -341,6 +341,17 @@ export default function ProgramDetailPage() {
         ))}
       </div>
 
+      {/* Assignment proposal entry point */}
+      <div className="bg-white rounded-card p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Propuesta de asignaciones</h2>
+          <p className="text-sm text-graphite mt-1">Genera una distribucion equilibrada de publicadores, revisala y apruebala antes de generar automatizaciones.</p>
+        </div>
+        <Link href={`/dashboard/programas/${program.id}/propuesta`} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity text-center flex-shrink-0">
+          Abrir propuesta
+        </Link>
+      </div>
+
       {/* Bulk actions */}
       <div className="bg-white rounded-card p-5 sm:p-7 space-y-4">
         <h2 className="text-sm font-semibold text-ink">Acciones del programa</h2>

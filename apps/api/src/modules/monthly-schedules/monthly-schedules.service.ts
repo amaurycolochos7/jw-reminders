@@ -3,8 +3,10 @@ import {
   applyAssignmentSnapshots,
   createAutomationEvent,
   createAutomationPlanForAssignment,
+  publisherSnapshot,
   regenerateAssignmentAutomation,
 } from "../../services/automation.service.js";
+import { buildAssignmentProposal, ProposalOptions } from "../../services/assignment-proposal.js";
 
 // ─── Delivery status buckets ─────────────────────────────
 const PENDING_STATUSES: ReminderStatus[] = ["PENDING", "QUEUED", "SENDING"];
@@ -215,7 +217,7 @@ export async function generateProgramAutomations(id: string) {
       for (const week of schedule.weeks) {
         let weekCreated = 0;
         for (const assignment of week.assignments) {
-          if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED") continue;
+          if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED" || assignment.status === "PROPOSED") continue;
           const active = await tx.automationPlan.findFirst({
             where: { assignmentId: assignment.id, status: "ACTIVE" },
             select: { id: true },
@@ -273,7 +275,7 @@ export async function regenerateProgramPending(id: string) {
 
       for (const week of schedule.weeks) {
         for (const assignment of week.assignments) {
-          if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED") continue;
+          if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED" || assignment.status === "PROPOSED") continue;
           const result = await regenerateAssignmentAutomation(tx, assignment.id, "program_regenerate");
           created += result.created;
           superseded += result.superseded;
@@ -323,3 +325,225 @@ export async function cancelProgramPending(id: string) {
     return { cancelled: result.count };
   });
 }
+
+// ─── Assignment proposal (P3) ────────────────────────────
+
+const PROPOSAL_HISTORY_STATUSES = ["DRAFT", "SCHEDULED", "COMPLETED"] as const;
+
+function needsCompanionFor(assignmentType: string): boolean {
+  return assignmentType !== "BIBLE_READING" && assignmentType !== "TALK";
+}
+
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+async function loadProposalHistory(tx: any) {
+  const rows = await tx.jwAssignment.findMany({
+    where: { status: { in: [...PROPOSAL_HISTORY_STATUSES] } },
+    select: { assignedPublisherId: true, companionPublisherId: true },
+  });
+  const assignedCount: Record<string, number> = {};
+  const pairCount: Record<string, number> = {};
+  for (const row of rows) {
+    assignedCount[row.assignedPublisherId] = (assignedCount[row.assignedPublisherId] || 0) + 1;
+    if (row.companionPublisherId) {
+      assignedCount[row.companionPublisherId] = (assignedCount[row.companionPublisherId] || 0) + 1;
+      const key = pairKey(row.assignedPublisherId, row.companionPublisherId);
+      pairCount[key] = (pairCount[key] || 0) + 1;
+    }
+  }
+  return { assignedCount, pairCount };
+}
+
+export async function generateProposal(id: string, options: ProposalOptions = {}) {
+  return prisma.$transaction(
+    async (tx) => {
+      const schedule = await tx.monthlySchedule.findUniqueOrThrow({
+        where: { id },
+        include: {
+          weeks: {
+            where: { status: { notIn: [...INACTIVE_WEEK_STATUSES] } },
+            orderBy: { weekStartDate: "asc" },
+            include: {
+              assignments: {
+                select: { assignmentNumber: true, assignedPublisherId: true, companionPublisherId: true, status: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (schedule.weeks.length === 0) {
+        throw new Error("El programa no tiene semanas activas. Genera las semanas antes de proponer asignaciones.");
+      }
+
+      const publishers = await tx.jwPublisher.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
+          isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true,
+        },
+      });
+
+      const history = await loadProposalHistory(tx);
+
+      const weeksInput = schedule.weeks.map((week) => ({
+        weekId: week.id,
+        existingNumbers: week.assignments.map((a) => a.assignmentNumber),
+        existingPublisherIds: week.assignments
+          .filter((a) => a.status !== "PROPOSED")
+          .flatMap((a) => [a.assignedPublisherId, a.companionPublisherId].filter(Boolean) as string[]),
+      }));
+
+      const { assignments, warnings } = buildAssignmentProposal({ weeks: weeksInput, publishers, history, options });
+
+      const pubMap = new Map(publishers.map((p) => [p.id, p]));
+      let created = 0;
+      for (const a of assignments) {
+        const assignedSnap = publisherSnapshot(pubMap.get(a.assignedPublisherId));
+        const companionSnap = publisherSnapshot(a.companionPublisherId ? pubMap.get(a.companionPublisherId) : null);
+        await tx.jwAssignment.create({
+          data: {
+            meetingWeekId: a.weekId,
+            assignmentNumber: a.assignmentNumber,
+            section: a.section,
+            assignmentType: a.assignmentType as any,
+            title: a.title,
+            durationMinutes: a.durationMinutes,
+            assignedPublisherId: a.assignedPublisherId,
+            companionPublisherId: a.companionPublisherId,
+            assignedNameSnapshot: assignedSnap.name,
+            assignedPhoneSnapshot: assignedSnap.phone,
+            companionNameSnapshot: companionSnap.name,
+            companionPhoneSnapshot: companionSnap.phone,
+            room: a.room,
+            status: "PROPOSED",
+          },
+        });
+        created += 1;
+      }
+
+      await createAutomationEvent(tx, {
+        eventType: "MONTHLY_PROPOSAL_GENERATED",
+        entityType: "MonthlySchedule",
+        entityId: id,
+        actorType: "admin",
+        metadata: { created, warnings },
+      });
+
+      return { created, warnings };
+    },
+    { timeout: 30000 },
+  );
+}
+
+export async function discardProposal(id: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.monthlySchedule.findUniqueOrThrow({ where: { id }, select: { id: true } });
+    const proposed = await tx.jwAssignment.findMany({
+      where: { status: "PROPOSED", meetingWeek: { monthlyScheduleId: id } },
+      select: { id: true },
+    });
+    const ids = proposed.map((p) => p.id);
+    if (ids.length === 0) return { discarded: 0 };
+
+    // PROPOSED assignments never have automation plans or deliveries, so deletion is safe.
+    await tx.jwAssignment.deleteMany({ where: { id: { in: ids } } });
+    await createAutomationEvent(tx, {
+      eventType: "MONTHLY_PROPOSAL_DISCARDED",
+      entityType: "MonthlySchedule",
+      entityId: id,
+      actorType: "admin",
+      metadata: { discarded: ids.length },
+    });
+    return { discarded: ids.length };
+  });
+}
+
+export async function regenerateProposal(id: string, options: ProposalOptions = {}) {
+  const discarded = await discardProposal(id);
+  const generated = await generateProposal(id, options);
+  return { discarded: discarded.discarded, created: generated.created, warnings: generated.warnings };
+}
+
+export async function approveProposal(id: string) {
+  return prisma.$transaction(async (tx) => {
+    await tx.monthlySchedule.findUniqueOrThrow({ where: { id }, select: { id: true } });
+    const proposed = await tx.jwAssignment.findMany({
+      where: { status: "PROPOSED", meetingWeek: { monthlyScheduleId: id } },
+      select: { id: true },
+    });
+    const ids = proposed.map((p) => p.id);
+    if (ids.length === 0) return { approved: 0 };
+
+    // Approving only turns proposals into real DRAFT assignments; no automations are created.
+    await tx.jwAssignment.updateMany({ where: { id: { in: ids } }, data: { status: "DRAFT" } });
+    await createAutomationEvent(tx, {
+      eventType: "MONTHLY_PROPOSAL_APPROVED",
+      entityType: "MonthlySchedule",
+      entityId: id,
+      actorType: "admin",
+      metadata: { approved: ids.length },
+    });
+    return { approved: ids.length };
+  });
+}
+
+export async function getProposal(id: string) {
+  const schedule = await prisma.monthlySchedule.findUniqueOrThrow({
+    where: { id },
+    include: {
+      weeks: {
+        where: { status: { notIn: [...INACTIVE_WEEK_STATUSES] } },
+        orderBy: { weekStartDate: "asc" },
+        include: {
+          assignments: {
+            where: { status: "PROPOSED" },
+            orderBy: { assignmentNumber: "asc" },
+            include: { assigned: true, companion: true },
+          },
+        },
+      },
+    },
+  });
+
+  const publishers = await prisma.jwPublisher.findMany({
+    where: { deletedAt: null, isActive: true, canReceiveAssignments: true },
+    orderBy: { fullName: "asc" },
+    select: { id: true, fullName: true, displayName: true, canBeCompanion: true },
+  });
+
+  let proposedCount = 0;
+  const weeks = schedule.weeks.map((week) => {
+    proposedCount += week.assignments.length;
+    return {
+      id: week.id,
+      weekStartDate: week.weekStartDate,
+      meetingDate: week.meetingDate,
+      meetingTime: week.meetingTime,
+      status: week.status,
+      assignments: week.assignments.map((a) => ({
+        id: a.id,
+        assignmentNumber: a.assignmentNumber,
+        title: a.title,
+        section: a.section,
+        assignmentType: a.assignmentType,
+        needsCompanion: needsCompanionFor(a.assignmentType),
+        assigned: a.assigned ? { id: a.assigned.id, name: a.assigned.displayName || a.assigned.fullName } : null,
+        companion: a.companion ? { id: a.companion.id, name: a.companion.displayName || a.companion.fullName } : null,
+      })),
+    };
+  });
+
+  return {
+    programId: schedule.id,
+    name: schedule.name,
+    status: schedule.status,
+    hasProposal: proposedCount > 0,
+    proposedCount,
+    weeks,
+    publishers: publishers.map((p) => ({ id: p.id, name: p.displayName || p.fullName, canBeCompanion: p.canBeCompanion })),
+  };
+}
+

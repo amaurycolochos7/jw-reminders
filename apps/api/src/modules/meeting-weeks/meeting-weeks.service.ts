@@ -155,7 +155,7 @@ export async function generateWeekAutomations(id: string) {
       let skipped = 0;
 
       for (const assignment of week.assignments) {
-        if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED") continue;
+        if (assignment.status === "CANCELLED" || assignment.status === "COMPLETED" || assignment.status === "PROPOSED") continue;
         const active = await tx.automationPlan.findFirst({
           where: { assignmentId: assignment.id, status: "ACTIVE" },
           select: { id: true },

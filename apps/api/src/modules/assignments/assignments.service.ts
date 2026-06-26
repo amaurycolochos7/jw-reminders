@@ -156,6 +156,10 @@ export async function completeAssignment(id: string) {
 
 export async function generateReminders(id: string) {
   return prisma.$transaction(async (tx) => {
+    const current = await tx.jwAssignment.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    if (current.status === "PROPOSED") {
+      throw new Error("Esta asignacion es una propuesta. Aprueba la propuesta antes de generar automatizaciones.");
+    }
     await applyAssignmentSnapshots(tx, id);
     const existingActive = await tx.automationPlan.findFirst({
       where: { assignmentId: id, status: "ACTIVE" },
