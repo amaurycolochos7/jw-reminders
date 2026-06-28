@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { apiRouter } from "./routes/index.js";
+import { APP_VERSION, BUILD_TAG } from "./version.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -13,10 +14,10 @@ app.use(express.json());
 // Health routes (available at root AND under /api for Traefik routing)
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 app.get("/ready", (_req, res) => res.json({ ready: true }));
-app.get("/version", (_req, res) => res.json({ version: "1.0.0" }));
+app.get("/version", (_req, res) => res.json({ version: APP_VERSION, build: BUILD_TAG }));
 app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 app.get("/api/ready", (_req, res) => res.json({ ready: true }));
-app.get("/api/version", (_req, res) => res.json({ version: "1.0.0" }));
+app.get("/api/version", (_req, res) => res.json({ version: APP_VERSION, build: BUILD_TAG }));
 
 // API routes
 app.use("/api", apiRouter);

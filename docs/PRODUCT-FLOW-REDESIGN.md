@@ -7,6 +7,41 @@
 > Principio rector de esta etapa: **menos clics, menos campos, menos pantallas, el siguiente paso siempre evidente.**
 > NO se añaden providers, arquitecturas, abstracciones, integraciones ni fases técnicas nuevas.
 
+
+---
+
+## Registro de implementación (estado por fase)
+
+> Esta sección se actualiza a medida que se implementa el rediseño. La auditoría de abajo
+> permanece como referencia del plan.
+
+### Fase A — Reglas por género + formulario de asignación simplificado
+
+- **Estado:** Implementada y verificada localmente · commit `a39d9d6` enviado a `origin/main`.
+- **Implementado:**
+  - Módulo canónico de reglas en `packages/shared/src/assignment-rules` (género, acompañante,
+    derivación de sección/título/duración por tipo) + enum `Gender`. Espejo en
+    `apps/web/src/lib/assignment-rules.ts` (la web no compila `shared` en su Docker build).
+  - Backend: validación de género al crear/editar asignación (`assignments.service.ts`),
+    filtrado por género en el motor de propuesta (`assignment-proposal.ts`) y en la generación
+    simple (`monthly-schedules.routes.ts`).
+  - Frontend: `AssignmentForm` reducido a **Parte · Persona · Acompañante · Duración · Notas**.
+    Sección, título, duración y número se derivan del tipo; sala/título/referencia/contexto/número
+    quedan en "Opciones avanzadas". La lista de personas se filtra automáticamente por las reglas.
+  - Reglas aplicadas: Lectura de la Biblia y Discurso → solo hombres; partes de estudiante →
+    acompañante obligatorio del mismo sexo. **Género desconocido (null) nunca bloquea** (conservador,
+    para no romper datos sin sexo capturado).
+- **Pruebas:** `pnpm --filter @jw-reminders/api test` → 27/27 verdes (5 nuevas de reglas/propuesta).
+  Builds OK: `shared` (tsc), `api` (tsc), `web` (next build).
+- **Compatibilidad:** importación, propuesta, semanas y programas siguen compilando y pasando pruebas.
+- **Deploy/validación en producción:** *pendiente de confirmación.* El entorno de trabajo no dispone
+  de `DOKPLOY_TOKEN` para disparar/verificar el deploy por API, y no existe sonda pública para validar
+  el cambio (todo está tras autenticación o en el cliente). Requiere intervención: aportar el token de
+  Dokploy o confirmar que el webhook desplegó. Sugerencia técnica para fases futuras: exponer el SHA del
+  commit en `/api/version` para poder verificar cada deploy de forma automática y no destructiva.
+
+---
+
 ---
 
 ## 0. Cómo leer este documento
