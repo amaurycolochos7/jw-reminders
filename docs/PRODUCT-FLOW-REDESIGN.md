@@ -17,7 +17,7 @@
 
 ### Fase A — Reglas por género + formulario de asignación simplificado
 
-- **Estado:** Implementada y verificada localmente · commit `a39d9d6` enviado a `origin/main`.
+- **Estado:** ✅ Completada, desplegada y validada en producción · commits `a39d9d6`, `9150016`.
 - **Implementado:**
   - Módulo canónico de reglas en `packages/shared/src/assignment-rules` (género, acompañante,
     derivación de sección/título/duración por tipo) + enum `Gender`. Espejo en
@@ -34,11 +34,18 @@
 - **Pruebas:** `pnpm --filter @jw-reminders/api test` → 27/27 verdes (5 nuevas de reglas/propuesta).
   Builds OK: `shared` (tsc), `api` (tsc), `web` (next build).
 - **Compatibilidad:** importación, propuesta, semanas y programas siguen compilando y pasando pruebas.
-- **Deploy/validación en producción:** *pendiente de confirmación.* El entorno de trabajo no dispone
-  de `DOKPLOY_TOKEN` para disparar/verificar el deploy por API, y no existe sonda pública para validar
-  el cambio (todo está tras autenticación o en el cliente). Requiere intervención: aportar el token de
-  Dokploy o confirmar que el webhook desplegó. Sugerencia técnica para fases futuras: exponer el SHA del
-  commit en `/api/version` para poder verificar cada deploy de forma automática y no destructiva.
+- **Estado:** ✅ **Completada y validada en producción** (deploy `compose.deploy` Dokploy, `composeStatus=done`).
+- **Deploy/validación en producción (con evidencia):**
+  - Deploy disparado vía API de Dokploy (`POST /api/compose.deploy`, `composeId=z6xyxXGM1QTnRlFs_2Lmc`)
+    porque el webhook de GitHub no se dispara de forma fiable. `composeStatus` pasó a `done`.
+  - Confirmación no destructiva: `GET https://jw-reminders.duckdns.org/api/version` →
+    `{"version":"1.0.0","build":"fase-a"}` (antes `{"version":"1.0.0"}`), prueba de que el código nuevo está vivo.
+  - Validación de comportamiento en producción (reversible, sin dejar datos): se creó una publicadora de
+    prueba (FEMALE), se intentó asignarle Lectura de la Biblia y Discurso → la API respondió **HTTP 400**:
+    `"Lectura de la Biblia solo puede asignarse a hombres."` y `"Discurso solo puede asignarse a hombres."`;
+    la publicadora de prueba se eliminó (DELETE 204). Conteo de publicadores restaurado.
+  - Nota técnica permanente: `/api/version` ahora expone una etiqueta de build (`BUILD_TAG`), por lo que
+    todos los deploys futuros se verifican de forma automática y no destructiva.
 
 ---
 
