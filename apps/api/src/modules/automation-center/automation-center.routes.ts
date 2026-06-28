@@ -1,7 +1,19 @@
 import { Router, Request, Response } from "express";
-import { prisma, ReminderRecipientRole, ReminderStatus, ReminderType } from "@jw-reminders/database";
+import { prisma, Prisma, ReminderRecipientRole, ReminderStatus, ReminderType } from "@jw-reminders/database";
 import { addDaysToLocalDate, localDateLabel, localTimeLabel, localToday, zonedLocalTimeToUtc } from "../../services/date-utils.js";
 import { createAutomationEvent, getAutomationConfig } from "../../services/automation.service.js";
+import { renderReminderMessage } from "../../services/reminder-renderer.js";
+import {
+  canEditMessage,
+  canSendNow,
+  canReschedule,
+  hasCustomMessage,
+  resolveOutboundMessage,
+  messageEditAuditMetadata,
+  EDITABLE_MESSAGE_STATES,
+  SEND_NOW_STATES,
+  RESCHEDULE_STATES,
+} from "@jw-reminders/shared";
 
 const router = Router();
 
@@ -324,6 +336,187 @@ router.get("/", async (req: Request, res: Response) => {
       deliveries: items,
     })),
   });
+});
+
+// ─── Entregas de una semana (panel embebido en la semana) ──
+router.get("/deliveries/by-week/:weekId", async (req: Request<{ weekId: string }>, res: Response) => {
+  try {
+    const config = await getAutomationConfig(prisma);
+    const tz = config.timezone;
+    const now = new Date();
+    const deliveries = await prisma.reminderDelivery.findMany({
+      where: { assignment: { meetingWeekId: req.params.weekId } },
+      include: {
+        publisher: true,
+        assignment: { select: { id: true, assignmentNumber: true, title: true } },
+      },
+      orderBy: { scheduledAt: "asc" },
+    });
+
+    const items = deliveries.map((d) => ({
+      id: d.id,
+      assignmentId: d.assignmentId,
+      assignmentNumber: d.assignment?.assignmentNumber ?? null,
+      assignmentTitle: d.assignment?.title ?? null,
+      reminderType: d.reminderType,
+      recipientRole: d.recipientRole,
+      status: d.status,
+      scheduledAt: d.scheduledAt,
+      sentAt: d.sentAt,
+      localDate: localDateLabel(d.scheduledAt, tz),
+      localTime: localTimeLabel(d.scheduledAt, tz),
+      overdue: d.scheduledAt < now && (d.status === "PENDING" || d.status === "FAILED"),
+      attemptCount: d.attemptCount,
+      maxAttempts: d.maxAttempts,
+      errorMessage: d.errorMessage,
+      cancelReason: d.cancelReason,
+      hasCustomMessage: hasCustomMessage(d.customMessage),
+      publisherName: d.publisher?.displayName || d.publisher?.fullName || "Sin publicador",
+      canEditMessage: canEditMessage(d.status),
+      canSendNow: canSendNow(d.status),
+      canReschedule: canReschedule(d.status),
+      canRetry: d.status === "FAILED" || d.status === "DEAD",
+      canCancel: ["PENDING", "QUEUED", "FAILED"].includes(d.status),
+    }));
+
+    const summary = items.reduce(
+      (acc, d) => {
+        if (d.status === "PENDING" || d.status === "QUEUED" || d.status === "SENDING") acc.pending += 1;
+        else if (d.status === "SENT") acc.sent += 1;
+        else if (d.status === "CANCELLED") acc.cancelled += 1;
+        else if (d.status === "FAILED" || d.status === "DEAD") acc.failed += 1;
+        else if (d.status === "SKIPPED") acc.skipped += 1;
+        return acc;
+      },
+      { total: items.length, pending: 0, sent: 0, cancelled: 0, failed: 0, skipped: 0 },
+    );
+
+    res.json({ timezone: tz, summary, deliveries: items });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Preview del mensaje (render desde plantilla + customMessage si existe) ──
+router.get("/deliveries/:id/preview", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const delivery = await prisma.reminderDelivery.findUniqueOrThrow({
+      where: { id: req.params.id },
+      include: {
+        publisher: true,
+        assignment: { include: { assigned: true, companion: true, meetingWeek: true } },
+      },
+    });
+    const templateMessage = await renderReminderMessage(delivery);
+    res.json({
+      id: delivery.id,
+      status: delivery.status,
+      reminderType: delivery.reminderType,
+      hasCustomMessage: hasCustomMessage(delivery.customMessage),
+      customMessage: delivery.customMessage,
+      templateMessage,
+      // Lo que realmente se enviaría hoy:
+      effectiveMessage: resolveOutboundMessage(delivery.customMessage, templateMessage),
+      canEditMessage: canEditMessage(delivery.status),
+      canSendNow: canSendNow(delivery.status),
+      canReschedule: canReschedule(delivery.status),
+    });
+  } catch {
+    res.status(404).json({ error: "Entrega no encontrada" });
+  }
+});
+
+// ─── Editar / restaurar mensaje personalizado ───────────
+router.post("/deliveries/:id/message", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const delivery = await prisma.reminderDelivery.findUniqueOrThrow({ where: { id: req.params.id } });
+    if (!canEditMessage(delivery.status)) {
+      return res.status(400).json({
+        error: `Solo se puede editar el mensaje cuando la entrega esta en ${EDITABLE_MESSAGE_STATES.join(" o ")} (estado actual: ${delivery.status}).`,
+      });
+    }
+
+    const raw = typeof req.body?.customMessage === "string" ? req.body.customMessage : null;
+    const trimmed = raw && raw.trim().length > 0 ? raw : null; // null/empty => restaurar plantilla
+
+    const updated = await prisma.reminderDelivery.update({
+      where: { id: delivery.id },
+      data: { customMessage: trimmed },
+    });
+
+    await createAutomationEvent(prisma, {
+      eventType: trimmed ? "REMINDER_MESSAGE_EDITED" : "REMINDER_MESSAGE_RESTORED",
+      entityType: "ReminderDelivery",
+      entityId: delivery.id,
+      actorType: "admin",
+      metadata: messageEditAuditMetadata({
+        previousStatus: delivery.status,
+        hadCustomMessageBefore: hasCustomMessage(delivery.customMessage),
+        hasCustomMessageAfter: hasCustomMessage(trimmed),
+      }) as Prisma.InputJsonObject,
+    });
+
+    res.json({ ok: true, hasCustomMessage: hasCustomMessage(updated.customMessage) });
+  } catch {
+    res.status(404).json({ error: "Entrega no encontrada" });
+  }
+});
+
+// ─── Enviar ahora (adelanta el envio en el proximo tick) ─
+router.post("/deliveries/:id/send-now", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const delivery = await prisma.reminderDelivery.findUniqueOrThrow({ where: { id: req.params.id } });
+    if (!canSendNow(delivery.status)) {
+      return res.status(400).json({
+        error: `Solo se puede enviar ahora cuando la entrega esta en ${SEND_NOW_STATES.join(" o ")} (estado actual: ${delivery.status}).`,
+      });
+    }
+    const updated = await prisma.reminderDelivery.update({
+      where: { id: delivery.id },
+      // Nunca tocamos QUEUED/SENDING, asi que no hay riesgo de envio doble.
+      data: { status: "PENDING", scheduledAt: new Date(), nextRetryAt: null, errorMessage: null },
+    });
+    await createAutomationEvent(prisma, {
+      eventType: "REMINDER_SEND_NOW_REQUESTED",
+      entityType: "ReminderDelivery",
+      entityId: delivery.id,
+      actorType: "admin",
+      metadata: { previousStatus: delivery.status },
+    });
+    res.json({ ok: true, status: updated.status, scheduledAt: updated.scheduledAt });
+  } catch {
+    res.status(404).json({ error: "Entrega no encontrada" });
+  }
+});
+
+// ─── Reprogramar (cambiar fecha/hora de envio) ───────────
+router.post("/deliveries/:id/reschedule", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const delivery = await prisma.reminderDelivery.findUniqueOrThrow({ where: { id: req.params.id } });
+    if (!canReschedule(delivery.status)) {
+      return res.status(400).json({
+        error: `Solo se puede reprogramar cuando la entrega esta en ${RESCHEDULE_STATES.join(" o ")} (estado actual: ${delivery.status}).`,
+      });
+    }
+    const when = req.body?.scheduledAt ? new Date(req.body.scheduledAt) : null;
+    if (!when || Number.isNaN(when.getTime())) {
+      return res.status(400).json({ error: "Fecha/hora invalida para reprogramar." });
+    }
+    const updated = await prisma.reminderDelivery.update({
+      where: { id: delivery.id },
+      data: { status: "PENDING", scheduledAt: when, nextRetryAt: null },
+    });
+    await createAutomationEvent(prisma, {
+      eventType: "REMINDER_RESCHEDULED",
+      entityType: "ReminderDelivery",
+      entityId: delivery.id,
+      actorType: "admin",
+      metadata: { previousStatus: delivery.status, scheduledAt: when.toISOString() },
+    });
+    res.json({ ok: true, status: updated.status, scheduledAt: updated.scheduledAt });
+  } catch {
+    res.status(404).json({ error: "Entrega no encontrada" });
+  }
 });
 
 export default router;

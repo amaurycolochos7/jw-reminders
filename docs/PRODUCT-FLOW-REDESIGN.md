@@ -47,6 +47,34 @@
   - Nota técnica permanente: `/api/version` ahora expone una etiqueta de build (`BUILD_TAG`), por lo que
     todos los deploys futuros se verifican de forma automática y no destructiva.
 
+### Fase B — Paso 6: semana como centro de trabajo + acciones por automatización
+
+- **Estado:** Implementada y verificada localmente en rama `fase-b-paso6-automation-actions`
+  (NO en `main`, NO en producción, por indicación expresa). `BUILD_TAG="fase-b"`.
+- **Reconciliación con el repo:** las instrucciones mencionaban un rol `ATHLETE`, un modelo `AuditLog`
+  y una rama `cedgym-staging` que **no existen en JW-REMINDERS** (provienen de otro proyecto). Se mapeó:
+  rol → N/A (la app es admin-only tras `authMiddleware`); auditoría → `JwAutomationEvent` (mecanismo del
+  repo) con **metadatos sin el texto del mensaje**; staging → no existe (ver bloqueo de deploy).
+- **Migración aditiva:** `ReminderDelivery.customMessage String?` (migración formal
+  `20260628020000_p6_reminder_custom_message`, sin `db push`). Reversible, no toca datos existentes.
+- **Worker:** prioridad de mensaje `resolveOutboundMessage(customMessage, plantilla)` — usa el texto
+  personalizado si existe y no está vacío; si no, la plantilla.
+- **Backend (bajo `authMiddleware`):** `GET .../deliveries/by-week/:weekId` (panel + conteos),
+  `GET .../deliveries/:id/preview` (render sin enviar), `POST .../deliveries/:id/message`
+  (editar/restaurar customMessage), `POST .../send-now`, `POST .../reschedule`. Reutiliza `retry`/`cancel`.
+  Estados permitidos: editar/enviar-ahora/reprogramar solo en `PENDING`/`FAILED`; nunca en
+  `QUEUED`/`SENDING` (evita envíos dobles). Auditoría con `JwAutomationEvent` (sin texto del mensaje).
+- **Frontend:** panel **Automatizaciones** embebido en la semana con grupos Pendientes/Enviadas/
+  Fallidas/Canceladas + motivo, indicador "Mensaje personalizado", botones Ver/Editar/Enviar ahora/
+  Reprogramar/Reintentar/Cancelar, modal de edición con "Restaurar plantilla", y aviso:
+  *"Si cambias la asignación, los recordatorios se regenerarán y cualquier mensaje editado será reemplazado."*
+- **Pruebas:** 36/36 verdes (10 nuevas de Paso 6: prioridad de mensaje, estados permitidos/bloqueados,
+  invariante anti-envío-doble, auditoría sin texto, indicador). Builds OK: shared/api/worker/web.
+  Tests de persistencia/auditoría en BD y el render real quedan para validación en staging.
+- **Deploy/validación:** ⛔ **Bloqueado.** No existe rama `cedgym-staging` ni entorno staging en este
+  repo (solo `main`→producción). Por indicación de no tocar `main`/producción, queda en rama feature
+  sin desplegar. Requiere definición del entorno de staging.
+
 ---
 
 ---

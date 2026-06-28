@@ -287,6 +287,7 @@ model ReminderDelivery {
   scheduledAt      DateTime
   sentAt           DateTime?
   status           ReminderStatus        @default(PENDING)
+  customMessage    String?
   attemptCount     Int                   @default(0)
   maxAttempts      Int                   @default(3)
   nextRetryAt      DateTime?
