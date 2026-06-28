@@ -386,7 +386,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
         where: { deletedAt: null },
         select: {
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
-          isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true,
+          isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
         },
       });
 

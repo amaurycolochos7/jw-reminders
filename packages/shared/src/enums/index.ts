@@ -1,3 +1,9 @@
+export enum Gender {
+  MALE = "MALE",
+  FEMALE = "FEMALE",
+}
+
+
 export enum AssignmentSection {
   BIBLE_READING = "BIBLE_READING",
   APPLY_YOURSELF = "APPLY_YOURSELF",

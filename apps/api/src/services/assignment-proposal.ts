@@ -10,9 +10,13 @@
  *  - Only active, non-deleted publishers that canBeCompanion may be companions.
  *  - A person is not used twice in the same week (unless allowSamePersonTwicePerWeek).
  *  - Bible Reading / Talk slots have no companion (needsCompanion=false).
+ *  - Gender rules: Bible Reading / Talk are male-only; student parts use a
+ *    same-gender companion. Unknown gender is never blocked (conservative).
  *  - Balance: within-month load dominates; prior history breaks ties.
  *  - Frequent pairs are penalized so they are avoided when alternatives exist.
  */
+
+import { isAssigneeGenderAllowed, isCompanionGenderAllowed } from "@jw-reminders/shared";
 
 export interface ProposalPublisher {
   id: string;
@@ -21,6 +25,7 @@ export interface ProposalPublisher {
   deletedAt: Date | string | null;
   canReceiveAssignments: boolean;
   canBeCompanion: boolean;
+  gender?: "MALE" | "FEMALE" | null;
 }
 
 export interface ProposalSlot {
@@ -139,22 +144,30 @@ export function buildAssignmentProposal(input: {
     for (const slot of weekSlots) {
       if (existingNumbers.has(slot.assignmentNumber)) continue;
 
-      // Pick assigned publisher.
-      let pool = assignable.filter((p) => allowSame || !used.has(p.id));
+      // Pick assigned publisher (respecting gender rules for this part).
+      const genderEligible = assignable.filter((p) => isAssigneeGenderAllowed(slot.assignmentType, p.gender));
+      let pool = genderEligible.filter((p) => allowSame || !used.has(p.id));
       if (pool.length === 0) {
-        pool = assignable;
-        warnings.push(`Semana ${week.weekId}: no habia suficientes publicadores distintos; se reutilizo alguien para "${slot.title}".`);
+        pool = genderEligible.length > 0 ? genderEligible : assignable;
+        if (genderEligible.length === 0) {
+          warnings.push(`Semana ${week.weekId}: no hay publicadores con el genero requerido para "${slot.title}".`);
+        } else {
+          warnings.push(`Semana ${week.weekId}: no habia suficientes publicadores distintos; se reutilizo alguien para "${slot.title}".`);
+        }
       }
       const assigned = [...pool].sort(byScoreThenName((p) => baseScore(p.id)))[0];
       liveCount[assigned.id] = (liveCount[assigned.id] || 0) + 1;
       used.add(assigned.id);
 
-      // Pick companion if the slot needs one.
+      // Pick companion if the slot needs one (same-gender rule applies to student parts).
       let companionId: string | null = null;
       if (slot.needsCompanion) {
-        let cpool = companions.filter((p) => p.id !== assigned.id && (allowSame || !used.has(p.id)));
+        const companionEligible = companions.filter(
+          (p) => p.id !== assigned.id && isCompanionGenderAllowed(slot.assignmentType, assigned.gender, p.gender),
+        );
+        let cpool = companionEligible.filter((p) => allowSame || !used.has(p.id));
         if (cpool.length === 0) {
-          cpool = companions.filter((p) => p.id !== assigned.id);
+          cpool = companionEligible;
         }
         if (cpool.length === 0) {
           warnings.push(`Semana ${week.weekId}: no hay acompanante disponible para "${slot.title}".`);

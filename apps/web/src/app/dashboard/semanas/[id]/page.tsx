@@ -15,6 +15,7 @@ interface Publisher {
   phone: string
   isActive: boolean
   canBeCompanion: boolean
+  gender: string | null
 }
 
 interface Assignment {
@@ -606,6 +607,7 @@ export default function SemanaDetallePage() {
           weekId={weekId}
           publishers={publishers}
           assignment={editingAssignment}
+          existingNumbers={(week?.assignments || []).map((a) => a.assignmentNumber)}
           onClose={() => { setShowForm(false); setEditingAssignment(null) }}
           onSuccess={handleFormSuccess}
         />

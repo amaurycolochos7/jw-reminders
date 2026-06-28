@@ -47,6 +47,46 @@ test("Lectura de la Biblia es individual (sin acompanante)", () => {
   assert.equal(reading?.companionPublisherId, null);
 });
 
+test("Lectura de la Biblia se asigna solo a hombres cuando hay genero", () => {
+  const publishers = [
+    pub("f1", "Fem1", { gender: "FEMALE" }),
+    pub("f2", "Fem2", { gender: "FEMALE" }),
+    pub("m1", "Masc1", { gender: "MALE" }),
+    pub("m2", "Masc2", { gender: "MALE" }),
+    pub("m3", "Masc3", { gender: "MALE" }),
+    pub("f3", "Fem3", { gender: "FEMALE" }),
+  ];
+  const byId = new Map(publishers.map((p) => [p.id, p]));
+  const { assignments } = buildAssignmentProposal({ weeks: oneWeek(), publishers, history: emptyHistory });
+  const reading = assignments.find((x) => x.assignmentNumber === 1)!;
+  assert.equal(byId.get(reading.assignedPublisherId)?.gender, "MALE", "la Lectura debe recaer en un hombre");
+});
+
+test("el acompanante de partes de estudiante es del mismo genero que el asignado", () => {
+  const publishers = [
+    pub("m1", "Masc1", { gender: "MALE" }),
+    pub("m2", "Masc2", { gender: "MALE" }),
+    pub("m3", "Masc3", { gender: "MALE" }),
+    pub("f1", "Fem1", { gender: "FEMALE" }),
+    pub("f2", "Fem2", { gender: "FEMALE" }),
+    pub("f3", "Fem3", { gender: "FEMALE" }),
+    pub("m4", "Masc4", { gender: "MALE" }),
+    pub("f4", "Fem4", { gender: "FEMALE" }),
+  ];
+  const byId = new Map(publishers.map((p) => [p.id, p]));
+  const { assignments } = buildAssignmentProposal({ weeks: oneWeek(), publishers, history: emptyHistory });
+  for (const a of assignments) {
+    if (a.assignmentNumber === 1) continue; // reading is individual + male-only
+    if (a.companionPublisherId) {
+      assert.equal(
+        byId.get(a.companionPublisherId)?.gender,
+        byId.get(a.assignedPublisherId)?.gender,
+        `el acompanante de "${a.title}" debe ser del mismo genero`,
+      );
+    }
+  }
+});
+
 test("no repite la misma persona dos veces en la semana cuando hay suficientes", () => {
   // 4 slots: 1 individual + 3 with companion = 7 person-slots. Need >=7 distinct people to avoid reuse.
   const publishers = Array.from({ length: 8 }, (_, i) => pub(`p${i}`, `Pub${i}`));

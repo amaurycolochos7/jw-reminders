@@ -1,4 +1,5 @@
 import { prisma } from "@jw-reminders/database";
+import { validateAssignmentGenders } from "@jw-reminders/shared";
 import {
   applyAssignmentSnapshots,
   archiveAssignmentAutomation,
@@ -64,6 +65,14 @@ export async function createAssignment(data: any) {
       tx.jwPublisher.findUniqueOrThrow({ where: { id: data.assignedPublisherId } }),
       data.companionPublisherId ? tx.jwPublisher.findUnique({ where: { id: data.companionPublisherId } }) : null,
     ]);
+
+    const genderError = validateAssignmentGenders({
+      assignmentType: data.assignmentType,
+      assignedGender: assigned.gender,
+      companionGender: companion?.gender ?? null,
+    });
+    if (genderError) throw new Error(genderError);
+
     const assignedSnapshot = publisherSnapshot(assigned);
     const companionSnapshot = publisherSnapshot(companion);
     const assignment = await tx.jwAssignment.create({
@@ -95,6 +104,25 @@ function changedRelevantFields(before: any, data: any) {
 export async function updateAssignment(id: string, data: any) {
   return prisma.$transaction(async (tx) => {
     const before = await tx.jwAssignment.findUniqueOrThrow({ where: { id } });
+
+    // Resolve effective values (incoming data overrides current) to validate gender rules.
+    const effectiveType = data.assignmentType ?? before.assignmentType;
+    const effectiveAssignedId = data.assignedPublisherId ?? before.assignedPublisherId;
+    const effectiveCompanionId =
+      "companionPublisherId" in data ? data.companionPublisherId : before.companionPublisherId;
+
+    const [effectiveAssigned, effectiveCompanion] = await Promise.all([
+      tx.jwPublisher.findUniqueOrThrow({ where: { id: effectiveAssignedId } }),
+      effectiveCompanionId ? tx.jwPublisher.findUnique({ where: { id: effectiveCompanionId } }) : null,
+    ]);
+
+    const genderError = validateAssignmentGenders({
+      assignmentType: effectiveType,
+      assignedGender: effectiveAssigned.gender,
+      companionGender: effectiveCompanion?.gender ?? null,
+    });
+    if (genderError) throw new Error(genderError);
+
     const changedFields = changedRelevantFields(before, data);
     const assignment = await tx.jwAssignment.update({
       where: { id },

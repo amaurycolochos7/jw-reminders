@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@jw-reminders/database";
 import { addDaysToLocalDate } from "../../services/date-utils.js";
 import { createAutomationEvent, monthlyScheduleParts, publisherSnapshot } from "../../services/automation.service.js";
+import { isAssigneeGenderAllowed, isCompanionGenderAllowed } from "@jw-reminders/shared";
 import * as service from "./monthly-schedules.service.js";
 
 const router = Router();
@@ -195,18 +196,20 @@ router.post("/:id/generate-assignments", async (req: Request<{ id: string }>, re
         if (assignment.companionPublisherId) counts.set(assignment.companionPublisherId, (counts.get(assignment.companionPublisherId) || 0) + 1);
       }
 
-      function pick(exclude?: string) {
-        const candidates = publishers.filter((publisher) => publisher.id !== exclude);
+      function pick(type: string, exclude?: string) {
+        let candidates = publishers.filter((publisher) => publisher.id !== exclude && isAssigneeGenderAllowed(type, publisher.gender));
+        if (candidates.length === 0) candidates = publishers.filter((publisher) => publisher.id !== exclude);
         candidates.sort((a, b) => (counts.get(a.id) || 0) - (counts.get(b.id) || 0) || a.fullName.localeCompare(b.fullName));
         const selected = candidates[0];
         counts.set(selected.id, (counts.get(selected.id) || 0) + 1);
         return selected;
       }
 
-      function pickCompanion(exclude: string) {
-        const candidates = companions.filter((publisher) => publisher.id !== exclude);
+      function pickCompanion(type: string, assigned: { id: string; gender: "MALE" | "FEMALE" | null }) {
+        let candidates = companions.filter((publisher) => publisher.id !== assigned.id && isCompanionGenderAllowed(type, assigned.gender, publisher.gender));
+        if (candidates.length === 0) candidates = companions.filter((publisher) => publisher.id !== assigned.id);
         candidates.sort((a, b) => (counts.get(a.id) || 0) - (counts.get(b.id) || 0) || a.fullName.localeCompare(b.fullName));
-        const selected = candidates[0] || pick(exclude);
+        const selected = candidates[0] || pick(type, assigned.id);
         counts.set(selected.id, (counts.get(selected.id) || 0) + 1);
         return selected;
       }
@@ -223,8 +226,8 @@ router.post("/:id/generate-assignments", async (req: Request<{ id: string }>, re
         const existingNumbers = new Set(week.assignments.map((assignment) => assignment.assignmentNumber));
         for (const template of templates) {
           if (existingNumbers.has(template.assignmentNumber)) continue;
-          const assigned = pick();
-          const companion = "companion" in template && template.companion ? pickCompanion(assigned.id) : null;
+          const assigned = pick(template.assignmentType);
+          const companion = "companion" in template && template.companion ? pickCompanion(template.assignmentType, assigned) : null;
           const assignedSnapshot = publisherSnapshot(assigned);
           const companionSnapshot = publisherSnapshot(companion);
           await tx.jwAssignment.create({
