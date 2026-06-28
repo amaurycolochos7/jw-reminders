@@ -1,5 +1,5 @@
 import { Prisma, prisma, ReminderStatus, ReminderType } from "@jw-reminders/database";
-import { WHATSAPP_SEND_DELAY_MS } from "@jw-reminders/shared";
+import { WHATSAPP_SEND_DELAY_MS, resolveOutboundMessage } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
 
@@ -179,7 +179,8 @@ export async function processReminders() {
       });
       await event("REMINDER_SENDING", "ReminderDelivery", fresh.id, { reminderType: fresh.reminderType });
 
-      const message = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
+      const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
+      const message = resolveOutboundMessage(fresh.customMessage, templateMessage);
       const result = await sendWhatsappMessage(phone, message);
       const attemptCount = fresh.attemptCount + 1;
       const terminalFailure = !result.success && attemptCount >= fresh.maxAttempts;

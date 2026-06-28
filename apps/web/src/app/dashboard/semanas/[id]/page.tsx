@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import AssignmentForm from './AssignmentForm'
 import AssignmentReminders from './AssignmentReminders'
+import WeekAutomations from './WeekAutomations'
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -599,6 +600,8 @@ export default function SemanaDetallePage() {
             </div>
           </>
         )}
+
+        {week && <div className="mt-6"><WeekAutomations weekId={weekId} /></div>}
       </div>
 
       {/* Assignment Form Modal */}
