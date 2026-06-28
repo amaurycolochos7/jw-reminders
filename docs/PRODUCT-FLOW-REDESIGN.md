@@ -71,9 +71,14 @@
 - **Pruebas:** 36/36 verdes (10 nuevas de Paso 6: prioridad de mensaje, estados permitidos/bloqueados,
   invariante anti-envío-doble, auditoría sin texto, indicador). Builds OK: shared/api/worker/web.
   Tests de persistencia/auditoría en BD y el render real quedan para validación en staging.
-- **Deploy/validación:** ⛔ **Bloqueado.** No existe rama `cedgym-staging` ni entorno staging en este
-  repo (solo `main`→producción). Por indicación de no tocar `main`/producción, queda en rama feature
-  sin desplegar. Requiere definición del entorno de staging.
+- **Deploy/validación:** ✅ **Desplegada y validada en producción** (autorización explícita posterior).
+  Merge `--no-ff` a `main` (`7eb2031`→`12207bd`), deploy Dokploy `compose.deploy` (`composeStatus=done`),
+  `/api/version`→`build:"fase-b"`. Backup previo de la DB de producción creado y validado
+  (`/root/backups/jw-reminders/backup_pre_fase_b_*.dump`, cabecera PGDMP). Migración aditiva
+  `customMessage` aplicada al arrancar la API (sin `db push`). QA controlado en producción: preview,
+  editar/restaurar mensaje, reprogramar, enviar-ahora (reversible), estados bloqueados (400) y auditoría
+  `JwAutomationEvent` sin texto. Datos intactos (74 entregas), sin envíos dobles (SENT=9). El dato de
+  prueba se restauró por completo.
 
 ---
 
