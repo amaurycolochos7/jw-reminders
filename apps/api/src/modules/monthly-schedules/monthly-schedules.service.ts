@@ -7,6 +7,7 @@ import {
   regenerateAssignmentAutomation,
 } from "../../services/automation.service.js";
 import { buildAssignmentProposal, ProposalOptions } from "../../services/assignment-proposal.js";
+import { hardDeleteWeekData } from "../meeting-weeks/meeting-weeks.service.js";
 
 // ─── Delivery status buckets ─────────────────────────────
 const PENDING_STATUSES: ReminderStatus[] = ["PENDING", "QUEUED", "SENDING"];
@@ -60,8 +61,11 @@ export async function listMonthlySchedules() {
     include: {
       weeks: {
         include: {
-          _count: { select: { assignments: true } },
-          assignments: { select: { reminderDeliveries: { select: { status: true } } } },
+          _count: { select: { assignments: { where: { status: { not: "PROPOSED" } } } } },
+          assignments: {
+            where: { status: { not: "PROPOSED" } },
+            select: { reminderDeliveries: { select: { status: true } } },
+          },
         },
       },
     },
@@ -113,8 +117,9 @@ export async function getMonthlyScheduleDetail(id: string) {
       weeks: {
         orderBy: { weekStartDate: "asc" },
         include: {
-          _count: { select: { assignments: true } },
+          _count: { select: { assignments: { where: { status: { not: "PROPOSED" } } } } },
           assignments: {
+            where: { status: { not: "PROPOSED" } },
             select: {
               id: true,
               status: true,
@@ -326,6 +331,47 @@ export async function cancelProgramPending(id: string) {
   });
 }
 
+// ─── Delete or archive a whole program ───────────────────
+export async function deleteMonthlySchedule(id: string, mode: "delete" | "archive") {
+  return prisma.$transaction(
+    async (tx) => {
+      const schedule = await tx.monthlySchedule.findUniqueOrThrow({
+        where: { id },
+        include: { weeks: { select: { id: true } } },
+      });
+
+      if (mode === "archive") {
+        const updated = await tx.monthlySchedule.update({
+          where: { id },
+          data: { status: "ARCHIVED", archivedAt: new Date() },
+        });
+        await createAutomationEvent(tx, {
+          eventType: "MONTHLY_PROGRAM_ARCHIVED",
+          entityType: "MonthlySchedule",
+          entityId: id,
+          actorType: "admin",
+          metadata: { reason: "archive_requested" },
+        });
+        return updated;
+      }
+
+      // Hard delete: remove every week (and all its content) then the program.
+      const weekIds = schedule.weeks.map((week) => week.id);
+      await hardDeleteWeekData(tx, weekIds);
+      await tx.monthlySchedule.delete({ where: { id } });
+      await createAutomationEvent(tx, {
+        eventType: "MONTHLY_PROGRAM_DELETED",
+        entityType: "MonthlySchedule",
+        entityId: id,
+        actorType: "admin",
+        metadata: { reason: "hard_delete_requested", weeks: weekIds.length },
+      });
+      return { deleted: true, id };
+    },
+    { timeout: 30000 },
+  );
+}
+
 // ─── Assignment proposal (P3) ────────────────────────────
 
 const PROPOSAL_HISTORY_STATUSES = ["DRAFT", "SCHEDULED", "COMPLETED"] as const;
@@ -478,7 +524,9 @@ export async function discardProposal(id: string) {
 
 export async function regenerateProposal(id: string, options: ProposalOptions = {}) {
   const discarded = await discardProposal(id);
-  const generated = await generateProposal(id, options);
+  // Fresh random seed each time so the new distribution differs from the previous one.
+  const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+  const generated = await generateProposal(id, { ...options, seed });
   return { discarded: discarded.discarded, created: generated.created, warnings: generated.warnings };
 }
 

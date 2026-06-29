@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import {
   ASSIGNMENT_TYPE_OPTIONS,
   deriveSection,
@@ -240,33 +241,28 @@ export default function AssignmentForm({ weekId, publishers, assignment, existin
           {/* Persona */}
           <div>
             <label className="block text-sm font-medium text-ink mb-1.5">Persona</label>
-            <select
+            <SearchableSelect
               required
               value={form.assignedPublisherId}
-              onChange={(e) => handleAssignedChange(e.target.value)}
-              className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white"
-            >
-              <option value="">Seleccionar persona</option>
-              {assignedOptions.map((p) => (
-                <option key={p.id} value={p.id}>{p.displayName || p.fullName}</option>
-              ))}
-            </select>
+              onChange={handleAssignedChange}
+              options={assignedOptions.map((p) => ({ value: p.id, label: p.displayName || p.fullName }))}
+              placeholder="Seleccionar persona"
+              searchPlaceholder="Buscar publicador..."
+            />
           </div>
 
           {/* Acompanante (solo si la parte lo requiere) */}
           {showCompanion && (
             <div>
               <label className="block text-sm font-medium text-ink mb-1.5">Acompanante</label>
-              <select
+              <SearchableSelect
                 value={form.companionPublisherId}
-                onChange={(e) => setForm({ ...form, companionPublisherId: e.target.value })}
-                className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white"
-              >
-                <option value="">Sin acompanante</option>
-                {companionOptions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.displayName || p.fullName}</option>
-                ))}
-              </select>
+                onChange={(id) => setForm({ ...form, companionPublisherId: id })}
+                options={companionOptions.map((p) => ({ value: p.id, label: p.displayName || p.fullName }))}
+                placeholder="Sin acompanante"
+                emptyOptionLabel="Sin acompanante"
+                searchPlaceholder="Buscar acompanante..."
+              />
               {rule.companionSameGender && (
                 <p className="text-xs text-graphite mt-1.5">El acompanante debe ser del mismo sexo que la persona asignada.</p>
               )}

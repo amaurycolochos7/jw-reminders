@@ -72,7 +72,9 @@ export default function SemanasPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [confirmArchive, setConfirmArchive] = useState<MeetingWeek | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<MeetingWeek | null>(null)
   const [archiving, setArchiving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function load() {
     try {
@@ -129,17 +131,11 @@ export default function SemanasPage() {
     } catch { setError('Error de conexion') } finally { setSaving(false) }
   }
 
-  // A week with assignments or generated reminders is archived (history preserved),
-  // never hard-deleted. Only empty drafts are removed.
-  function weekHasHistory(w: MeetingWeek): boolean {
-    return (w._count?.assignments || 0) > 0 || (w.totalReminders || 0) > 0
-  }
-
   async function handleArchive() {
     if (!confirmArchive) return
     setArchiving(true)
     try {
-      const res = await api(`/api/meeting-weeks/${confirmArchive.id}`, { method: 'DELETE' })
+      const res = await api(`/api/meeting-weeks/${confirmArchive.id}?mode=archive`, { method: 'DELETE' })
       if (res.ok || res.status === 204) {
         setConfirmArchive(null)
         await load()
@@ -149,6 +145,22 @@ export default function SemanasPage() {
         setConfirmArchive(null)
       }
     } catch { setConfirmArchive(null) } finally { setArchiving(false) }
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return
+    setDeleting(true)
+    try {
+      const res = await api(`/api/meeting-weeks/${confirmDelete.id}?mode=delete`, { method: 'DELETE' })
+      if (res.ok || res.status === 204) {
+        setConfirmDelete(null)
+        await load()
+      } else {
+        const data = await res.json()
+        setError(data.error || 'No se pudo eliminar la semana')
+        setConfirmDelete(null)
+      }
+    } catch { setConfirmDelete(null) } finally { setDeleting(false) }
   }
 
   if (loading) {
@@ -226,52 +238,61 @@ export default function SemanasPage() {
         </div>
       )}
 
-      {/* Archive / Delete Confirmation Modal */}
-      {confirmArchive && (() => {
-        const hasHistory = weekHasHistory(confirmArchive)
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmArchive(null)}>
-            <div className="bg-white rounded-card p-7 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-fog flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-                  </svg>
-                </div>
-                <h2 className="text-lg font-semibold text-ink tracking-tight">{hasHistory ? 'Archivar semana' : 'Eliminar semana'}</h2>
+      {/* Archive Confirmation Modal */}
+      {confirmArchive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmArchive(null)}>
+          <div className="bg-white rounded-card p-7 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-caution/10 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-caution" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                </svg>
               </div>
-              <p className="text-sm text-graphite mb-2">
-                Semana del <strong className="text-ink">{formatDateShort(confirmArchive.weekStartDate)}</strong>.
-              </p>
-              {hasHistory ? (
-                <p className="text-sm text-graphite mb-4">
-                  Esta semana tiene asignaciones o automatizaciones, por lo que se <strong className="text-ink">archivara</strong> y
-                  se conservara todo el historial. No se borrara ningun mensaje enviado.
-                </p>
-              ) : (
-                <p className="text-sm text-graphite mb-4">
-                  Esta semana esta vacia (sin asignaciones ni automatizaciones), por lo que se eliminara de forma permanente.
-                </p>
-              )}
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleArchive}
-                  disabled={archiving}
-                  className={`${hasHistory ? 'bg-graphite' : 'bg-red-400'} text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50`}
-                >
-                  {archiving ? 'Procesando...' : hasHistory ? 'Archivar' : 'Eliminar'}
-                </button>
-                <button
-                  onClick={() => setConfirmArchive(null)}
-                  className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
+              <h2 className="text-lg font-semibold text-ink tracking-tight">Archivar semana</h2>
+            </div>
+            <p className="text-sm text-graphite mb-4">
+              La semana del <strong className="text-ink">{formatDateShort(confirmArchive.weekStartDate)}</strong> se archivara y se
+              conservara todo su historial. Dejara de participar en el programa activo, pero podras consultarla. No se borra ningun mensaje enviado.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleArchive} disabled={archiving} className="bg-caution text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50">
+                {archiving ? 'Procesando...' : 'Archivar'}
+              </button>
+              <button onClick={() => setConfirmArchive(null)} className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors">
+                Cancelar
+              </button>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmDelete(null)}>
+          <div className="bg-white rounded-card p-7 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold text-ink tracking-tight">Eliminar semana</h2>
+            </div>
+            <p className="text-sm text-graphite mb-4">
+              Se eliminara <strong className="text-ink">de forma permanente</strong> la semana del <strong className="text-ink">{formatDateShort(confirmDelete.weekStartDate)}</strong> junto
+              con todas sus asignaciones, automatizaciones y recordatorios. Esta accion no se puede deshacer.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button onClick={handleDelete} disabled={deleting} className="bg-red-500 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50">
+                {deleting ? 'Eliminando...' : 'Eliminar definitivamente'}
+              </button>
+              <button onClick={() => setConfirmDelete(null)} className="text-sm text-graphite px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cards */}
       {weeks.length === 0 ? (
@@ -296,7 +317,6 @@ export default function SemanasPage() {
             const meta = STATUS_META[w.status] || { label: w.status, className: 'bg-fog text-graphite' }
             const pct = completion(w)
             const dimmed = w.status === 'ARCHIVED' || w.status === 'CANCELLED'
-            const hasHistory = weekHasHistory(w)
             return (
               <div
                 key={w.id}
@@ -366,11 +386,17 @@ export default function SemanasPage() {
                   {w.status !== 'ARCHIVED' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setConfirmArchive(w) }}
-                      className={`text-xs font-medium px-3 py-1.5 rounded-pill transition-colors ${hasHistory ? 'text-graphite hover:bg-fog' : 'text-red-600 hover:bg-red-50'}`}
+                      className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors"
                     >
-                      {hasHistory ? 'Archivar' : 'Eliminar'}
+                      Archivar
                     </button>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDelete(w) }}
+                    className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors"
+                  >
+                    Eliminar
+                  </button>
                 </div>
               </div>
             )

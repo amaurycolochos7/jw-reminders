@@ -116,6 +116,15 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   }
 });
 
+router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const mode = req.query.mode === "archive" ? "archive" : "delete";
+    res.json(await service.deleteMonthlySchedule(req.params.id, mode));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Response) => {
   try {
     const data = generateWeeksSchema.parse(req.body);

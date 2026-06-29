@@ -13,8 +13,10 @@ export async function listMeetingWeeks() {
     orderBy: { weekStartDate: "desc" },
     include: {
       monthlySchedule: true,
-      _count: { select: { assignments: true } },
+      // Exclude not-yet-approved proposals from counts.
+      _count: { select: { assignments: { where: { status: { not: "PROPOSED" } } } } },
       assignments: {
+        where: { status: { not: "PROPOSED" } },
         select: {
           reminderDeliveries: { select: { status: true } },
         },
@@ -39,6 +41,9 @@ export async function getMeetingWeek(id: string) {
     include: {
       monthlySchedule: true,
       assignments: {
+        // PROPOSED assignments belong to the (not-yet-approved) proposal and must
+        // not appear in the program/week view until they are approved.
+        where: { status: { not: "PROPOSED" } },
         include: {
           assigned: true,
           companion: true,
@@ -195,8 +200,86 @@ export async function generateWeekAutomations(id: string) {
 
 
 
-export async function deleteMeetingWeek(id: string) {
+/**
+ * Permanently delete all data hanging off the given weeks, in FK-safe order:
+ * message logs -> reminder deliveries -> legacy reminders -> automation plans ->
+ * assignment templates -> assignments -> weeks. Reusable for month deletion.
+ * Must run inside a transaction (`tx`).
+ */
+export async function hardDeleteWeekData(tx: any, weekIds: string[]) {
+  if (weekIds.length === 0) return;
+
+  const assignments = await tx.jwAssignment.findMany({
+    where: { meetingWeekId: { in: weekIds } },
+    select: { id: true },
+  });
+  const assignmentIds = assignments.map((a: { id: string }) => a.id);
+
+  if (assignmentIds.length > 0) {
+    const [plans, deliveries] = await Promise.all([
+      tx.automationPlan.findMany({ where: { assignmentId: { in: assignmentIds } }, select: { id: true } }),
+      tx.reminderDelivery.findMany({ where: { assignmentId: { in: assignmentIds } }, select: { id: true } }),
+    ]);
+    const planIds = plans.map((p: { id: string }) => p.id);
+    const deliveryIds = deliveries.map((d: { id: string }) => d.id);
+
+    // Message logs reference assignments, plans and deliveries (all optional FKs).
+    const logOr: any[] = [{ assignmentId: { in: assignmentIds } }];
+    if (planIds.length) logOr.push({ automationPlanId: { in: planIds } });
+    if (deliveryIds.length) logOr.push({ reminderDeliveryId: { in: deliveryIds } });
+    await tx.jwMessageLog.deleteMany({ where: { OR: logOr } });
+
+    await tx.reminderDelivery.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
+    await tx.jwAssignmentReminder.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
+    await tx.automationPlan.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
+  }
+
+  await tx.assignmentTemplate.deleteMany({ where: { meetingWeekId: { in: weekIds } } });
+  await tx.jwAssignment.deleteMany({ where: { meetingWeekId: { in: weekIds } } });
+  await tx.jwMeetingWeek.deleteMany({ where: { id: { in: weekIds } } });
+}
+
+/**
+ * Delete or archive a meeting week.
+ *  - mode "delete": permanently removes the week and ALL its content (assignments,
+ *    automations, reminders, message logs).
+ *  - mode "archive": soft-archives the week, preserving history.
+ *  - no mode (legacy): archives when there is history, hard-deletes when empty.
+ */
+export async function deleteMeetingWeek(id: string, mode?: "delete" | "archive") {
   return prisma.$transaction(async (tx) => {
+    await tx.jwMeetingWeek.findUniqueOrThrow({ where: { id }, select: { id: true } });
+
+    if (mode === "delete") {
+      const [assignmentCount, deliveryCount] = await Promise.all([
+        tx.jwAssignment.count({ where: { meetingWeekId: id } }),
+        tx.reminderDelivery.count({ where: { assignment: { meetingWeekId: id } } }),
+      ]);
+      await hardDeleteWeekData(tx, [id]);
+      await createAutomationEvent(tx, {
+        eventType: "WEEK_DELETED",
+        entityType: "JwMeetingWeek",
+        entityId: id,
+        metadata: { reason: "hard_delete_requested", assignmentCount, deliveryCount },
+      });
+      return { deleted: true, id };
+    }
+
+    if (mode === "archive") {
+      const week = await tx.jwMeetingWeek.update({
+        where: { id },
+        data: { status: "ARCHIVED", archivedAt: new Date() },
+      });
+      await createAutomationEvent(tx, {
+        eventType: "WEEK_ARCHIVED",
+        entityType: "JwMeetingWeek",
+        entityId: id,
+        metadata: { reason: "archive_requested" },
+      });
+      return week;
+    }
+
+    // Legacy default: archive if there is history, otherwise hard-delete the empty week.
     const assignments = await tx.jwAssignment.findMany({
       where: { meetingWeekId: id },
       select: { id: true },

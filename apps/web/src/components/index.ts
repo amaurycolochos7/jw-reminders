@@ -5,3 +5,5 @@ export { Badge } from "./Badge";
 export { StatusDot } from "./StatusDot";
 export { EmptyState } from "./EmptyState";
 export { default as ConfirmModal } from "./ConfirmModal";
+export { SearchableSelect } from "./SearchableSelect";
+export type { SearchableSelectOption } from "./SearchableSelect";

@@ -46,8 +46,10 @@ router.post("/:id/generate-automations", async (req: Request<{ id: string }>, re
 
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
-    await service.deleteMeetingWeek(req.params.id);
-    res.status(204).end();
+    const raw = req.query.mode;
+    const mode = raw === "delete" ? "delete" : raw === "archive" ? "archive" : undefined;
+    const result = await service.deleteMeetingWeek(req.params.id, mode);
+    res.json(result);
   } catch { res.status(404).json({ error: "Not found" }); }
 });
 

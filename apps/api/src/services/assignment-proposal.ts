@@ -57,6 +57,12 @@ export interface ProposalHistory {
 
 export interface ProposalOptions {
   allowSamePersonTwicePerWeek?: boolean;
+  /**
+   * When set, ties between equally-scored publishers are broken using this seed
+   * instead of alphabetical order. Used by "regenerate" to produce a different
+   * (still balanced) distribution on each run.
+   */
+  seed?: number;
 }
 
 export interface ProposedAssignment {
@@ -92,6 +98,28 @@ function pairKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
+/** Deterministic 32-bit hash of a string (FNV-1a). */
+function hashStringToInt(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Stable pseudo-random value in [0,1) for a publisher id under a given seed.
+ * Same (id, seed) always yields the same value, so a single generation is
+ * internally consistent, while a different seed reshuffles ties.
+ */
+function seededValue(id: string, seed: number): number {
+  let t = (hashStringToInt(id) + Math.imul(seed >>> 0, 2654435761)) >>> 0;
+  t = Math.imul(t ^ (t >>> 15), 1 | t);
+  t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 function isAssignable(p: ProposalPublisher): boolean {
   return p.isActive && !p.deletedAt && p.canReceiveAssignments;
 }
@@ -110,6 +138,8 @@ export function buildAssignmentProposal(input: {
 }): ProposalResult {
   const slots = input.slots ?? DEFAULT_SLOTS;
   const allowSame = input.options?.allowSamePersonTwicePerWeek ?? false;
+  const seed = input.options?.seed;
+  const randomizeTies = typeof seed === "number";
 
   const assignable = input.publishers.filter(isAssignable);
   const companions = input.publishers.filter(isCompanionEligible);
@@ -128,10 +158,14 @@ export function buildAssignmentProposal(input: {
     return (input.history.pairCount[key] || 0) + (livePair[key] || 0) * PAIR_WEIGHT;
   };
 
+  // Tie-break by seeded random when regenerating, otherwise by name (stable/deterministic).
+  const tieBreak = (a: ProposalPublisher, b: ProposalPublisher) =>
+    randomizeTies ? seededValue(a.id, seed!) - seededValue(b.id, seed!) : a.fullName.localeCompare(b.fullName);
+
   const byScoreThenName = (score: (p: ProposalPublisher) => number) => (a: ProposalPublisher, b: ProposalPublisher) => {
     const diff = score(a) - score(b);
     if (diff !== 0) return diff;
-    return a.fullName.localeCompare(b.fullName);
+    return tieBreak(a, b);
   };
 
   const assignments: ProposedAssignment[] = [];

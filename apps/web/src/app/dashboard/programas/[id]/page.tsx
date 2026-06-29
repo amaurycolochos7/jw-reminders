@@ -214,6 +214,26 @@ export default function ProgramDetailPage() {
     })
   }
 
+  async function deleteProgram() {
+    setBusy('delete')
+    try {
+      const res = await api(`/api/monthly-schedules/${id}?mode=delete`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) { notify('success', 'Programa eliminado'); router.push('/dashboard/programas') }
+      else notify('error', data.error || 'No se pudo eliminar el programa')
+    } catch { notify('error', 'Error de conexion') } finally { setBusy('') }
+  }
+
+  function askDeleteProgram() {
+    setConfirm({
+      title: 'Eliminar programa',
+      description: <>Se eliminara <strong className="text-ink">de forma permanente</strong> el programa <strong className="text-ink">{program?.name}</strong> junto con todas sus semanas, asignaciones, automatizaciones y recordatorios. Esta accion no se puede deshacer.</>,
+      confirmLabel: 'Eliminar definitivamente',
+      tone: 'danger',
+      run: deleteProgram,
+    })
+  }
+
   // ─── Week-level actions ────────────────────────────────
   function askGenerateWeek(week: Week) {
     setConfirm({
@@ -226,15 +246,22 @@ export default function ProgramDetailPage() {
   }
 
   function askArchiveWeek(week: Week) {
-    const hasHistory = week.assignmentCount > 0 || week.total > 0
     setConfirm({
-      title: hasHistory ? 'Archivar semana' : 'Eliminar semana',
-      description: hasHistory
-        ? <>La semana del <strong className="text-ink">{formatDateShort(week.weekStartDate)}</strong> tiene asignaciones o automatizaciones, por lo que se archivara y se conservara el historial.</>
-        : <>La semana del <strong className="text-ink">{formatDateShort(week.weekStartDate)}</strong> esta vacia y se eliminara de forma permanente.</>,
-      confirmLabel: hasHistory ? 'Archivar' : 'Eliminar',
-      tone: hasHistory ? 'warning' : 'danger',
-      run: () => runAction(`weekarch-${week.id}`, () => api(`/api/meeting-weeks/${week.id}`, { method: 'DELETE' }), () => hasHistory ? 'Semana archivada' : 'Semana eliminada'),
+      title: 'Archivar semana',
+      description: <>La semana del <strong className="text-ink">{formatDateShort(week.weekStartDate)}</strong> se archivara y se conservara todo su historial. Dejara de participar en el programa activo, pero podras consultarla.</>,
+      confirmLabel: 'Archivar',
+      tone: 'warning',
+      run: () => runAction(`weekarch-${week.id}`, () => api(`/api/meeting-weeks/${week.id}?mode=archive`, { method: 'DELETE' }), () => 'Semana archivada'),
+    })
+  }
+
+  function askDeleteWeek(week: Week) {
+    setConfirm({
+      title: 'Eliminar semana',
+      description: <>Se eliminara <strong className="text-ink">de forma permanente</strong> la semana del <strong className="text-ink">{formatDateShort(week.weekStartDate)}</strong> junto con todas sus asignaciones, automatizaciones y recordatorios. Esta accion no se puede deshacer.</>,
+      confirmLabel: 'Eliminar definitivamente',
+      tone: 'danger',
+      run: () => runAction(`weekdel-${week.id}`, () => api(`/api/meeting-weeks/${week.id}?mode=delete`, { method: 'DELETE' }), () => 'Semana eliminada'),
     })
   }
 
@@ -375,6 +402,9 @@ export default function ProgramDetailPage() {
           )}
           <button onClick={askArchive} disabled={readOnly || busy === 'archive'} className="text-graphite text-xs font-medium px-4 py-2 rounded-pill border border-silver-mist hover:bg-fog transition-colors disabled:opacity-50">
             Archivar programa
+          </button>
+          <button onClick={askDeleteProgram} disabled={busy === 'delete'} className="text-red-600 text-xs font-medium px-4 py-2 rounded-pill border border-silver-mist hover:bg-red-50 transition-colors disabled:opacity-50">
+            {busy === 'delete' ? 'Eliminando...' : 'Eliminar programa'}
           </button>
         </div>
         {readOnly && <p className="text-xs text-graphite">Este programa esta {meta.label.toLowerCase()}; las acciones de edicion estan deshabilitadas.</p>}
@@ -524,11 +554,16 @@ export default function ProgramDetailPage() {
     return (
       <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-silver-mist lg:mt-0 lg:pt-0 lg:border-0">
         <button onClick={() => router.push(`/dashboard/semanas/${week.id}`)} className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors">Ver semana</button>
-        {!readOnly && !isInactive && (
+        {!readOnly && (
           <>
-            <button onClick={() => openEditWeek(week)} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors">Editar</button>
-            <button onClick={() => askGenerateWeek(week)} disabled={busy === `weekgen-${week.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors disabled:opacity-50">Generar autom.</button>
-            <button onClick={() => askArchiveWeek(week)} disabled={busy === `weekarch-${week.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors disabled:opacity-50">{week.assignmentCount > 0 || week.total > 0 ? 'Archivar' : 'Eliminar'}</button>
+            {!isInactive && (
+              <>
+                <button onClick={() => openEditWeek(week)} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors">Editar</button>
+                <button onClick={() => askGenerateWeek(week)} disabled={busy === `weekgen-${week.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors disabled:opacity-50">Generar autom.</button>
+                <button onClick={() => askArchiveWeek(week)} disabled={busy === `weekarch-${week.id}`} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog transition-colors disabled:opacity-50">Archivar</button>
+              </>
+            )}
+            <button onClick={() => askDeleteWeek(week)} disabled={busy === `weekdel-${week.id}`} className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors disabled:opacity-50">Eliminar</button>
           </>
         )}
       </div>

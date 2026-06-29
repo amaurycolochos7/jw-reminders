@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import ConfirmModal from '@/components/ConfirmModal'
+import { SearchableSelect } from '@/components/SearchableSelect'
 
 interface PubRef { id: string; name: string }
 interface ProposalAssignment {
@@ -167,7 +168,7 @@ export default function ProposalPage() {
           {data.name}
         </Link>
         <h1 className="text-2xl font-semibold text-ink tracking-tight mt-2">Propuesta de asignaciones</h1>
-        <p className="text-sm text-graphite mt-1">Genera una distribucion equilibrada, revisala y edita si hace falta. Nada se vuelve definitivo hasta que apruebes.</p>
+        <p className="text-sm text-graphite mt-1">Genera una distribucion equilibrada, revisala y edita persona por persona si hace falta. La propuesta no aparece en el programa ni en las semanas hasta que la apruebes. "Regenerar" produce una distribucion distinta cada vez.</p>
       </div>
 
       {toast && <div className={`rounded-xl px-4 py-3 text-sm font-medium ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{toast.text}</div>}
@@ -237,28 +238,28 @@ export default function ProposalPage() {
                     </div>
                     <div>
                       <label className="block text-[11px] text-graphite mb-1">Asignado</label>
-                      <select
+                      <SearchableSelect
                         value={a.assigned?.id || ''}
                         disabled={readOnly || savingRow === `${a.id}-assignedPublisherId`}
-                        onChange={(e) => changePublisher(a.id, 'assignedPublisherId', e.target.value)}
-                        className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm bg-white disabled:opacity-50"
-                      >
-                        {data.publishers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
+                        onChange={(value) => changePublisher(a.id, 'assignedPublisherId', value)}
+                        options={data.publishers.map((p) => ({ value: p.id, label: p.name }))}
+                        placeholder="Seleccionar persona"
+                        searchPlaceholder="Buscar publicador..."
+                      />
                     </div>
                     <div>
                       {a.needsCompanion ? (
                         <>
                           <label className="block text-[11px] text-graphite mb-1">Acompanante</label>
-                          <select
+                          <SearchableSelect
                             value={a.companion?.id || ''}
                             disabled={readOnly || savingRow === `${a.id}-companionPublisherId`}
-                            onChange={(e) => changePublisher(a.id, 'companionPublisherId', e.target.value)}
-                            className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm bg-white disabled:opacity-50"
-                          >
-                            {a.companion ? null : <option value="">Sin acompanante</option>}
-                            {companions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                          </select>
+                            onChange={(value) => changePublisher(a.id, 'companionPublisherId', value)}
+                            options={companions.map((p) => ({ value: p.id, label: p.name }))}
+                            placeholder="Sin acompanante"
+                            emptyOptionLabel="Sin acompanante"
+                            searchPlaceholder="Buscar acompanante..."
+                          />
                         </>
                       ) : (
                         <p className="text-xs text-graphite md:text-center">Individual</p>
