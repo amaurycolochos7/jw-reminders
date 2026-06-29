@@ -35,6 +35,9 @@ const TYPE_LABELS: Record<string, string> = {
   INITIAL_NOTICE: 'Aviso inicial', SEVEN_DAYS_BEFORE: '7 dias antes', THREE_DAYS_BEFORE: '3 dias antes',
   ONE_DAY_BEFORE: '1 dia antes', SAME_DAY: 'Mismo dia', CHANGE_NOTICE: 'Aviso de cambio', CANCELLATION_NOTICE: 'Aviso de cancelacion',
 }
+const TYPE_ORDER: Record<string, number> = {
+  INITIAL_NOTICE: 0, SEVEN_DAYS_BEFORE: 1, THREE_DAYS_BEFORE: 2, ONE_DAY_BEFORE: 3, SAME_DAY: 4, CHANGE_NOTICE: 5, CANCELLATION_NOTICE: 6,
+}
 const STATUS_MAP: Record<string, { label: string; classes: string }> = {
   PENDING: { label: 'Pendiente', classes: 'bg-amber-50 text-amber-700' },
   QUEUED: { label: 'En cola', classes: 'bg-amber-50 text-amber-700' },
@@ -93,19 +96,34 @@ export default function WeekAutomations({ weekId }: Props) {
     } catch { flash('error', 'Error de conexion') } finally { setBusyId(null) }
   }
 
-  const groups: { key: string; title: string; items: Delivery[] }[] = [
-    { key: 'pending', title: 'Pendientes', items: deliveries.filter((d) => ['PENDING', 'QUEUED', 'SENDING'].includes(d.status)) },
-    { key: 'sent', title: 'Enviadas', items: deliveries.filter((d) => d.status === 'SENT') },
-    { key: 'failed', title: 'Fallidas', items: deliveries.filter((d) => ['FAILED', 'DEAD'].includes(d.status)) },
-    { key: 'cancelled', title: 'Canceladas', items: deliveries.filter((d) => ['CANCELLED', 'SKIPPED'].includes(d.status)) },
-  ]
+  // Group reminders by assignment (the week's parts) so the list maps to the
+  // week's assignments instead of one long flat list of every reminder.
+  const assignmentGroups: { key: string; number: number | null; title: string; items: Delivery[] }[] = (() => {
+    const map = new Map<string, { key: string; number: number | null; title: string; items: Delivery[] }>()
+    for (const d of deliveries) {
+      const key = `${d.assignmentNumber ?? 'z'}-${d.assignmentTitle ?? ''}`
+      if (!map.has(key)) map.set(key, { key, number: d.assignmentNumber, title: d.assignmentTitle || 'Asignacion', items: [] })
+      map.get(key)!.items.push(d)
+    }
+    const groups = Array.from(map.values())
+    for (const g of groups) {
+      g.items.sort((a, b) => {
+        if (a.recipientRole !== b.recipientRole) return a.recipientRole === 'ASSIGNED' ? -1 : 1
+        return (TYPE_ORDER[a.reminderType] ?? 9) - (TYPE_ORDER[b.reminderType] ?? 9)
+      })
+    }
+    return groups.sort((a, b) => (a.number ?? 999) - (b.number ?? 999))
+  })()
 
   return (
     <div className="bg-white rounded-card p-5 sm:p-7">
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-base font-semibold text-ink tracking-tight">Automatizaciones</h2>
+        <h2 className="text-base font-semibold text-ink tracking-tight">Automatizaciones de esta semana</h2>
         <button onClick={load} className="text-sm text-azure hover:opacity-80">Actualizar</button>
       </div>
+      <p className="text-xs text-graphite mb-2">
+        Solo se muestran los recordatorios de esta semana{summary ? `, agrupados por asignacion (${assignmentGroups.length} ${assignmentGroups.length === 1 ? 'asignacion' : 'asignaciones'}, ${summary.total} recordatorios)` : ''}.
+      </p>
       <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-4">
         Si cambias la asignacion, los recordatorios se regeneraran y cualquier mensaje editado sera reemplazado.
       </p>
@@ -129,9 +147,9 @@ export default function WeekAutomations({ weekId }: Props) {
         <p className="text-sm text-graphite py-6 text-center">No hay automatizaciones en esta semana. Genera recordatorios desde las asignaciones.</p>
       ) : (
         <div className="space-y-5">
-          {groups.filter((g) => g.items.length > 0).map((g) => (
+          {assignmentGroups.map((g) => (
             <div key={g.key}>
-              <h3 className="text-sm font-medium text-ink mb-2">{g.title} <span className="text-graphite">({g.items.length})</span></h3>
+              <h3 className="text-sm font-semibold text-ink mb-2">{g.number ? `${g.number}. ` : ''}{g.title} <span className="text-graphite font-normal">({g.items.length})</span></h3>
               <div className="space-y-2">
                 {g.items.map((d) => {
                   const st = STATUS_MAP[d.status] || STATUS_MAP.PENDING
@@ -144,7 +162,7 @@ export default function WeekAutomations({ weekId }: Props) {
                             {d.recipientRole === 'COMPANION' && <span className="text-xs text-graphite"> (acompanante)</span>}
                           </p>
                           <p className="text-xs text-graphite mt-0.5">
-                            {d.assignmentNumber ? `${d.assignmentNumber}. ` : ''}{d.assignmentTitle || ''} · {fmt(d.scheduledAt)}
+                            {fmt(d.scheduledAt)}
                             {d.overdue && <span className="text-red-600"> · vencido</span>}
                           </p>
                           {d.errorMessage && <p className="text-xs text-red-600 mt-1">Motivo: {d.errorMessage}</p>}
