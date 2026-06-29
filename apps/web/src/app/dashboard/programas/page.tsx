@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import ConfirmModal from '@/components/ConfirmModal'
 
 interface MonthlySchedule {
   id: string
@@ -47,6 +48,8 @@ export default function ProgramasPage() {
   const [form, setForm] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 })
   const [weekForm, setWeekForm] = useState({ meetingDayOfWeek: 5, meetingTime: '19:00' })
   const [message, setMessage] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<MonthlySchedule | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   async function load() {
     try {
@@ -125,6 +128,28 @@ export default function ProgramasPage() {
     await load()
   }
 
+  async function deleteProgram(id: string) {
+    setDeleting(true)
+    setMessage('')
+    try {
+      const res = await api(`/api/monthly-schedules/${id}?mode=delete`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setMessage('Programa eliminado')
+        setConfirmDelete(null)
+        await load()
+      } else {
+        setMessage(data.error || 'No se pudo eliminar el programa')
+        setConfirmDelete(null)
+      }
+    } catch {
+      setMessage('Error de conexion')
+      setConfirmDelete(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   function renderProgramActions(program: MonthlySchedule) {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -142,6 +167,9 @@ export default function ProgramasPage() {
         </Link>
         <button onClick={() => archiveProgram(program.id)} disabled={program.status === 'ARCHIVED'} className="text-graphite text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-fog disabled:opacity-50">
           Archivar
+        </button>
+        <button onClick={() => setConfirmDelete(program)} className="text-red-600 text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-red-50 transition-colors">
+          Eliminar
         </button>
       </div>
     )
@@ -269,6 +297,17 @@ export default function ProgramasPage() {
           </div>
         </>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        title="Eliminar programa"
+        description={confirmDelete ? <>Se eliminara <strong className="text-ink">de forma permanente</strong> el programa <strong className="text-ink">{confirmDelete.name}</strong> junto con todas sus semanas, asignaciones, automatizaciones y recordatorios. Esta accion no se puede deshacer.</> : null}
+        confirmLabel="Eliminar definitivamente"
+        tone="danger"
+        loading={deleting}
+        onConfirm={() => confirmDelete && deleteProgram(confirmDelete.id)}
+        onCancel={() => !deleting && setConfirmDelete(null)}
+      />
     </div>
   )
 }
