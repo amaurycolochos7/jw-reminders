@@ -11,7 +11,6 @@ import messageLogsRoutes from "../modules/message-logs/message-logs.routes.js";
 import whatsappRoutes from "../modules/whatsapp/whatsapp.routes.js";
 import monthlySchedulesRoutes from "../modules/monthly-schedules/monthly-schedules.routes.js";
 import automationCenterRoutes from "../modules/automation-center/automation-center.routes.js";
-import importsRoutes from "../modules/imports/imports.routes.js";
 import { authMiddleware } from "../middleware/auth.js";
 
 export const apiRouter = Router();
@@ -25,7 +24,6 @@ apiRouter.use("/config", authMiddleware, configRoutes);
 apiRouter.use("/publishers", authMiddleware, publishersRoutes);
 apiRouter.use("/meeting-weeks", authMiddleware, meetingWeeksRoutes);
 apiRouter.use("/monthly-schedules", authMiddleware, monthlySchedulesRoutes);
-apiRouter.use("/imports", authMiddleware, importsRoutes);
 apiRouter.use("/assignments", authMiddleware, assignmentsRoutes);
 apiRouter.use("/reminders", authMiddleware, remindersRoutes);
 apiRouter.use("/automation-center", authMiddleware, automationCenterRoutes);

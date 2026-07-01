@@ -232,8 +232,8 @@ function buildFlow(currentProgram: any | null, importedProgramCount: number) {
   const actionByKey: Record<string, { label: string; href: string }> = {
     program: { label: "Crear programa", href: "/dashboard/programas" },
     weeks: { label: "Generar semanas", href: program ? `/dashboard/programas/${program.id}` : "/dashboard/programas" },
-    import: { label: "Importar programa", href: "/dashboard/importar" },
-    templates: { label: "Importar programa", href: "/dashboard/importar" },
+    import: { label: "Generar semanas", href: program ? `/dashboard/programas/${program.id}` : "/dashboard/programas" },
+    templates: { label: "Generar semanas", href: program ? `/dashboard/programas/${program.id}` : "/dashboard/programas" },
     proposal: { label: "Generar propuesta", href: program ? `/dashboard/programas/${program.id}/propuesta` : "/dashboard/programas" },
     approval: { label: "Revisar propuesta", href: program ? `/dashboard/programas/${program.id}/propuesta` : "/dashboard/programas" },
     automations: { label: "Generar automatizaciones", href: program ? `/dashboard/programas/${program.id}` : "/dashboard/programas" },
