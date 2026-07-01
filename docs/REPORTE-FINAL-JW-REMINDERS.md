@@ -844,3 +844,71 @@ Cambios de soporte: `next.config.js` permite `NEXT_OUTPUT=default` para builds l
 ## Criterio de aceptacion P4.5
 
 Cumplido: el administrador gestiona la operacion diaria desde el Centro Operativo (estado, programas, semanas, propuestas, automatizaciones, publicadores, flujo, alertas, calendario y acciones rapidas) sin navegar constantemente entre modulos; responde las cinco preguntas de UX; cumple DESIGN.md sin emojis ni `alert()`/`confirm()`; responsive; typecheck/build/tests/deploy/produccion verificados; documentacion (reporte, CHANGELOG, RELEASE) actualizada.
+
+---
+
+# Correccion critica: Generador de asignaciones (distribucion) y reglas de genero
+
+## Fecha
+
+2026-06-30
+
+## Estado
+
+Completada. Verificada localmente (44 pruebas en verde, build ok) y en produccion. Commits en `main`: `808f397` (correccion) y `bbdaec7` (build tag). Desplegada en Dokploy via API (`POST /api/compose.deploy`, `composeStatus=done`); `GET /api/version` devuelve `build=fix-genero-distribucion`. Sin migraciones nuevas. Datos QA de produccion creados y eliminados por completo.
+
+## Problemas detectados (causa raiz)
+
+1. **Distribucion repetitiva / "siempre empieza Amaury".** El generador (`apps/api/src/services/assignment-proposal.ts`) rompia los empates por orden alfabetico del nombre (`fullName.localeCompare`). En la primera generacion, con historial vacio, todos los puntajes son 0, por lo que siempre ganaba el primer nombre alfabetico. Ademas existia un segundo generador ad-hoc en la ruta `POST /monthly-schedules/:id/generate-assignments` con el mismo sesgo alfabetico.
+2. **Posible mujer en Lectura/Discurso por fallback.** Cuando no habia candidatos del genero requerido, tanto el generador de propuestas como la ruta legacy caian a `assignable`/lista completa (podia incluir mujeres) para no dejar el hueco vacio. Esto violaba la regla dura.
+3. **Reglas dispersas.** No existia una funcion central de elegibilidad; la aprobacion de propuestas no revalidaba genero.
+
+## Correccion aplicada
+
+- **Elegibilidad centralizada:** nueva funcion `isPublisherEligibleForAssignment(publisher, assignmentType, role)` en `packages/shared/src/assignment-rules/index.ts` (con espejo en `apps/web/src/lib/assignment-rules.ts`). Unica fuente de verdad: activo, no borrado, `canReceiveAssignments`, `canBeCompanion` (acompanante) y genero permitido por tipo. Usada por el generador, los formularios y las validaciones.
+- **Desempate insesgado y estable:** los empates se rompen con un hash de `weekId + assignmentNumber + seed + publisherId` en lugar del orden alfabetico. Es determinista por generacion, varia por slot (no repite siempre a la misma persona) y se reordena al regenerar (semilla nueva). Elimina el sesgo del primer registro.
+- **Regla de genero dura (sin fallback a mujer):** si no hay hombres elegibles para Lectura de la Biblia o Discurso, la parte se deja **SIN ASIGNAR** con un aviso claro; nunca se asigna una mujer como respaldo.
+- **Validacion fuerte en backend (400):** `createAssignment` y `updateAssignment` ya validaban con `validateAssignmentGenders`; se agrego la misma validacion en `approveProposal` (rechaza aprobar propuestas que rompan la regla) y la ruta `generate-assignments` fue reescrita para delegar en el generador equilibrado (`generateAssignmentsDirect`), sin duplicar algoritmo ni fallback de genero.
+- **Frontend alineado:** la propuesta (`programas/[id]/propuesta`) y el formulario manual (`semanas/[id]/AssignmentForm.tsx`) filtran los selects por genero/elegibilidad (Lectura y Discurso solo hombres) usando la funcion central, y muestran aviso cuando no hay candidatos validos. `getProposal` ahora expone el genero para permitir el filtrado.
+
+## Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `packages/shared/src/assignment-rules/index.ts` | `isPublisherEligibleForAssignment` + tipos de elegibilidad |
+| `apps/web/src/lib/assignment-rules.ts` | Espejo de la funcion de elegibilidad |
+| `apps/api/src/services/assignment-proposal.ts` | Desempate por hash (sin sesgo alfabetico); sin fallback de genero (deja sin asignar) |
+| `apps/api/src/modules/monthly-schedules/monthly-schedules.service.ts` | `approveProposal` valida genero; nueva `generateAssignmentsDirect`; `getProposal` incluye genero |
+| `apps/api/src/modules/monthly-schedules/monthly-schedules.routes.ts` | `generate-assignments` usa el generador equilibrado |
+| `apps/web/src/app/dashboard/programas/[id]/propuesta/page.tsx` | Selects filtrados por genero/elegibilidad |
+| `apps/web/src/app/dashboard/semanas/[id]/AssignmentForm.tsx` | Elegibilidad centralizada + aviso sin candidatos |
+| `apps/web/src/app/dashboard/semanas/[id]/page.tsx` | Tipo Publisher con `canReceiveAssignments` |
+| `apps/api/src/services/assignment-rules.test.ts` | Pruebas de la funcion de elegibilidad |
+| `apps/api/src/services/assignment-proposal.test.ts` | Pruebas: no-sesgo del lector, sin fallback de mujer, lecturas siempre hombres |
+
+## Pruebas locales
+
+`pnpm --filter @jw-reminders/api test`: **44/44 en verde**, incluyendo los casos nuevos:
+- elegibilidad: mujer no puede recibir Lectura ni Discurso; hombre activo si; inactivo/borrado/sin permiso no; acompanante requiere `canBeCompanion`.
+- generador: el lector varia entre semanas (no favorece al primer registro/alfabetico); regenerar con otra semilla produce distribucion distinta; si solo hay mujeres la Lectura queda **sin asignar** (nunca mujer); con hombres suficientes todas las lecturas son hombres y las mujeres reciben partes de estudiante.
+
+`pnpm --filter @jw-reminders/api build` (tsc) limpio. `next build` compila y typecheckea todas las rutas (el unico error local es un `EPERM` de symlink de Windows en el paso standalone, irrelevante en el build Docker/Linux de produccion).
+
+## Pruebas en produccion (datos QA DIST TEST, ya eliminados)
+
+Con `admin`/`dorian123` sobre `https://jw-reminders.duckdns.org`:
+
+- Se crearon 8 publicadores QA (4 hombres, 4 mujeres), un programa mensual QA (2099-12) y 4 semanas; se genero la propuesta (16 asignaciones, `warnings: []`).
+- **Lectura de la Biblia:** 4/4 con hombres (verificado contra el genero real del directorio, 0 mujeres).
+- **Distribucion:** 4 lectores distintos en 4 semanas (sin sesgo del primero), reparto parejo (max−min ≤ 1 entre los publicadores QA).
+- **Mujeres:** aparecen en 9 de 12 partes de "Seamos mejores maestros".
+- **Rechazos forzados por API (400):** POST mujer en Lectura → `Lectura de la Biblia solo puede asignarse a hombres.`; POST mujer en Discurso → `Discurso solo puede asignarse a hombres.`; PUT para cambiar una Lectura a mujer → 400. POST hombre en Lectura → 201 (aceptado).
+- **Sin errores 400 inesperados** en la generacion (warnings vacios).
+
+## Limpieza de QA
+
+Se elimino el programa QA con `DELETE /monthly-schedules/{id}?mode=delete` (borrado en cascada de semanas y asignaciones, incluidas las propuestas y las creadas en las pruebas forzadas) y se borraron los 8 publicadores QA (hard delete, 204). Verificacion final: **0 publicadores QA y 0 programas QA** en produccion. No quedaron automatizaciones ni datos de prueba.
+
+## Criterio de aceptacion
+
+Cumplido: el generador ya no favorece siempre al mismo publicador; Lectura de la Biblia y Discurso solo permiten hombres; el backend rechaza datos invalidos (400) aunque el frontend falle; el frontend filtra correctamente; las pruebas locales pasan; produccion desplegada y verificada; los datos QA fueron limpiados; reporte final actualizado.
