@@ -14,7 +14,7 @@ export async function listMeetingWeeks() {
     include: {
       monthlySchedule: true,
       // Exclude not-yet-approved proposals from counts.
-      _count: { select: { assignments: { where: { status: { not: "PROPOSED" } } } } },
+      _count: { select: { assignments: { where: { status: { not: "PROPOSED" } } }, programItems: true } },
       assignments: {
         where: { status: { not: "PROPOSED" } },
         select: {
@@ -68,6 +68,40 @@ export async function getMeetingWeek(id: string) {
         errorMessage: delivery.errorMessage,
         publisher: delivery.publisher,
       })),
+    })),
+  };
+}
+
+export async function getWeekProgram(id: string) {
+  const week = await prisma.jwMeetingWeek.findUniqueOrThrow({
+    where: { id },
+    include: { programItems: { orderBy: { sortOrder: "asc" } } },
+  });
+  return {
+    id: week.id,
+    meetingDateLocal: week.meetingDateLocal,
+    weekStartDateLocal: week.weekStartDateLocal,
+    isoYear: week.isoYear,
+    isoWeekNumber: week.isoWeekNumber,
+    importStatus: week.importStatus,
+    importedAt: week.importedAt,
+    importError: week.importError,
+    wolMeetingsUrl: week.wolMeetingsUrl,
+    wolProgramUrl: week.wolProgramUrl,
+    itemCount: week.programItems.length,
+    items: week.programItems.map((item) => ({
+      id: item.id,
+      itemNumber: item.itemNumber,
+      section: item.section,
+      title: item.title,
+      assignmentType: item.assignmentType,
+      durationMinutes: item.durationMinutes,
+      context: item.context,
+      description: item.description,
+      reference: item.reference,
+      lesson: item.lesson,
+      requiresAssistant: item.requiresAssistant,
+      sourceUrl: item.sourceUrl,
     })),
   };
 }
@@ -229,6 +263,9 @@ export async function hardDeleteWeekData(tx: any, weekIds: string[]) {
     if (deliveryIds.length) logOr.push({ reminderDeliveryId: { in: deliveryIds } });
     await tx.jwMessageLog.deleteMany({ where: { OR: logOr } });
 
+    // NotificationLog references assignments (RESTRICT) → delete before assignments.
+    await tx.notificationLog.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
+
     await tx.reminderDelivery.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
     await tx.jwAssignmentReminder.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
     await tx.automationPlan.deleteMany({ where: { assignmentId: { in: assignmentIds } } });
@@ -236,6 +273,8 @@ export async function hardDeleteWeekData(tx: any, weekIds: string[]) {
 
   await tx.assignmentTemplate.deleteMany({ where: { meetingWeekId: { in: weekIds } } });
   await tx.jwAssignment.deleteMany({ where: { meetingWeekId: { in: weekIds } } });
+  // MeetingProgramItem references the week (RESTRICT) → delete before the week.
+  await tx.meetingProgramItem.deleteMany({ where: { meetingWeekId: { in: weekIds } } });
   await tx.jwMeetingWeek.deleteMany({ where: { id: { in: weekIds } } });
 }
 

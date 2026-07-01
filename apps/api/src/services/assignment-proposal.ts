@@ -40,6 +40,8 @@ export interface ProposalSlot {
   durationMinutes?: number;
   room: "MAIN" | "AUXILIARY";
   needsCompanion: boolean;
+  /** Item real de WOL del que proviene este slot (si aplica). */
+  programItemId?: string;
 }
 
 export interface ProposalWeekInput {
@@ -79,6 +81,8 @@ export interface ProposedAssignment {
   room: "MAIN" | "AUXILIARY";
   assignedPublisherId: string;
   companionPublisherId: string | null;
+  /** Item real de WOL enlazado (si el slot provino de MeetingProgramItem). */
+  programItemId?: string | null;
 }
 
 export interface ProposalResult {
@@ -236,6 +240,7 @@ export function buildAssignmentProposal(input: {
         room: slot.room,
         assignedPublisherId: assigned.id,
         companionPublisherId: companionId,
+        programItemId: slot.programItemId ?? null,
       });
     }
   }

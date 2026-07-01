@@ -1,5 +1,5 @@
 import { Prisma, prisma, ReminderStatus, ReminderType } from "@jw-reminders/database";
-import { WHATSAPP_SEND_DELAY_MS, resolveOutboundMessage } from "@jw-reminders/shared";
+import { WHATSAPP_SEND_DELAY_MS, resolveOutboundMessage, classifyNotification } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
 
@@ -167,6 +167,26 @@ export async function processReminders() {
         continue;
       }
 
+      // ── Deduplicación con NotificationLog ──
+      // El primer aviso (FIRST_ASSIGNMENT) se envía UNA sola vez por
+      // (asignación, persona). Los recordatorios tienen clave propia y no se bloquean.
+      const notif = classifyNotification(fresh.reminderType);
+      if (notif.type === "FIRST_ASSIGNMENT") {
+        const already = await prisma.notificationLog.findUnique({
+          where: {
+            assignmentId_recipientPersonId_notificationKey: {
+              assignmentId: assignment.id,
+              recipientPersonId: publisher.id,
+              notificationKey: notif.key,
+            },
+          },
+        });
+        if (already && already.status === "SENT") {
+          await markSkipped(fresh.id, "Primer aviso ya enviado (NotificationLog)");
+          continue;
+        }
+      }
+
       const phone = sendConfig.testMode ? sendConfig.testPhone : (publisher.whatsappPhone || publisher.phone);
       if (!phone) {
         await markSkipped(fresh.id, sendConfig.testMode ? "TEST_MODE activo pero TEST_PHONE no configurado" : "Destinatario sin telefono valido");
@@ -204,6 +224,34 @@ export async function processReminders() {
       await event("MESSAGE_ATTEMPT_CREATED", "ReminderDelivery", fresh.id, {
         success: result.success,
         attemptCount,
+      });
+
+      // Registrar/actualizar NotificationLog (dedup por notificationKey + auditoría).
+      await prisma.notificationLog.upsert({
+        where: {
+          assignmentId_recipientPersonId_notificationKey: {
+            assignmentId: assignment.id,
+            recipientPersonId: publisher.id,
+            notificationKey: notif.key,
+          },
+        },
+        create: {
+          assignmentId: assignment.id,
+          recipientPersonId: publisher.id,
+          notificationType: notif.type,
+          notificationKey: notif.key,
+          status: result.success ? "SENT" : "FAILED",
+          sentAt: result.success ? new Date() : null,
+          whatsappMessageId: result.messageId || null,
+          errorMessage: result.error || null,
+        },
+        update: {
+          notificationType: notif.type,
+          status: result.success ? "SENT" : "FAILED",
+          sentAt: result.success ? new Date() : null,
+          whatsappMessageId: result.messageId || null,
+          errorMessage: result.error || null,
+        },
       });
 
       if (result.success) {

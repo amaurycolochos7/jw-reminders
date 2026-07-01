@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import AssignmentForm from './AssignmentForm'
 import AssignmentReminders from './AssignmentReminders'
 import WeekAutomations from './WeekAutomations'
+import WeekProgram from './WeekProgram'
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -411,6 +412,9 @@ export default function SemanaDetallePage() {
         )}
       </div>
 
+      {/* WOL program (import status, source, items, retry, manual capture) */}
+      <WeekProgram weekId={weekId} onChanged={loadWeek} />
+
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <button
@@ -472,8 +476,8 @@ export default function SemanaDetallePage() {
                     <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Seccion</th>
                     <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Tipo</th>
                     <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Titulo</th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Asignado</th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Acompanante</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Participante principal</th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Acompañante</th>
                     <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Sala</th>
                     <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Estado</th>
                     <th className="text-left py-3 px-2 text-xs font-medium text-graphite uppercase tracking-wide">Acciones</th>
@@ -562,11 +566,11 @@ export default function SemanaDetallePage() {
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-graphite">Asignado:</span>
+                        <span className="text-graphite">Participante principal:</span>
                         <span className="text-ink ml-1">{a.assigned?.displayName || a.assigned?.fullName || '---'}</span>
                       </div>
                       <div>
-                        <span className="text-graphite">Acompanante:</span>
+                        <span className="text-graphite">Acompañante:</span>
                         <span className="text-ink ml-1">{a.companion?.displayName || a.companion?.fullName || '---'}</span>
                       </div>
                       <div>

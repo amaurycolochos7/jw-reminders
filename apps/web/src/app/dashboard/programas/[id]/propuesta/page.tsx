@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import ConfirmModal from '@/components/ConfirmModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { isAssigneeGenderAllowed, isCompanionGenderAllowed, type GenderValue } from '@/lib/assignment-rules'
+import { importStatusMeta, PARTICIPANTS_BLOCKED_MESSAGE } from '@/lib/week-program'
 
 interface PubRef { id: string; name: string }
 interface ProposalAssignment {
@@ -25,6 +26,8 @@ interface ProposalWeek {
   meetingDate: string
   meetingTime: string
   status: string
+  importStatus?: string
+  programItemCount?: number
   assignments: ProposalAssignment[]
 }
 interface Publisher { id: string; name: string; canBeCompanion: boolean; gender: GenderValue | null }
@@ -34,6 +37,7 @@ interface Proposal {
   status: string
   hasProposal: boolean
   proposedCount: number
+  allWeeksReady?: boolean
   weeks: ProposalWeek[]
   publishers: Publisher[]
 }
@@ -160,6 +164,9 @@ export default function ProposalPage() {
   )
 
   const companions = data.publishers.filter((p) => p.canBeCompanion)
+  // Sólo se generan/aprueban participantes si TODAS las semanas tienen el
+  // programa real importado desde WOL (importStatus = READY).
+  const blocked = data.allWeeksReady === false
 
   return (
     <div className="space-y-6">
@@ -179,19 +186,27 @@ export default function ProposalPage() {
         <p className="text-sm text-graphite">Flujo: Generar propuesta &rarr; Revisar / editar &rarr; <span className="text-ink font-medium">Aprobar</span> (crea asignaciones reales) &rarr; volver al programa para <Link href={`/dashboard/programas/${id}`} className="text-azure font-medium hover:underline">generar automatizaciones</Link>.</p>
       </div>
 
+      {/* Blocked: weeks without imported program */}
+      {blocked && (
+        <div className="bg-amber-50 rounded-card px-5 py-4">
+          <p className="text-sm font-medium text-amber-800">Aún no se pueden generar participantes</p>
+          <p className="text-sm text-amber-700 mt-0.5">{PARTICIPANTS_BLOCKED_MESSAGE} Importa el programa de cada semana desde WOL (en el detalle de la semana) antes de generar participantes.</p>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="bg-white rounded-card p-5 sm:p-7 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           {!data.hasProposal ? (
-            <button onClick={() => generate(false)} disabled={readOnly || busy === 'gen'} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50">
-              {busy === 'gen' ? 'Generando...' : 'Generar propuesta'}
+            <button onClick={() => generate(false)} disabled={readOnly || blocked || busy === 'gen'} title={blocked ? PARTICIPANTS_BLOCKED_MESSAGE : undefined} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
+              {busy === 'gen' ? 'Generando...' : 'Generar participantes'}
             </button>
           ) : (
             <>
-              <button onClick={askApprove} disabled={readOnly || busy === 'approve'} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50">
+              <button onClick={askApprove} disabled={readOnly || blocked || busy === 'approve'} title={blocked ? PARTICIPANTS_BLOCKED_MESSAGE : undefined} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
                 {busy === 'approve' ? 'Aprobando...' : `Aprobar (${data.proposedCount})`}
               </button>
-              <button onClick={askRegenerate} disabled={readOnly || busy === 'regen'} className="text-caution text-sm font-medium px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors disabled:opacity-50">
+              <button onClick={askRegenerate} disabled={readOnly || blocked || busy === 'regen'} title={blocked ? PARTICIPANTS_BLOCKED_MESSAGE : undefined} className="text-caution text-sm font-medium px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-fog transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {busy === 'regen' ? 'Regenerando...' : 'Regenerar'}
               </button>
               <button onClick={askDiscard} disabled={readOnly || busy === 'discard'} className="text-red-600 text-sm font-medium px-5 py-2.5 rounded-pill border border-silver-mist hover:bg-red-50 transition-colors disabled:opacity-50">
@@ -226,9 +241,16 @@ export default function ProposalPage() {
         <div className="space-y-4">
           {data.weeks.filter((w) => w.assignments.length > 0).map((week) => (
             <div key={week.id} className="bg-white rounded-card overflow-hidden">
-              <div className="px-5 py-4 border-b border-silver-mist">
-                <h2 className="text-sm font-semibold text-ink">Semana del {formatDateShort(week.weekStartDate)}</h2>
-                <p className="text-xs text-graphite">Reunion {formatDateShort(week.meetingDate)} a las {week.meetingTime}</p>
+              <div className="px-5 py-4 border-b border-silver-mist flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-ink">Semana del {formatDateShort(week.weekStartDate)}</h2>
+                  <p className="text-xs text-graphite">Reunion {formatDateShort(week.meetingDate)} a las {week.meetingTime}</p>
+                </div>
+                {week.importStatus && (
+                  <span className={`text-[11px] font-medium px-2.5 py-1 rounded-pill shrink-0 ${importStatusMeta(week.importStatus).className}`}>
+                    {importStatusMeta(week.importStatus).label}
+                  </span>
+                )}
               </div>
               <div className="divide-y divide-silver-mist">
                 {week.assignments.map((a) => (
@@ -238,7 +260,7 @@ export default function ProposalPage() {
                       <p className="text-xs text-graphite">{a.section === 'BIBLE_READING' ? 'Lectura de la Biblia' : 'Seamos mejores maestros'}</p>
                     </div>
                     <div>
-                      <label className="block text-[11px] text-graphite mb-1">Asignado</label>
+                      <label className="block text-[11px] text-graphite mb-1">Participante principal</label>
                       <SearchableSelect
                         value={a.assigned?.id || ''}
                         disabled={readOnly || savingRow === `${a.id}-assignedPublisherId`}
@@ -253,7 +275,7 @@ export default function ProposalPage() {
                     <div>
                       {a.needsCompanion ? (
                         <>
-                          <label className="block text-[11px] text-graphite mb-1">Acompanante</label>
+                          <label className="block text-[11px] text-graphite mb-1">Acompañante</label>
                           <SearchableSelect
                             value={a.companion?.id || ''}
                             disabled={readOnly || savingRow === `${a.id}-companionPublisherId`}
@@ -272,6 +294,9 @@ export default function ProposalPage() {
                             emptyOptionLabel="Sin acompanante"
                             searchPlaceholder="Buscar acompanante..."
                           />
+                          {!a.companion && (
+                            <p className="text-[11px] text-amber-700 mt-1">Esta asignación requiere acompañante.</p>
+                          )}
                         </>
                       ) : (
                         <p className="text-xs text-graphite md:text-center">Individual</p>

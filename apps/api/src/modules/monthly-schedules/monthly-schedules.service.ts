@@ -10,6 +10,47 @@ import {
 import { buildAssignmentProposal, ProposalOptions } from "../../services/assignment-proposal.js";
 import { hardDeleteWeekData } from "../meeting-weeks/meeting-weeks.service.js";
 
+// ─── Guard: sólo se generan participantes sobre programa real de WOL ─────────
+
+export const WEEK_NOT_IMPORTED_MESSAGE =
+  "No se pueden generar participantes porque esta semana todavía no tiene programa importado.";
+
+/**
+ * Construye los "slots" del generador a partir de los items reales importados
+ * desde WOL (MeetingProgramItem). NUNCA usa plantillas genéricas.
+ */
+function buildSlotsFromProgramItems(programItems: any[]) {
+  return [...programItems]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item, index) => ({
+      assignmentNumber: item.itemNumber ?? index + 1,
+      section: (item.section === "BIBLE_READING" ? "BIBLE_READING" : "APPLY_YOURSELF") as
+        | "BIBLE_READING"
+        | "APPLY_YOURSELF",
+      assignmentType: String(item.assignmentType ?? "OTHER"),
+      title: item.title,
+      durationMinutes: item.durationMinutes ?? undefined,
+      room: "MAIN" as const,
+      needsCompanion: Boolean(item.requiresAssistant),
+      programItemId: item.id as string,
+    }));
+}
+
+/**
+ * Valida que TODAS las semanas activas tengan el programa importado (READY) y
+ * al menos un MeetingProgramItem. Si no, lanza el mensaje de bloqueo del spec.
+ */
+function assertWeeksReadyForParticipants(weeks: any[]) {
+  for (const week of weeks) {
+    const ready = week.importStatus === "READY";
+    const hasItems = Array.isArray(week.programItems) && week.programItems.length > 0;
+    if (!ready || !hasItems) {
+      throw new Error(WEEK_NOT_IMPORTED_MESSAGE);
+    }
+  }
+}
+
+
 // ─── Delivery status buckets ─────────────────────────────
 const PENDING_STATUSES: ReminderStatus[] = ["PENDING", "QUEUED", "SENDING"];
 const SENT_STATUSES: ReminderStatus[] = ["SENT"];
@@ -416,10 +457,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
               assignments: {
                 select: { assignmentNumber: true, assignedPublisherId: true, companionPublisherId: true, status: true },
               },
-              assignmentTemplates: {
-                orderBy: { order: "asc" },
-                select: { assignmentNumber: true, section: true, assignmentType: true, title: true, durationMinutes: true, needsCompanion: true, room: true },
-              },
+              programItems: true,
             },
           },
         },
@@ -428,6 +466,9 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
       if (schedule.weeks.length === 0) {
         throw new Error("El programa no tiene semanas activas. Genera las semanas antes de proponer asignaciones.");
       }
+
+      // Sólo se proponen participantes sobre el programa real importado de WOL.
+      assertWeeksReadyForParticipants(schedule.weeks);
 
       const publishers = await tx.jwPublisher.findMany({
         where: { deletedAt: null },
@@ -445,17 +486,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
         existingPublisherIds: week.assignments
           .filter((a) => a.status !== "PROPOSED")
           .flatMap((a) => [a.assignedPublisherId, a.companionPublisherId].filter(Boolean) as string[]),
-        slots: week.assignmentTemplates.length > 0
-          ? week.assignmentTemplates.map((t) => ({
-              assignmentNumber: t.assignmentNumber,
-              section: t.section as any,
-              assignmentType: t.assignmentType as string,
-              title: t.title,
-              durationMinutes: t.durationMinutes ?? undefined,
-              room: t.room as any,
-              needsCompanion: t.needsCompanion,
-            }))
-          : undefined,
+        slots: buildSlotsFromProgramItems(week.programItems),
       }));
 
       const { assignments, warnings } = buildAssignmentProposal({ weeks: weeksInput, publishers, history, options });
@@ -481,6 +512,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
             companionPhoneSnapshot: companionSnap.phone,
             room: a.room,
             status: "PROPOSED",
+            programItemId: a.programItemId ?? undefined,
           },
         });
         created += 1;
@@ -511,10 +543,7 @@ export async function generateAssignmentsDirect(id: string) {
             orderBy: { weekStartDate: "asc" },
             include: {
               assignments: { select: { assignmentNumber: true, assignedPublisherId: true, companionPublisherId: true, status: true } },
-              assignmentTemplates: {
-                orderBy: { order: "asc" },
-                select: { assignmentNumber: true, section: true, assignmentType: true, title: true, durationMinutes: true, needsCompanion: true, room: true },
-              },
+              programItems: true,
             },
           },
         },
@@ -523,6 +552,9 @@ export async function generateAssignmentsDirect(id: string) {
       if (schedule.weeks.length === 0) {
         throw new Error("El programa no tiene semanas activas. Genera las semanas antes de generar asignaciones.");
       }
+
+      // Sólo se generan participantes sobre el programa real importado de WOL.
+      assertWeeksReadyForParticipants(schedule.weeks);
 
       const publishers = await tx.jwPublisher.findMany({
         where: { deletedAt: null },
@@ -540,17 +572,7 @@ export async function generateAssignmentsDirect(id: string) {
         existingPublisherIds: week.assignments
           .filter((a) => a.status !== "PROPOSED")
           .flatMap((a) => [a.assignedPublisherId, a.companionPublisherId].filter(Boolean) as string[]),
-        slots: week.assignmentTemplates.length > 0
-          ? week.assignmentTemplates.map((t) => ({
-              assignmentNumber: t.assignmentNumber,
-              section: t.section as any,
-              assignmentType: t.assignmentType as string,
-              title: t.title,
-              durationMinutes: t.durationMinutes ?? undefined,
-              room: t.room as any,
-              needsCompanion: t.needsCompanion,
-            }))
-          : undefined,
+        slots: buildSlotsFromProgramItems(week.programItems),
       }));
 
       const { assignments, warnings } = buildAssignmentProposal({ weeks: weeksInput, publishers, history });
@@ -588,6 +610,7 @@ export async function generateAssignmentsDirect(id: string) {
             companionPhoneSnapshot: companionSnap.phone,
             room: a.room,
             status: "DRAFT",
+            programItemId: a.programItemId ?? undefined,
           },
         });
         created += 1;
@@ -689,6 +712,7 @@ export async function getProposal(id: string) {
             orderBy: { assignmentNumber: "asc" },
             include: { assigned: true, companion: true },
           },
+          _count: { select: { programItems: true } },
         },
       },
     },
@@ -709,6 +733,8 @@ export async function getProposal(id: string) {
       meetingDate: week.meetingDate,
       meetingTime: week.meetingTime,
       status: week.status,
+      importStatus: week.importStatus,
+      programItemCount: week._count.programItems,
       assignments: week.assignments.map((a) => ({
         id: a.id,
         assignmentNumber: a.assignmentNumber,
@@ -728,6 +754,9 @@ export async function getProposal(id: string) {
     status: schedule.status,
     hasProposal: proposedCount > 0,
     proposedCount,
+    // Sólo se pueden generar/aprobar participantes cuando TODAS las semanas
+    // activas tienen el programa real importado desde WOL.
+    allWeeksReady: schedule.weeks.length > 0 && schedule.weeks.every((w) => w.importStatus === "READY" && w._count.programItems > 0),
     weeks,
     publishers: publishers.map((p) => ({ id: p.id, name: p.displayName || p.fullName, canBeCompanion: p.canBeCompanion, gender: p.gender })),
   };

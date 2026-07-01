@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "@jw-reminders/database";
 import { addDaysToLocalDate } from "../../services/date-utils.js";
 import { createAutomationEvent, monthlyScheduleParts } from "../../services/automation.service.js";
+import { getWolWeekCoordinates } from "@jw-reminders/shared";
+import { importWeekFromWol } from "../../services/wol/wol-importer.service.js";
 import * as service from "./monthly-schedules.service.js";
 
 const router = Router();
@@ -127,7 +129,7 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
 router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Response) => {
   try {
     const data = generateWeeksSchema.parse(req.body);
-    const result = await prisma.$transaction(async (tx) => {
+    const { createdWeekIds, totalMeetingDates } = await prisma.$transaction(async (tx) => {
       const schedule = await tx.monthlySchedule.findUniqueOrThrow({
         where: { id: req.params.id },
         include: { weeks: true },
@@ -135,7 +137,7 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
       const existingMeetingDates = new Set(schedule.weeks.map((week) => week.meetingDateLocal));
       const dates = meetingDatesForMonth(schedule.year, schedule.month, data.meetingDayOfWeek);
 
-      let created = 0;
+      const createdWeekIds: string[] = [];
       for (const meetingDateLocal of dates) {
         if (existingMeetingDates.has(meetingDateLocal)) continue;
 
@@ -143,7 +145,10 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
         const daysFromMonday = (dayOfWeek + 6) % 7;
         const weekStartLocal = addDaysToLocalDate(meetingDateLocal, -daysFromMonday);
 
-        await tx.jwMeetingWeek.create({
+        // Coordenadas WOL (año/semana ISO + URL de reuniones) desde el lunes.
+        const coords = getWolWeekCoordinates(weekStartLocal);
+
+        const week = await tx.jwMeetingWeek.create({
           data: {
             monthlyScheduleId: schedule.id,
             weekStartDate: localDateToUtcMidnight(weekStartLocal),
@@ -153,30 +158,48 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
             meetingTime: data.meetingTime,
             congregationName: data.congregationName,
             notes: data.notes,
-            status: "READY",
+            // La semana NO nace lista: primero debe importarse el programa real de WOL.
+            status: "DRAFT",
+            isoYear: coords.year,
+            isoWeekNumber: coords.weekNumber,
+            wolMeetingsUrl: coords.meetingsUrl,
+            importStatus: "EMPTY",
           },
         });
-        created += 1;
+        createdWeekIds.push(week.id);
       }
 
-      if (created > 0) {
+      if (createdWeekIds.length > 0) {
         await createAutomationEvent(tx, {
           eventType: "MONTHLY_WEEKS_GENERATED",
           entityType: "MonthlySchedule",
           entityId: schedule.id,
           actorType: "admin",
           metadata: {
-            created,
+            created: createdWeekIds.length,
             meetingDayOfWeek: data.meetingDayOfWeek,
             meetingTime: data.meetingTime,
           },
         });
       }
 
-      return { created, totalMeetingDates: dates.length };
+      return { createdWeekIds, totalMeetingDates: dates.length };
     });
 
-    res.json(result);
+    // Tras crear las semanas, importar el programa real de WOL de cada una.
+    // Cada importación es independiente: si una falla, queda IMPORT_FAILED y no
+    // aborta a las demás (nunca se borra la semana).
+    const imports = [];
+    for (const weekId of createdWeekIds) {
+      try {
+        const result = await importWeekFromWol(weekId);
+        imports.push({ weekId, status: result.status, itemCount: result.itemCount, error: result.error });
+      } catch (err: any) {
+        imports.push({ weekId, status: "IMPORT_FAILED", itemCount: 0, error: err?.message || String(err) });
+      }
+    }
+
+    res.json({ created: createdWeekIds.length, totalMeetingDates, imports });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

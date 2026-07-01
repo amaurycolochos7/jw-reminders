@@ -35,6 +35,13 @@ interface Props {
   onClose: () => void
 }
 
+interface MessagePreview {
+  primaryMessage: string | null
+  assistantMessage: string | null
+  reminderMessage: string | null
+  warnings: string[]
+}
+
 const REMINDER_DAY_LABELS: Record<string, string> = {
   INITIAL_NOTICE: 'Aviso inicial',
   SEVEN_DAYS_BEFORE: '7 dias antes',
@@ -66,6 +73,8 @@ function formatDateTime(iso: string): string {
 export default function AssignmentReminders({ assignment, onClose }: Props) {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [loading, setLoading] = useState(true)
+  const [preview, setPreview] = useState<MessagePreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
@@ -79,7 +88,16 @@ export default function AssignmentReminders({ assignment, onClose }: Props) {
         setLoading(false)
       }
     }
+    async function loadPreview() {
+      try {
+        const res = await api(`/api/assignments/${assignment.id}/message-preview`)
+        if (res.ok) setPreview(await res.json())
+      } catch { /* ignore */ } finally {
+        setPreviewLoading(false)
+      }
+    }
     load()
+    loadPreview()
   }, [assignment.id])
 
   // Group reminders by publisher
@@ -103,6 +121,45 @@ export default function AssignmentReminders({ assignment, onClose }: Props) {
           </button>
         </div>
 
+        {/* Vista previa de mensajes — mismo texto que se enviará por WhatsApp */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-ink mb-3">Vista previa de mensajes</h3>
+          {previewLoading ? (
+            <div className="h-24 bg-silver-mist/40 rounded-xl animate-pulse" />
+          ) : !preview ? (
+            <p className="text-xs text-graphite">No se pudo cargar la vista previa.</p>
+          ) : (
+            <div className="space-y-4">
+              {preview.warnings.length > 0 && (
+                <div className="bg-amber-50 rounded-xl px-4 py-2.5">
+                  {preview.warnings.map((w, i) => (
+                    <p key={i} className="text-xs text-amber-700">{w}</p>
+                  ))}
+                </div>
+              )}
+              {preview.primaryMessage && (
+                <div>
+                  <p className="text-xs font-medium text-graphite mb-1.5">Primer mensaje · Participante principal</p>
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-ink bg-fog rounded-xl px-4 py-3">{preview.primaryMessage}</pre>
+                </div>
+              )}
+              {preview.assistantMessage && (
+                <div>
+                  <p className="text-xs font-medium text-graphite mb-1.5">Primer mensaje · Acompañante</p>
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-ink bg-fog rounded-xl px-4 py-3">{preview.assistantMessage}</pre>
+                </div>
+              )}
+              {preview.reminderMessage && (
+                <div>
+                  <p className="text-xs font-medium text-graphite mb-1.5">Recordatorio corto</p>
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-ink bg-fog rounded-xl px-4 py-3">{preview.reminderMessage}</pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <h3 className="text-sm font-semibold text-ink mb-3">Recordatorios programados</h3>
         {loading ? (
           <div className="space-y-3 animate-pulse">
             {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-silver-mist/50 rounded-xl" />)}

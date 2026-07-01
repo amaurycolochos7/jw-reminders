@@ -97,6 +97,21 @@ enum MeetingWeekStatus {
   CANCELLED
 }
 
+// Estado de la importación del programa real de WOL para una semana.
+enum WeekImportStatus {
+  EMPTY // Semana creada, aún sin programa importado.
+  IMPORTING // Importación en curso.
+  READY // Programa importado correctamente; se puede generar participantes.
+  NEEDS_REVIEW // Se importó algo pero faltan datos o el parser no está seguro.
+  IMPORT_FAILED // No se pudo importar desde WOL.
+}
+
+// Tipo de notificación para deduplicar el primer aviso por asignación/persona.
+enum NotificationType {
+  FIRST_ASSIGNMENT
+  REMINDER
+}
+
 enum AutomationPlanStatus {
   DRAFT
   ACTIVE
@@ -149,6 +164,7 @@ model JwPublisher {
   reminders            JwAssignmentReminder[]
   reminderDeliveries   ReminderDelivery[]
   messageLogs          JwMessageLog[]
+  notificationLogs     NotificationLog[]
 }
 
 model MonthlySchedule {
@@ -182,15 +198,25 @@ model JwMeetingWeek {
   archivedAt         DateTime?
   cancelledAt        DateTime?
   completedAt        DateTime?
+  // ─── Integración con WOL (Vida y Ministerio) ───
+  isoYear            Int? // Año ISO que corresponde a la semana (para la URL de WOL).
+  isoWeekNumber      Int? // Número de semana ISO (1..53).
+  wolMeetingsUrl     String? // https://wol.jw.org/es/wol/meetings/r4/lp-s/{year}/{week}
+  wolProgramUrl      String? // Enlace real del programa de esa semana (/wol/d/...).
+  importStatus       WeekImportStatus  @default(EMPTY)
+  importedAt         DateTime?
+  importError        String?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
   monthlySchedule MonthlySchedule? @relation(fields: [monthlyScheduleId], references: [id])
   assignments     JwAssignment[]
   assignmentTemplates AssignmentTemplate[]
+  programItems    MeetingProgramItem[]
 
   @@index([monthlyScheduleId])
   @@index([status])
+  @@index([importStatus])
 }
 
 model JwAssignment {
@@ -213,6 +239,7 @@ model JwAssignment {
   notes                  String?
   status                 AssignmentStatus  @default(DRAFT)
   version                Int               @default(1)
+  programItemId          String? // Item real de WOL sobre el que se asigna (si aplica).
   completedAt            DateTime?
   cancelledAt            DateTime?
   createdAt              DateTime          @default(now())
@@ -221,14 +248,17 @@ model JwAssignment {
   meetingWeek        JwMeetingWeek          @relation(fields: [meetingWeekId], references: [id])
   assigned           JwPublisher            @relation("AssignedPublisher", fields: [assignedPublisherId], references: [id])
   companion          JwPublisher?           @relation("CompanionPublisher", fields: [companionPublisherId], references: [id])
+  programItem        MeetingProgramItem?    @relation(fields: [programItemId], references: [id])
   reminders          JwAssignmentReminder[]
   automationPlans    AutomationPlan[]
   reminderDeliveries ReminderDelivery[]
   messageLogs        JwMessageLog[]
+  notificationLogs   NotificationLog[]
 
   @@index([meetingWeekId, status])
   @@index([assignedPublisherId])
   @@index([companionPublisherId])
+  @@index([programItemId])
 }
 
 model AssignmentTemplate {
@@ -396,4 +426,61 @@ model AppConfig {
   id    String @id @default(cuid())
   key   String @unique
   value String
+}
+
+// Programa real de una semana importado desde WOL (Vida y Ministerio).
+// Es la fuente sobre la que se asignan personas; nunca se inventa.
+model MeetingProgramItem {
+  id              String   @id @default(cuid())
+  meetingWeekId   String
+  itemNumber      Int? // Número de la parte en WOL (4, 5, 6...). Null en Lectura de la Biblia.
+  section         String? // Sección general, p. ej. "Seamos mejores maestros".
+  title           String // "Lectura de la Biblia", "Empiece conversaciones"...
+  assignmentType  AssignmentType @default(OTHER)
+  durationMinutes Int?
+  context         String? // "PREDICACIÓN INFORMAL", "DE CASA EN CASA".
+  description     String? // Instrucción completa.
+  reference       String? // "lmd lección 1 punto 4".
+  lesson          String? // "th lección 2".
+  requiresAssistant Boolean @default(false)
+  sourceUrl       String? // URL de WOL de origen.
+  sortOrder       Int      @default(0)
+  rawText         String? // Texto original extraído (auditoría).
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  meetingWeek JwMeetingWeek  @relation(fields: [meetingWeekId], references: [id])
+  assignments JwAssignment[]
+
+  // Upsert estable por semana + posición (sortOrder). itemNumber puede ser null
+  // (p. ej. Lectura de la Biblia) y los títulos podrían repetirse, por lo que la
+  // posición dentro de la semana es el identificador confiable.
+  @@unique([meetingWeekId, sortOrder])
+  @@index([meetingWeekId])
+}
+
+// Registro de notificaciones para evitar duplicados (primer aviso) y auditar envíos.
+model NotificationLog {
+  id                String           @id @default(cuid())
+  assignmentId      String
+  recipientPersonId String
+  notificationType  NotificationType
+  // Clave fina de deduplicación. FIRST_ASSIGNMENT se envía una sola vez, pero los
+  // recordatorios se distinguen por clave (REMINDER_7_DAYS, REMINDER_3_DAYS,
+  // REMINDER_1_DAY, REMINDER_SAME_DAY...) para permitir varios sin duplicar.
+  notificationKey   String
+  status            MessageLogStatus
+  sentAt            DateTime?
+  whatsappMessageId String?
+  errorMessage      String?
+  createdAt         DateTime         @default(now())
+
+  assignment JwAssignment @relation(fields: [assignmentId], references: [id])
+  recipient  JwPublisher  @relation(fields: [recipientPersonId], references: [id])
+
+  // No reenviar la misma notificación (misma clave) a la misma persona para la
+  // misma asignación. Permite múltiples recordatorios con claves distintas.
+  @@unique([assignmentId, recipientPersonId, notificationKey])
+  @@index([assignmentId])
+  @@index([recipientPersonId])
 }

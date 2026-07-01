@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import { importStatusMeta } from '@/lib/week-program'
 
 interface MeetingWeek {
   id: string
@@ -15,7 +16,11 @@ interface MeetingWeek {
   status: string
   monthlyScheduleId: string | null
   monthlySchedule: { id: string; name: string } | null
-  _count?: { assignments: number }
+  importStatus?: string
+  wolMeetingsUrl?: string | null
+  wolProgramUrl?: string | null
+  importError?: string | null
+  _count?: { assignments: number; programItems?: number }
   totalReminders?: number
   pendingReminders?: number
   sentReminders?: number
@@ -339,6 +344,28 @@ export default function SemanasPage() {
                 <p className="text-sm text-graphite">Reunion: {formatDate(w.meetingDate)} a las {w.meetingTime}</p>
                 {w.congregationName && <p className="text-xs text-graphite mt-1">{w.congregationName}</p>}
 
+                {/* Programa WOL */}
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-pill ${importStatusMeta(w.importStatus).className}`}>{importStatusMeta(w.importStatus).label}</span>
+                    <span className="text-xs text-graphite truncate">{w._count?.programItems || 0} asignaciones importadas</span>
+                  </div>
+                  {(w.wolProgramUrl || w.wolMeetingsUrl) && (
+                    <a
+                      href={w.wolProgramUrl && w.wolProgramUrl.startsWith('http') ? w.wolProgramUrl : (w.wolMeetingsUrl || '#')}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-azure hover:underline shrink-0"
+                    >
+                      Fuente WOL
+                    </a>
+                  )}
+                </div>
+                {w.importStatus === 'IMPORT_FAILED' && (
+                  <p className="text-xs text-red-600 mt-1">No se pudo importar el programa.</p>
+                )}
+
                 {/* Completion bar */}
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-1.5">
@@ -376,6 +403,12 @@ export default function SemanasPage() {
                     className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors"
                   >
                     Ver detalle
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/semanas/${w.id}`) }}
+                    className="text-azure text-xs font-medium px-3 py-1.5 rounded-pill hover:bg-azure/5 transition-colors"
+                  >
+                    Ver programa
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); openEdit(w) }}

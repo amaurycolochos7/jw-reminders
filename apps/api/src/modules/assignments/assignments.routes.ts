@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import * as service from "./assignments.service.js";
+import { getAssignmentMessagePreview } from "../../services/notifications/assignment-preview.service.js";
 
 const router = Router();
 
@@ -29,6 +30,13 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
     res.json(await service.getAssignment(req.params.id));
+  } catch { res.status(404).json({ error: "Not found" }); }
+});
+
+// Vista previa de mensajes (mismo renderer que el envío real — FASE 2).
+router.get("/:id/message-preview", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await getAssignmentMessagePreview(req.params.id));
   } catch { res.status(404).json({ error: "Not found" }); }
 });
 
