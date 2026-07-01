@@ -1027,3 +1027,27 @@ aplicar la migración `p8_publisher_capabilities`. Ver pasos de QA en producció
 crear publicador de prueba, editar capacidades, verificar que el backend rechaza
 combinaciones inválidas (p. ej. mujer con Lectura de la Biblia), y limpiar los
 datos QA.
+
+
+## Deploy y QA en producción (ejecutado)
+
+- Commits en `main`: `90c1492` (feature) y `a297eaf` (build tag).
+- El webhook GitHub→Dokploy no disparó; se desplegó vía API de Dokploy
+  (`POST /api/compose.deploy`, `composeId=z6xyxXGM1QTnRlFs_2Lmc`). `composeStatus=done`.
+- Verificación no destructiva: `GET /api/version` → `{"version":"1.0.0","build":"p8-publisher-capabilities"}`,
+  `GET /api/health` → `{"status":"ok"}`. La migración `p8` se aplicó automáticamente
+  al arrancar el contenedor de API (`prisma migrate deploy`).
+- Frontend: `GET /dashboard/publicadores` → 200.
+
+### Pruebas QA en producción (datos temporales, ya eliminados)
+
+| Caso | Resultado |
+|------|-----------|
+| Crear hombre anciano con capacidades masculinas | ✓ Aceptado; capacidades persistidas (confirma migración) |
+| Crear mujer con "Lectura de la Biblia" | ✓ Rechazado 400: "Una mujer no puede: hacer lectura de la biblia." |
+| Crear mujer con nombramiento ELDER | ✓ Rechazado 400: "Solo los hombres pueden ser nombrados..." |
+| Editar (PUT) cambiando el anciano a FEMALE conservando capacidades masculinas | ✓ Rechazado (estado fusionado inválido); el registro no cambió |
+| Editar capacidad válida (canPray=false) | ✓ Aceptado; resto de capacidades preservado |
+| Eliminar publicador QA | ✓ Eliminado (GET posterior → 404) |
+
+Datos QA limpiados (búsqueda `?search=QA` → 0 resultados).
