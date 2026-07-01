@@ -25,6 +25,9 @@ interface Publisher {
   canReceiveAssignments: boolean
   canBeCompanion: boolean
   gender: string | null
+  canBibleReading?: boolean
+  canGiveTalk?: boolean
+  canParticipateSMM?: boolean
 }
 
 interface Assignment {
@@ -101,21 +104,37 @@ export default function AssignmentForm({ weekId, publishers, assignment, existin
   const showCompanion = typeNeedsCompanion(form.assignmentType)
   const rule = getAssignmentTypeRule(form.assignmentType)
 
-  // Eligible assignees: active, can receive assignments, and gender rule of the part.
+  // Eligible assignees: active, can receive assignments, capability + gender rule of the part.
   const assignedOptions = publishers.filter((p) =>
     isPublisherEligibleForAssignment(
-      { isActive: p.isActive, canReceiveAssignments: p.canReceiveAssignments, canBeCompanion: p.canBeCompanion, gender: p.gender as GenderValue | null },
+      {
+        isActive: p.isActive,
+        canReceiveAssignments: p.canReceiveAssignments,
+        canBeCompanion: p.canBeCompanion,
+        gender: p.gender as GenderValue | null,
+        canBibleReading: p.canBibleReading,
+        canGiveTalk: p.canGiveTalk,
+        canParticipateSMM: p.canParticipateSMM,
+      },
       form.assignmentType,
       'ASSIGNEE',
     ),
   )
 
-  // Eligible companions: base companion eligibility, not the assignee, and same gender when required.
+  // Eligible companions: base companion eligibility (incl. capability), not the assignee, and same gender when required.
   const assignedGender = (publishers.find((p) => p.id === form.assignedPublisherId)?.gender ?? null) as GenderValue | null
   const companionOptions = publishers.filter(
     (p) =>
       isPublisherEligibleForAssignment(
-        { isActive: p.isActive, canReceiveAssignments: p.canReceiveAssignments, canBeCompanion: p.canBeCompanion, gender: p.gender as GenderValue | null },
+        {
+          isActive: p.isActive,
+          canReceiveAssignments: p.canReceiveAssignments,
+          canBeCompanion: p.canBeCompanion,
+          gender: p.gender as GenderValue | null,
+          canBibleReading: p.canBibleReading,
+          canGiveTalk: p.canGiveTalk,
+          canParticipateSMM: p.canParticipateSMM,
+        },
         form.assignmentType,
         'COMPANION',
       ) &&

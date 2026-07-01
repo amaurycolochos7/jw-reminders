@@ -22,10 +22,13 @@ test("mujer con capacidades masculinas en false es válida", () => {
     canParticipateSMM: true,
     canBeCompanion: true,
     canReceiveAssignments: true,
-    canSpiritualGems: true, // no es estricta según spec
-    canConcludingRemarks: true, // no es estricta según spec
   });
   assert.equal(errors.length, 0);
+});
+
+test("mujer no puede Perlas Escondidas ni Palabras de conclusión (ahora estrictas)", () => {
+  assert.ok(validatePublisherCapabilities({ gender: "FEMALE", canSpiritualGems: true }).length > 0);
+  assert.ok(validatePublisherCapabilities({ gender: "FEMALE", canConcludingRemarks: true }).length > 0);
 });
 
 test("mujer no puede ser nombrada (anciano/siervo)", () => {

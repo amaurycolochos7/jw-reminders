@@ -186,6 +186,43 @@ export interface EligibilityPublisher {
   canReceiveAssignments?: boolean;
   canBeCompanion?: boolean;
   gender?: GenderValue | null;
+  // ─── Capacidades usadas por el generador (Fase 2) ───
+  // Si vienen `undefined` se mantiene el comportamiento anterior (solo la regla
+  // de género), para no romper llamadas/datos legacy que no las proveen.
+  canBibleReading?: boolean;
+  canGiveTalk?: boolean;
+  canParticipateSMM?: boolean;
+}
+
+/**
+ * Capacidad requerida por tipo de asignación (Fase 2). Solo cubre los tipos que
+ * el sistema modela como asignables. `null` = sin capacidad específica.
+ *
+ * Nota: las partes de reunión (Tesoros, Perlas, Nuestra Vida Cristiana,
+ * presidente, oración, conductor/lector del Estudio, palabras de conclusión) no
+ * son tipos asignables en el modelo actual; sus reglas de capacidad se aplican a
+ * nivel de publicador (validación estricta del backend) y se integrarán al
+ * generador cuando esas partes se modelen como asignaciones.
+ */
+export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
+  AssignmentTypeId,
+  "canBibleReading" | "canGiveTalk" | "canParticipateSMM" | null
+> = {
+  BIBLE_READING: "canBibleReading",
+  START_CONVERSATION: "canParticipateSMM",
+  MAKE_RETURN_VISIT: "canParticipateSMM",
+  BIBLE_STUDY: "canParticipateSMM",
+  EXPLAIN_BELIEFS: "canParticipateSMM",
+  MAKE_DISCIPLES: "canParticipateSMM",
+  TALK: "canGiveTalk",
+  OTHER: null,
+};
+
+/** Capacidad requerida por el tipo, o null si no aplica. */
+export function requiredCapabilityForType(
+  type: string,
+): "canBibleReading" | "canGiveTalk" | "canParticipateSMM" | null {
+  return ASSIGNMENT_TYPE_REQUIRED_CAPABILITY[type as AssignmentTypeId] ?? null;
 }
 
 /**
@@ -196,6 +233,11 @@ export interface EligibilityPublisher {
  *  - Debe estar activo y no borrado.
  *  - Debe poder recibir asignaciones (el acompañante también recibe una parte).
  *  - Si el rol es COMPANION, debe tener canBeCompanion.
+ *  - Capacidad de la parte (Fase 2): si el tipo requiere una capacidad y el
+ *    publicador la tiene explícitamente en `false`, no es elegible (aplica a
+ *    asignado y acompañante, porque el acompañante de una parte de estudiante
+ *    también participa en Seamos Mejores Maestros). Si la capacidad viene
+ *    `undefined`, no se bloquea (retrocompatibilidad con datos legacy).
  *  - Si el rol es ASSIGNEE, debe respetar el género permitido por el tipo
  *    (Lectura de la Biblia y Discurso solo hombres). El género desconocido no
  *    se bloquea (conservador con datos existentes sin género capturado).
@@ -212,6 +254,10 @@ export function isPublisherEligibleForAssignment(
   if (publisher.deletedAt) return false;
   if (publisher.canReceiveAssignments === false) return false;
   if (role === "COMPANION" && publisher.canBeCompanion === false) return false;
+
+  const capField = requiredCapabilityForType(assignmentType);
+  if (capField && publisher[capField] === false) return false;
+
   if (role === "ASSIGNEE" && !isAssigneeGenderAllowed(assignmentType, publisher.gender)) return false;
   return true;
 }

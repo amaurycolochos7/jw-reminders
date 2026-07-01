@@ -51,11 +51,10 @@ export interface CapabilityMeta {
 /**
  * Catálogo ordenado de capacidades. El orden se respeta en la UI.
  *
- * NOTA sobre reglas estrictas: la especificación de Fase 1 lista explícitamente
- * qué NO pueden hacer las mujeres. "Perlas Escondidas" (canSpiritualGems) y
- * "Palabras de conclusión" (canConcludingRemarks) NO figuran en esa lista
- * estricta, por lo que no se bloquean por género (aunque las sugerencias las
- * dejan en false para mujeres). El resto de partes de reunión sí son estrictas.
+ * NOTA sobre reglas estrictas: todas las capacidades marcadas `maleOnly: true`
+ * quedan reservadas a hombres y el backend las rechaza para mujeres. Incluye
+ * las partes de reunión que en la práctica realizan hombres/nombrados
+ * (Perlas Escondidas y Palabras de conclusión también son solo para hombres).
  */
 export const CAPABILITIES: CapabilityMeta[] = [
   // Asignaciones básicas
@@ -68,11 +67,11 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: "canBeChairman", label: "Ser presidente", group: "meeting", maleOnly: true },
   { key: "canPray", label: "Hacer oración", group: "meeting", maleOnly: true },
   { key: "canTreasures", label: "Hacer Tesoros de la Biblia", group: "meeting", maleOnly: true },
-  { key: "canSpiritualGems", label: "Hacer Perlas Escondidas", group: "meeting", maleOnly: false },
+  { key: "canSpiritualGems", label: "Hacer Perlas Escondidas", group: "meeting", maleOnly: true },
   { key: "canChristianLife", label: "Hacer Nuestra Vida Cristiana", group: "meeting", maleOnly: true },
   { key: "canConductCBS", label: "Conducir Estudio Bíblico de la Congregación", group: "meeting", maleOnly: true },
   { key: "canReadCBS", label: "Ser lector del Estudio Bíblico de la Congregación", group: "meeting", maleOnly: true },
-  { key: "canConcludingRemarks", label: "Hacer palabras de conclusión", group: "meeting", maleOnly: false },
+  { key: "canConcludingRemarks", label: "Hacer palabras de conclusión", group: "meeting", maleOnly: true },
 ];
 
 /** Subconjunto de capacidades estrictamente reservadas a hombres. */

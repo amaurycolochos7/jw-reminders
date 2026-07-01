@@ -41,11 +41,11 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: 'canBeChairman', label: 'Ser presidente', group: 'meeting', maleOnly: true },
   { key: 'canPray', label: 'Hacer oración', group: 'meeting', maleOnly: true },
   { key: 'canTreasures', label: 'Hacer Tesoros de la Biblia', group: 'meeting', maleOnly: true },
-  { key: 'canSpiritualGems', label: 'Hacer Perlas Escondidas', group: 'meeting', maleOnly: false },
+  { key: 'canSpiritualGems', label: 'Hacer Perlas Escondidas', group: 'meeting', maleOnly: true },
   { key: 'canChristianLife', label: 'Hacer Nuestra Vida Cristiana', group: 'meeting', maleOnly: true },
   { key: 'canConductCBS', label: 'Conducir Estudio Bíblico de la Congregación', group: 'meeting', maleOnly: true },
   { key: 'canReadCBS', label: 'Ser lector del Estudio Bíblico de la Congregación', group: 'meeting', maleOnly: true },
-  { key: 'canConcludingRemarks', label: 'Hacer palabras de conclusión', group: 'meeting', maleOnly: false },
+  { key: 'canConcludingRemarks', label: 'Hacer palabras de conclusión', group: 'meeting', maleOnly: true },
 ]
 
 export const MALE_ONLY_CAPABILITIES: CapabilityKey[] = CAPABILITIES.filter((c) => c.maleOnly).map((c) => c.key)

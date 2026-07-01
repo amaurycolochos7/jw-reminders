@@ -19,6 +19,9 @@ interface Publisher {
   canReceiveAssignments: boolean
   canBeCompanion: boolean
   gender: string | null
+  canBibleReading?: boolean
+  canGiveTalk?: boolean
+  canParticipateSMM?: boolean
 }
 
 interface Assignment {

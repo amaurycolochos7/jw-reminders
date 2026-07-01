@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import ConfirmModal from '@/components/ConfirmModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
-import { isAssigneeGenderAllowed, isCompanionGenderAllowed, type GenderValue } from '@/lib/assignment-rules'
+import { isCompanionGenderAllowed, isPublisherEligibleForAssignment, type GenderValue } from '@/lib/assignment-rules'
 import { importStatusMeta, PARTICIPANTS_BLOCKED_MESSAGE } from '@/lib/week-program'
 
 interface PubRef { id: string; name: string }
@@ -30,7 +30,17 @@ interface ProposalWeek {
   programItemCount?: number
   assignments: ProposalAssignment[]
 }
-interface Publisher { id: string; name: string; canBeCompanion: boolean; gender: GenderValue | null }
+interface Publisher {
+  id: string
+  name: string
+  canBeCompanion: boolean
+  gender: GenderValue | null
+  isActive?: boolean
+  canReceiveAssignments?: boolean
+  canBibleReading?: boolean
+  canGiveTalk?: boolean
+  canParticipateSMM?: boolean
+}
 interface Proposal {
   programId: string
   name: string
@@ -163,7 +173,6 @@ export default function ProposalPage() {
     </div>
   )
 
-  const companions = data.publishers.filter((p) => p.canBeCompanion)
   // Sólo se generan/aprueban participantes si TODAS las semanas tienen el
   // programa real importado desde WOL (importStatus = READY).
   const blocked = data.allWeeksReady === false
@@ -266,7 +275,7 @@ export default function ProposalPage() {
                         disabled={readOnly || savingRow === `${a.id}-assignedPublisherId`}
                         onChange={(value) => changePublisher(a.id, 'assignedPublisherId', value)}
                         options={data.publishers
-                          .filter((p) => isAssigneeGenderAllowed(a.assignmentType, p.gender))
+                          .filter((p) => isPublisherEligibleForAssignment(p, a.assignmentType, 'ASSIGNEE'))
                           .map((p) => ({ value: p.id, label: p.name }))}
                         placeholder="Seleccionar persona"
                         searchPlaceholder="Buscar publicador..."
@@ -280,9 +289,10 @@ export default function ProposalPage() {
                             value={a.companion?.id || ''}
                             disabled={readOnly || savingRow === `${a.id}-companionPublisherId`}
                             onChange={(value) => changePublisher(a.id, 'companionPublisherId', value)}
-                            options={companions
+                            options={data.publishers
                               .filter((p) =>
                                 p.id !== a.assigned?.id &&
+                                isPublisherEligibleForAssignment(p, a.assignmentType, 'COMPANION') &&
                                 isCompanionGenderAllowed(
                                   a.assignmentType,
                                   data.publishers.find((x) => x.id === a.assigned?.id)?.gender ?? null,

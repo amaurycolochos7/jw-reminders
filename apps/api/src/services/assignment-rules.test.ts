@@ -8,6 +8,7 @@ import {
   isAssigneeGenderAllowed,
   isCompanionGenderAllowed,
   isPublisherEligibleForAssignment,
+  requiredCapabilityForType,
   validateAssignmentGenders,
 } from "@jw-reminders/shared";
 
@@ -85,4 +86,41 @@ test("isPublisherEligibleForAssignment: acompanante requiere canBeCompanion", ()
   const noCompanion = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: false, gender: "MALE" as const };
   assert.equal(isPublisherEligibleForAssignment(noCompanion, "START_CONVERSATION", "COMPANION"), false);
   assert.equal(isPublisherEligibleForAssignment(noCompanion, "START_CONVERSATION", "ASSIGNEE"), true);
+});
+
+
+
+// ─── Fase 2: elegibilidad por capacidad ───
+
+test("requiredCapabilityForType mapea tipos a capacidades", () => {
+  assert.equal(requiredCapabilityForType("BIBLE_READING"), "canBibleReading");
+  assert.equal(requiredCapabilityForType("TALK"), "canGiveTalk");
+  assert.equal(requiredCapabilityForType("START_CONVERSATION"), "canParticipateSMM");
+  assert.equal(requiredCapabilityForType("BIBLE_STUDY"), "canParticipateSMM");
+  assert.equal(requiredCapabilityForType("OTHER"), null);
+});
+
+test("capacidad explícita en false bloquea aunque el género lo permitiera", () => {
+  const man = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "MALE" as const };
+  assert.equal(isPublisherEligibleForAssignment({ ...man, canBibleReading: false }, "BIBLE_READING"), false);
+  assert.equal(isPublisherEligibleForAssignment({ ...man, canGiveTalk: false }, "TALK"), false);
+  assert.equal(isPublisherEligibleForAssignment({ ...man, canBibleReading: true }, "BIBLE_READING"), true);
+});
+
+test("capacidad undefined mantiene comportamiento legacy (solo género)", () => {
+  const man = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "MALE" as const };
+  // Sin canBibleReading definido: no se bloquea por capacidad, sí por género (hombre pasa).
+  assert.equal(isPublisherEligibleForAssignment(man, "BIBLE_READING"), true);
+});
+
+test("SMM: capacidad canParticipateSMM=false bloquea a asignado y acompañante", () => {
+  const p = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "MALE" as const, canParticipateSMM: false };
+  assert.equal(isPublisherEligibleForAssignment(p, "START_CONVERSATION", "ASSIGNEE"), false);
+  assert.equal(isPublisherEligibleForAssignment(p, "START_CONVERSATION", "COMPANION"), false);
+});
+
+test("mujer con canParticipateSMM sí es elegible para partes de estudiante", () => {
+  const woman = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "FEMALE" as const, canParticipateSMM: true };
+  assert.equal(isPublisherEligibleForAssignment(woman, "START_CONVERSATION", "ASSIGNEE"), true);
+  assert.equal(isPublisherEligibleForAssignment(woman, "START_CONVERSATION", "COMPANION"), true);
 });

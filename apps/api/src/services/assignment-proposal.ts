@@ -8,6 +8,11 @@
  * Rules enforced here:
  *  - Only active, non-deleted publishers that canReceiveAssignments may be assigned.
  *  - Only active, non-deleted publishers that canBeCompanion may be companions.
+ *  - Capability rules (Fase 2): each part requires the matching capability
+ *    (Bible Reading→canBibleReading, Talk→canGiveTalk, student parts→
+ *    canParticipateSMM). A publisher whose capability is explicitly false is
+ *    never selected for that part (assignee or companion). Missing capability
+ *    (undefined) keeps the legacy gender-only behavior.
  *  - A person is not used twice in the same week (unless allowSamePersonTwicePerWeek).
  *  - Bible Reading / Talk slots have no companion (needsCompanion=false).
  *  - Gender rules: Bible Reading / Talk are male-only; student parts use a
@@ -17,7 +22,6 @@
  */
 
 import {
-  isAssigneeGenderAllowed,
   isCompanionGenderAllowed,
   isPublisherEligibleForAssignment,
 } from "@jw-reminders/shared";
@@ -30,6 +34,11 @@ export interface ProposalPublisher {
   canReceiveAssignments: boolean;
   canBeCompanion: boolean;
   gender?: "MALE" | "FEMALE" | null;
+  // Capacidades reales (Fase 2). Opcionales para retrocompatibilidad con
+  // llamadas/tests que no las proveen (en ese caso se usa solo la regla de género).
+  canBibleReading?: boolean;
+  canGiveTalk?: boolean;
+  canParticipateSMM?: boolean;
 }
 
 export interface ProposalSlot {
@@ -186,20 +195,22 @@ export function buildAssignmentProposal(input: {
 
       const assignSalt = salt(week.weekId, slot.assignmentNumber);
 
-      // Pick assigned publisher (respecting gender rules for this part).
-      const genderEligible = assignable.filter((p) => isAssigneeGenderAllowed(slot.assignmentType, p.gender));
+      // Pick assigned publisher (respecting capability + gender rules for this part).
+      const slotEligible = assignable.filter((p) =>
+        isPublisherEligibleForAssignment(p, slot.assignmentType, "ASSIGNEE"),
+      );
 
-      // Hard gender rule: if nobody of the required gender exists, leave the slot
-      // UNASSIGNED. Never fall back to a gender-ineligible person (e.g. a woman
-      // for Bible Reading / Talk).
-      if (genderEligible.length === 0) {
-        warnings.push(`Semana ${week.weekId}: no hay publicadores del genero requerido para "${slot.title}"; se deja sin asignar.`);
+      // Hard rule: if nobody eligible (by capability/gender) exists, leave the
+      // slot UNASSIGNED. Never fall back to an ineligible person (e.g. someone
+      // without canBibleReading, or a woman for Bible Reading / Talk).
+      if (slotEligible.length === 0) {
+        warnings.push(`Semana ${week.weekId}: no hay publicadores con la capacidad/genero requerido para "${slot.title}"; se deja sin asignar.`);
         continue;
       }
 
-      let pool = genderEligible.filter((p) => allowSame || !used.has(p.id));
+      let pool = slotEligible.filter((p) => allowSame || !used.has(p.id));
       if (pool.length === 0) {
-        pool = genderEligible;
+        pool = slotEligible;
         warnings.push(`Semana ${week.weekId}: no habia suficientes publicadores distintos; se reutilizo alguien para "${slot.title}".`);
       }
 
@@ -211,7 +222,10 @@ export function buildAssignmentProposal(input: {
       let companionId: string | null = null;
       if (slot.needsCompanion) {
         const companionEligible = companions.filter(
-          (p) => p.id !== assigned.id && isCompanionGenderAllowed(slot.assignmentType, assigned.gender, p.gender),
+          (p) =>
+            p.id !== assigned.id &&
+            isPublisherEligibleForAssignment(p, slot.assignmentType, "COMPANION") &&
+            isCompanionGenderAllowed(slot.assignmentType, assigned.gender, p.gender),
         );
         let cpool = companionEligible.filter((p) => allowSame || !used.has(p.id));
         if (cpool.length === 0) {

@@ -83,6 +83,31 @@ export interface EligibilityPublisher {
   canReceiveAssignments?: boolean
   canBeCompanion?: boolean
   gender?: GenderValue | null
+  // Capacidades usadas por el generador (Fase 2). undefined = comportamiento legacy.
+  canBibleReading?: boolean
+  canGiveTalk?: boolean
+  canParticipateSMM?: boolean
+}
+
+/** Capacidad requerida por tipo de asignación (Fase 2). null = sin capacidad específica. */
+export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
+  AssignmentTypeId,
+  'canBibleReading' | 'canGiveTalk' | 'canParticipateSMM' | null
+> = {
+  BIBLE_READING: 'canBibleReading',
+  START_CONVERSATION: 'canParticipateSMM',
+  MAKE_RETURN_VISIT: 'canParticipateSMM',
+  BIBLE_STUDY: 'canParticipateSMM',
+  EXPLAIN_BELIEFS: 'canParticipateSMM',
+  MAKE_DISCIPLES: 'canParticipateSMM',
+  TALK: 'canGiveTalk',
+  OTHER: null,
+}
+
+export function requiredCapabilityForType(
+  type: string,
+): 'canBibleReading' | 'canGiveTalk' | 'canParticipateSMM' | null {
+  return ASSIGNMENT_TYPE_REQUIRED_CAPABILITY[type as AssignmentTypeId] ?? null
 }
 
 /** Espejo de packages/shared: única fuente de verdad de elegibilidad. */
@@ -95,6 +120,10 @@ export function isPublisherEligibleForAssignment(
   if (publisher.deletedAt) return false
   if (publisher.canReceiveAssignments === false) return false
   if (role === 'COMPANION' && publisher.canBeCompanion === false) return false
+
+  const capField = requiredCapabilityForType(assignmentType)
+  if (capField && publisher[capField] === false) return false
+
   if (role === 'ASSIGNEE' && !isAssigneeGenderAllowed(assignmentType, publisher.gender)) return false
   return true
 }

@@ -519,6 +519,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
         select: {
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
           isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
+          canBibleReading: true, canGiveTalk: true, canParticipateSMM: true,
         },
       });
 
@@ -605,6 +606,7 @@ export async function generateAssignmentsDirect(id: string) {
         select: {
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
           isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
+          canBibleReading: true, canGiveTalk: true, canParticipateSMM: true,
         },
       });
 
@@ -765,7 +767,8 @@ export async function getProposal(id: string) {
   const publishers = await prisma.jwPublisher.findMany({
     where: { deletedAt: null, isActive: true, canReceiveAssignments: true },
     orderBy: { fullName: "asc" },
-    select: { id: true, fullName: true, displayName: true, canBeCompanion: true, gender: true },
+    select: { id: true, fullName: true, displayName: true, canBeCompanion: true, gender: true,
+      canBibleReading: true, canGiveTalk: true, canParticipateSMM: true, isActive: true, canReceiveAssignments: true },
   });
 
   let proposedCount = 0;
@@ -802,7 +805,17 @@ export async function getProposal(id: string) {
     // activas tienen el programa real importado desde WOL.
     allWeeksReady: schedule.weeks.length > 0 && schedule.weeks.every((w) => w.importStatus === "READY" && w._count.programItems > 0),
     weeks,
-    publishers: publishers.map((p) => ({ id: p.id, name: p.displayName || p.fullName, canBeCompanion: p.canBeCompanion, gender: p.gender })),
+    publishers: publishers.map((p) => ({
+      id: p.id,
+      name: p.displayName || p.fullName,
+      canBeCompanion: p.canBeCompanion,
+      gender: p.gender,
+      isActive: p.isActive,
+      canReceiveAssignments: p.canReceiveAssignments,
+      canBibleReading: p.canBibleReading,
+      canGiveTalk: p.canGiveTalk,
+      canParticipateSMM: p.canParticipateSMM,
+    })),
   };
 }
 
