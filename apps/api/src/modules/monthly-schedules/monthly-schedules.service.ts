@@ -1,4 +1,5 @@
 import { prisma, ReminderStatus } from "@jw-reminders/database";
+import { validateAssignmentGenders } from "@jw-reminders/shared";
 import {
   applyAssignmentSnapshots,
   createAutomationEvent,
@@ -499,6 +500,113 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
   );
 }
 
+export async function generateAssignmentsDirect(id: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const schedule = await tx.monthlySchedule.findUniqueOrThrow({
+        where: { id },
+        include: {
+          weeks: {
+            where: { status: { notIn: [...INACTIVE_WEEK_STATUSES] } },
+            orderBy: { weekStartDate: "asc" },
+            include: {
+              assignments: { select: { assignmentNumber: true, assignedPublisherId: true, companionPublisherId: true, status: true } },
+              assignmentTemplates: {
+                orderBy: { order: "asc" },
+                select: { assignmentNumber: true, section: true, assignmentType: true, title: true, durationMinutes: true, needsCompanion: true, room: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (schedule.weeks.length === 0) {
+        throw new Error("El programa no tiene semanas activas. Genera las semanas antes de generar asignaciones.");
+      }
+
+      const publishers = await tx.jwPublisher.findMany({
+        where: { deletedAt: null },
+        select: {
+          id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
+          isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
+        },
+      });
+
+      const history = await loadProposalHistory(tx);
+
+      const weeksInput = schedule.weeks.map((week) => ({
+        weekId: week.id,
+        existingNumbers: week.assignments.map((a) => a.assignmentNumber),
+        existingPublisherIds: week.assignments
+          .filter((a) => a.status !== "PROPOSED")
+          .flatMap((a) => [a.assignedPublisherId, a.companionPublisherId].filter(Boolean) as string[]),
+        slots: week.assignmentTemplates.length > 0
+          ? week.assignmentTemplates.map((t) => ({
+              assignmentNumber: t.assignmentNumber,
+              section: t.section as any,
+              assignmentType: t.assignmentType as string,
+              title: t.title,
+              durationMinutes: t.durationMinutes ?? undefined,
+              room: t.room as any,
+              needsCompanion: t.needsCompanion,
+            }))
+          : undefined,
+      }));
+
+      const { assignments, warnings } = buildAssignmentProposal({ weeks: weeksInput, publishers, history });
+
+      const pubMap = new Map(publishers.map((p) => [p.id, p]));
+      let created = 0;
+      for (const a of assignments) {
+        const assigned = pubMap.get(a.assignedPublisherId);
+        const companion = a.companionPublisherId ? pubMap.get(a.companionPublisherId) : null;
+        // Defensive: skip anything that violates gender rules (should never happen).
+        const genderError = validateAssignmentGenders({
+          assignmentType: a.assignmentType,
+          assignedGender: assigned?.gender ?? null,
+          companionGender: companion?.gender ?? null,
+        });
+        if (genderError) {
+          warnings.push(`Se omitio "${a.title}": ${genderError}`);
+          continue;
+        }
+        const assignedSnap = publisherSnapshot(assigned);
+        const companionSnap = publisherSnapshot(companion ?? null);
+        await tx.jwAssignment.create({
+          data: {
+            meetingWeekId: a.weekId,
+            assignmentNumber: a.assignmentNumber,
+            section: a.section,
+            assignmentType: a.assignmentType as any,
+            title: a.title,
+            durationMinutes: a.durationMinutes,
+            assignedPublisherId: a.assignedPublisherId,
+            companionPublisherId: a.companionPublisherId,
+            assignedNameSnapshot: assignedSnap.name,
+            assignedPhoneSnapshot: assignedSnap.phone,
+            companionNameSnapshot: companionSnap.name,
+            companionPhoneSnapshot: companionSnap.phone,
+            room: a.room,
+            status: "DRAFT",
+          },
+        });
+        created += 1;
+      }
+
+      await createAutomationEvent(tx, {
+        eventType: "MONTHLY_ASSIGNMENTS_GENERATED",
+        entityType: "MonthlySchedule",
+        entityId: id,
+        actorType: "admin",
+        metadata: { created, warnings },
+      });
+
+      return { created, warnings };
+    },
+    { timeout: 30000 },
+  );
+}
+
 export async function discardProposal(id: string) {
   return prisma.$transaction(async (tx) => {
     await tx.monthlySchedule.findUniqueOrThrow({ where: { id }, select: { id: true } });
@@ -535,10 +643,25 @@ export async function approveProposal(id: string) {
     await tx.monthlySchedule.findUniqueOrThrow({ where: { id }, select: { id: true } });
     const proposed = await tx.jwAssignment.findMany({
       where: { status: "PROPOSED", meetingWeek: { monthlyScheduleId: id } },
-      select: { id: true },
+      include: { assigned: true, companion: true },
     });
     const ids = proposed.map((p) => p.id);
     if (ids.length === 0) return { approved: 0 };
+
+    // Strong backend rule: never approve a proposal that violates gender rules
+    // (e.g. a woman in Bible Reading / Talk), even if it somehow slipped in.
+    const invalid: string[] = [];
+    for (const a of proposed) {
+      const err = validateAssignmentGenders({
+        assignmentType: a.assignmentType,
+        assignedGender: a.assigned?.gender ?? null,
+        companionGender: a.companion?.gender ?? null,
+      });
+      if (err) invalid.push(`Semana/${a.assignmentNumber} "${a.title}": ${err}`);
+    }
+    if (invalid.length > 0) {
+      throw new Error(`No se puede aprobar: hay asignaciones que rompen las reglas de genero. ${invalid.join(" ")}`);
+    }
 
     // Approving only turns proposals into real DRAFT assignments; no automations are created.
     await tx.jwAssignment.updateMany({ where: { id: { in: ids } }, data: { status: "DRAFT" } });
@@ -574,7 +697,7 @@ export async function getProposal(id: string) {
   const publishers = await prisma.jwPublisher.findMany({
     where: { deletedAt: null, isActive: true, canReceiveAssignments: true },
     orderBy: { fullName: "asc" },
-    select: { id: true, fullName: true, displayName: true, canBeCompanion: true },
+    select: { id: true, fullName: true, displayName: true, canBeCompanion: true, gender: true },
   });
 
   let proposedCount = 0;
@@ -606,7 +729,7 @@ export async function getProposal(id: string) {
     hasProposal: proposedCount > 0,
     proposedCount,
     weeks,
-    publishers: publishers.map((p) => ({ id: p.id, name: p.displayName || p.fullName, canBeCompanion: p.canBeCompanion })),
+    publishers: publishers.map((p) => ({ id: p.id, name: p.displayName || p.fullName, canBeCompanion: p.canBeCompanion, gender: p.gender })),
   };
 }
 

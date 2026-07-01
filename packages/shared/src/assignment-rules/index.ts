@@ -177,6 +177,45 @@ export function isCompanionGenderAllowed(
   return assigneeGender === companionGender;
 }
 
+export type AssignmentRole = "ASSIGNEE" | "COMPANION";
+
+/** Forma mínima de un publicador para evaluar elegibilidad. */
+export interface EligibilityPublisher {
+  isActive?: boolean;
+  deletedAt?: Date | string | null;
+  canReceiveAssignments?: boolean;
+  canBeCompanion?: boolean;
+  gender?: GenderValue | null;
+}
+
+/**
+ * Función central de elegibilidad. ÚNICA fuente de verdad para decidir si un
+ * publicador puede recibir una asignación (o ser acompañante) de cierto tipo.
+ *
+ * Reglas:
+ *  - Debe estar activo y no borrado.
+ *  - Debe poder recibir asignaciones (el acompañante también recibe una parte).
+ *  - Si el rol es COMPANION, debe tener canBeCompanion.
+ *  - Si el rol es ASSIGNEE, debe respetar el género permitido por el tipo
+ *    (Lectura de la Biblia y Discurso solo hombres). El género desconocido no
+ *    se bloquea (conservador con datos existentes sin género capturado).
+ *
+ * La regla de "acompañante del mismo género que el asignado" NO se evalúa aquí
+ * porque depende del asignado; se valida con `isCompanionGenderAllowed`.
+ */
+export function isPublisherEligibleForAssignment(
+  publisher: EligibilityPublisher,
+  assignmentType: string,
+  role: AssignmentRole = "ASSIGNEE",
+): boolean {
+  if (publisher.isActive === false) return false;
+  if (publisher.deletedAt) return false;
+  if (publisher.canReceiveAssignments === false) return false;
+  if (role === "COMPANION" && publisher.canBeCompanion === false) return false;
+  if (role === "ASSIGNEE" && !isAssigneeGenderAllowed(assignmentType, publisher.gender)) return false;
+  return true;
+}
+
 /**
  * Valida los géneros de una asignación. Devuelve un mensaje de error en
  * español si la combinación es inválida, o null si es válida.

@@ -11,6 +11,7 @@ import {
   typeNeedsCompanion,
   isAssigneeGenderAllowed,
   isCompanionGenderAllowed,
+  isPublisherEligibleForAssignment,
   getAssignmentTypeRule,
   type GenderValue,
 } from '@/lib/assignment-rules'
@@ -21,6 +22,7 @@ interface Publisher {
   displayName: string | null
   phone: string
   isActive: boolean
+  canReceiveAssignments: boolean
   canBeCompanion: boolean
   gender: string | null
 }
@@ -99,14 +101,24 @@ export default function AssignmentForm({ weekId, publishers, assignment, existin
   const showCompanion = typeNeedsCompanion(form.assignmentType)
   const rule = getAssignmentTypeRule(form.assignmentType)
 
-  // Eligible assignees by gender rule for the selected part.
-  const assignedOptions = publishers.filter((p) => isAssigneeGenderAllowed(form.assignmentType, p.gender as GenderValue | null))
+  // Eligible assignees: active, can receive assignments, and gender rule of the part.
+  const assignedOptions = publishers.filter((p) =>
+    isPublisherEligibleForAssignment(
+      { isActive: p.isActive, canReceiveAssignments: p.canReceiveAssignments, canBeCompanion: p.canBeCompanion, gender: p.gender as GenderValue | null },
+      form.assignmentType,
+      'ASSIGNEE',
+    ),
+  )
 
-  // Eligible companions: can be companion, not the assignee, and same gender when required.
+  // Eligible companions: base companion eligibility, not the assignee, and same gender when required.
   const assignedGender = (publishers.find((p) => p.id === form.assignedPublisherId)?.gender ?? null) as GenderValue | null
   const companionOptions = publishers.filter(
     (p) =>
-      p.canBeCompanion &&
+      isPublisherEligibleForAssignment(
+        { isActive: p.isActive, canReceiveAssignments: p.canReceiveAssignments, canBeCompanion: p.canBeCompanion, gender: p.gender as GenderValue | null },
+        form.assignmentType,
+        'COMPANION',
+      ) &&
       p.id !== form.assignedPublisherId &&
       isCompanionGenderAllowed(form.assignmentType, assignedGender, p.gender as GenderValue | null),
   )
@@ -249,6 +261,9 @@ export default function AssignmentForm({ weekId, publishers, assignment, existin
               placeholder="Seleccionar persona"
               searchPlaceholder="Buscar publicador..."
             />
+            {assignedOptions.length === 0 && (
+              <p className="text-xs text-red-600 mt-1.5">No hay publicadores elegibles para esta parte (revisa género, estado activo y permisos).</p>
+            )}
           </div>
 
           {/* Acompanante (solo si la parte lo requiere) */}

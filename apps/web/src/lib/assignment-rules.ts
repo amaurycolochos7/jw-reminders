@@ -75,6 +75,30 @@ export function isCompanionGenderAllowed(
   return assigneeGender === companionGender
 }
 
+export type AssignmentRole = 'ASSIGNEE' | 'COMPANION'
+
+export interface EligibilityPublisher {
+  isActive?: boolean
+  deletedAt?: Date | string | null
+  canReceiveAssignments?: boolean
+  canBeCompanion?: boolean
+  gender?: GenderValue | null
+}
+
+/** Espejo de packages/shared: única fuente de verdad de elegibilidad. */
+export function isPublisherEligibleForAssignment(
+  publisher: EligibilityPublisher,
+  assignmentType: string,
+  role: AssignmentRole = 'ASSIGNEE',
+): boolean {
+  if (publisher.isActive === false) return false
+  if (publisher.deletedAt) return false
+  if (publisher.canReceiveAssignments === false) return false
+  if (role === 'COMPANION' && publisher.canBeCompanion === false) return false
+  if (role === 'ASSIGNEE' && !isAssigneeGenderAllowed(assignmentType, publisher.gender)) return false
+  return true
+}
+
 /** Tipos ordenados para mostrar en el selector "Parte". */
 export const ASSIGNMENT_TYPE_OPTIONS: { value: AssignmentTypeId; label: string }[] = [
   { value: 'BIBLE_READING', label: 'Lectura de la Biblia' },

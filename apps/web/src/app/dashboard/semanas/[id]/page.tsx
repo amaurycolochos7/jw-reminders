@@ -15,6 +15,7 @@ interface Publisher {
   displayName: string | null
   phone: string
   isActive: boolean
+  canReceiveAssignments: boolean
   canBeCompanion: boolean
   gender: string | null
 }

@@ -16,7 +16,11 @@
  *  - Frequent pairs are penalized so they are avoided when alternatives exist.
  */
 
-import { isAssigneeGenderAllowed, isCompanionGenderAllowed } from "@jw-reminders/shared";
+import {
+  isAssigneeGenderAllowed,
+  isCompanionGenderAllowed,
+  isPublisherEligibleForAssignment,
+} from "@jw-reminders/shared";
 
 export interface ProposalPublisher {
   id: string;
@@ -110,23 +114,16 @@ function hashStringToInt(s: string): number {
 
 /**
  * Stable pseudo-random value in [0,1) for a publisher id under a given seed.
- * Same (id, seed) always yields the same value, so a single generation is
- * internally consistent, while a different seed reshuffles ties.
+ * Kept for potential external use; tie-breaking now uses a slot-salted hash.
  */
-function seededValue(id: string, seed: number): number {
-  let t = (hashStringToInt(id) + Math.imul(seed >>> 0, 2654435761)) >>> 0;
-  t = Math.imul(t ^ (t >>> 15), 1 | t);
-  t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
-
 function isAssignable(p: ProposalPublisher): boolean {
-  return p.isActive && !p.deletedAt && p.canReceiveAssignments;
+  // Base eligibility (active, not deleted, can receive). Gender is checked per-slot.
+  return isPublisherEligibleForAssignment(p, "OTHER", "ASSIGNEE");
 }
 
 function isCompanionEligible(p: ProposalPublisher): boolean {
   // A companion also receives an assignment, so canReceiveAssignments must hold too.
-  return p.isActive && !p.deletedAt && p.canReceiveAssignments && p.canBeCompanion;
+  return isPublisherEligibleForAssignment(p, "OTHER", "COMPANION");
 }
 
 export function buildAssignmentProposal(input: {
@@ -139,7 +136,6 @@ export function buildAssignmentProposal(input: {
   const slots = input.slots ?? DEFAULT_SLOTS;
   const allowSame = input.options?.allowSamePersonTwicePerWeek ?? false;
   const seed = input.options?.seed;
-  const randomizeTies = typeof seed === "number";
 
   const assignable = input.publishers.filter(isAssignable);
   const companions = input.publishers.filter(isCompanionEligible);
@@ -158,15 +154,21 @@ export function buildAssignmentProposal(input: {
     return (input.history.pairCount[key] || 0) + (livePair[key] || 0) * PAIR_WEIGHT;
   };
 
-  // Tie-break by seeded random when regenerating, otherwise by name (stable/deterministic).
-  const tieBreak = (a: ProposalPublisher, b: ProposalPublisher) =>
-    randomizeTies ? seededValue(a.id, seed!) - seededValue(b.id, seed!) : a.fullName.localeCompare(b.fullName);
+  // Unbiased, stable tie-break. Instead of alphabetical order (which always
+  // favored the first name, e.g. "Amaury"), ties are broken by a hash of
+  // weekId + assignmentNumber + seed + publisherId. This is deterministic for a
+  // given generation, differs per slot (so the same low-score set does not keep
+  // picking the same person), and reshuffles when "regenerate" passes a new seed.
+  const salt = (weekId: string, assignmentNumber: number, extra = "") =>
+    `${weekId}|${assignmentNumber}|${seed ?? 0}|${extra}`;
 
-  const byScoreThenName = (score: (p: ProposalPublisher) => number) => (a: ProposalPublisher, b: ProposalPublisher) => {
-    const diff = score(a) - score(b);
-    if (diff !== 0) return diff;
-    return tieBreak(a, b);
-  };
+  const byScore =
+    (score: (p: ProposalPublisher) => number, saltKey: string) =>
+    (a: ProposalPublisher, b: ProposalPublisher) => {
+      const diff = score(a) - score(b);
+      if (diff !== 0) return diff;
+      return hashStringToInt(`${saltKey}|${a.id}`) - hashStringToInt(`${saltKey}|${b.id}`);
+    };
 
   const assignments: ProposedAssignment[] = [];
 
@@ -178,18 +180,26 @@ export function buildAssignmentProposal(input: {
     for (const slot of weekSlots) {
       if (existingNumbers.has(slot.assignmentNumber)) continue;
 
+      const assignSalt = salt(week.weekId, slot.assignmentNumber);
+
       // Pick assigned publisher (respecting gender rules for this part).
       const genderEligible = assignable.filter((p) => isAssigneeGenderAllowed(slot.assignmentType, p.gender));
+
+      // Hard gender rule: if nobody of the required gender exists, leave the slot
+      // UNASSIGNED. Never fall back to a gender-ineligible person (e.g. a woman
+      // for Bible Reading / Talk).
+      if (genderEligible.length === 0) {
+        warnings.push(`Semana ${week.weekId}: no hay publicadores del genero requerido para "${slot.title}"; se deja sin asignar.`);
+        continue;
+      }
+
       let pool = genderEligible.filter((p) => allowSame || !used.has(p.id));
       if (pool.length === 0) {
-        pool = genderEligible.length > 0 ? genderEligible : assignable;
-        if (genderEligible.length === 0) {
-          warnings.push(`Semana ${week.weekId}: no hay publicadores con el genero requerido para "${slot.title}".`);
-        } else {
-          warnings.push(`Semana ${week.weekId}: no habia suficientes publicadores distintos; se reutilizo alguien para "${slot.title}".`);
-        }
+        pool = genderEligible;
+        warnings.push(`Semana ${week.weekId}: no habia suficientes publicadores distintos; se reutilizo alguien para "${slot.title}".`);
       }
-      const assigned = [...pool].sort(byScoreThenName((p) => baseScore(p.id)))[0];
+
+      const assigned = [...pool].sort(byScore((p) => baseScore(p.id), assignSalt))[0];
       liveCount[assigned.id] = (liveCount[assigned.id] || 0) + 1;
       used.add(assigned.id);
 
@@ -206,7 +216,9 @@ export function buildAssignmentProposal(input: {
         if (cpool.length === 0) {
           warnings.push(`Semana ${week.weekId}: no hay acompanante disponible para "${slot.title}".`);
         } else {
-          const companion = [...cpool].sort(byScoreThenName((p) => baseScore(p.id) + pairScore(assigned.id, p.id)))[0];
+          const companion = [...cpool].sort(
+            byScore((p) => baseScore(p.id) + pairScore(assigned.id, p.id), salt(week.weekId, slot.assignmentNumber, "c")),
+          )[0];
           companionId = companion.id;
           liveCount[companion.id] = (liveCount[companion.id] || 0) + 1;
           livePair[pairKey(assigned.id, companion.id)] = (livePair[pairKey(assigned.id, companion.id)] || 0) + 1;

@@ -2,8 +2,7 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "@jw-reminders/database";
 import { addDaysToLocalDate } from "../../services/date-utils.js";
-import { createAutomationEvent, monthlyScheduleParts, publisherSnapshot } from "../../services/automation.service.js";
-import { isAssigneeGenderAllowed, isCompanionGenderAllowed } from "@jw-reminders/shared";
+import { createAutomationEvent, monthlyScheduleParts } from "../../services/automation.service.js";
 import * as service from "./monthly-schedules.service.js";
 
 const router = Router();
@@ -185,94 +184,7 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
 
 router.post("/:id/generate-assignments", async (req: Request<{ id: string }>, res: Response) => {
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const schedule = await tx.monthlySchedule.findUniqueOrThrow({
-        where: { id: req.params.id },
-        include: { weeks: { include: { assignments: true }, orderBy: { weekStartDate: "asc" } } },
-      });
-      const publishers = await tx.jwPublisher.findMany({
-        where: { deletedAt: null, isActive: true, canReceiveAssignments: true },
-        orderBy: { fullName: "asc" },
-      });
-      const companions = publishers.filter((publisher) => publisher.canBeCompanion);
-      if (publishers.length < 2) {
-        throw new Error("Se necesitan al menos 2 publicadores activos para generar asignaciones");
-      }
-
-      const counts = new Map<string, number>();
-      for (const assignment of await tx.jwAssignment.findMany({ select: { assignedPublisherId: true, companionPublisherId: true } })) {
-        counts.set(assignment.assignedPublisherId, (counts.get(assignment.assignedPublisherId) || 0) + 1);
-        if (assignment.companionPublisherId) counts.set(assignment.companionPublisherId, (counts.get(assignment.companionPublisherId) || 0) + 1);
-      }
-
-      function pick(type: string, exclude?: string) {
-        let candidates = publishers.filter((publisher) => publisher.id !== exclude && isAssigneeGenderAllowed(type, publisher.gender));
-        if (candidates.length === 0) candidates = publishers.filter((publisher) => publisher.id !== exclude);
-        candidates.sort((a, b) => (counts.get(a.id) || 0) - (counts.get(b.id) || 0) || a.fullName.localeCompare(b.fullName));
-        const selected = candidates[0];
-        counts.set(selected.id, (counts.get(selected.id) || 0) + 1);
-        return selected;
-      }
-
-      function pickCompanion(type: string, assigned: { id: string; gender: "MALE" | "FEMALE" | null }) {
-        let candidates = companions.filter((publisher) => publisher.id !== assigned.id && isCompanionGenderAllowed(type, assigned.gender, publisher.gender));
-        if (candidates.length === 0) candidates = companions.filter((publisher) => publisher.id !== assigned.id);
-        candidates.sort((a, b) => (counts.get(a.id) || 0) - (counts.get(b.id) || 0) || a.fullName.localeCompare(b.fullName));
-        const selected = candidates[0] || pick(type, assigned.id);
-        counts.set(selected.id, (counts.get(selected.id) || 0) + 1);
-        return selected;
-      }
-
-      const templates = [
-        { assignmentNumber: 1, section: "BIBLE_READING", assignmentType: "BIBLE_READING", title: "Lectura de la Biblia", durationMinutes: 4, room: "MAIN" },
-        { assignmentNumber: 2, section: "APPLY_YOURSELF", assignmentType: "START_CONVERSATION", title: "Empiece conversaciones", durationMinutes: 3, room: "MAIN", companion: true },
-        { assignmentNumber: 3, section: "APPLY_YOURSELF", assignmentType: "MAKE_RETURN_VISIT", title: "Haga revisitas", durationMinutes: 4, room: "MAIN", companion: true },
-        { assignmentNumber: 4, section: "APPLY_YOURSELF", assignmentType: "BIBLE_STUDY", title: "Curso biblico", durationMinutes: 5, room: "MAIN", companion: true },
-      ] as const;
-
-      let created = 0;
-      for (const week of schedule.weeks) {
-        const existingNumbers = new Set(week.assignments.map((assignment) => assignment.assignmentNumber));
-        for (const template of templates) {
-          if (existingNumbers.has(template.assignmentNumber)) continue;
-          const assigned = pick(template.assignmentType);
-          const companion = "companion" in template && template.companion ? pickCompanion(template.assignmentType, assigned) : null;
-          const assignedSnapshot = publisherSnapshot(assigned);
-          const companionSnapshot = publisherSnapshot(companion);
-          await tx.jwAssignment.create({
-            data: {
-              meetingWeekId: week.id,
-              assignmentNumber: template.assignmentNumber,
-              section: template.section,
-              assignmentType: template.assignmentType,
-              title: template.title,
-              durationMinutes: template.durationMinutes,
-              assignedPublisherId: assigned.id,
-              companionPublisherId: companion?.id,
-              assignedNameSnapshot: assignedSnapshot.name,
-              assignedPhoneSnapshot: assignedSnapshot.phone,
-              companionNameSnapshot: companionSnapshot.name,
-              companionPhoneSnapshot: companionSnapshot.phone,
-              room: template.room,
-              status: "DRAFT",
-            },
-          });
-          created += 1;
-        }
-      }
-
-      await createAutomationEvent(tx, {
-        eventType: "MONTHLY_ASSIGNMENTS_GENERATED",
-        entityType: "MonthlySchedule",
-        entityId: schedule.id,
-        actorType: "admin",
-        metadata: { created },
-      });
-
-      return { created };
-    });
-
-    res.json(result);
+    res.json(await service.generateAssignmentsDirect(req.params.id));
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

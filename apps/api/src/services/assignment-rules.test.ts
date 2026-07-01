@@ -7,6 +7,7 @@ import {
   typeNeedsCompanion,
   isAssigneeGenderAllowed,
   isCompanionGenderAllowed,
+  isPublisherEligibleForAssignment,
   validateAssignmentGenders,
 } from "@jw-reminders/shared";
 
@@ -53,4 +54,35 @@ test("validateAssignmentGenders devuelve mensaje claro o null", () => {
     validateAssignmentGenders({ assignmentType: "BIBLE_STUDY", assignedGender: "FEMALE", companionGender: "FEMALE" }),
     null,
   );
+});
+
+test("isPublisherEligibleForAssignment: mujer no es elegible para Lectura ni Discurso", () => {
+  const woman = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "FEMALE" as const };
+  assert.equal(isPublisherEligibleForAssignment(woman, "BIBLE_READING", "ASSIGNEE"), false);
+  assert.equal(isPublisherEligibleForAssignment(woman, "TALK", "ASSIGNEE"), false);
+  // Sí es elegible para partes de estudiante.
+  assert.equal(isPublisherEligibleForAssignment(woman, "START_CONVERSATION", "ASSIGNEE"), true);
+});
+
+test("isPublisherEligibleForAssignment: hombre activo es elegible para Lectura y Discurso", () => {
+  const man = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "MALE" as const };
+  assert.equal(isPublisherEligibleForAssignment(man, "BIBLE_READING", "ASSIGNEE"), true);
+  assert.equal(isPublisherEligibleForAssignment(man, "TALK", "ASSIGNEE"), true);
+});
+
+test("isPublisherEligibleForAssignment: inactivo, borrado o sin permiso no es elegible", () => {
+  const base = { canReceiveAssignments: true, canBeCompanion: true, gender: "MALE" as const };
+  assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: false, deletedAt: null }, "BIBLE_READING"), false);
+  assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: true, deletedAt: new Date() }, "BIBLE_READING"), false);
+  assert.equal(
+    isPublisherEligibleForAssignment({ isActive: true, deletedAt: null, canReceiveAssignments: false, canBeCompanion: true, gender: "MALE" }, "START_CONVERSATION"),
+    false,
+    "canReceiveAssignments=false no puede recibir nada",
+  );
+});
+
+test("isPublisherEligibleForAssignment: acompanante requiere canBeCompanion", () => {
+  const noCompanion = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: false, gender: "MALE" as const };
+  assert.equal(isPublisherEligibleForAssignment(noCompanion, "START_CONVERSATION", "COMPANION"), false);
+  assert.equal(isPublisherEligibleForAssignment(noCompanion, "START_CONVERSATION", "ASSIGNEE"), true);
 });

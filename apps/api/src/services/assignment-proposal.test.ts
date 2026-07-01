@@ -141,3 +141,79 @@ test("evita repetir pareja frecuente cuando hay alternativa", () => {
     assert.notEqual(slot2.companionPublisherId, "b", "debe evitar la pareja frecuente a-b");
   }
 });
+
+test("no favorece siempre al primer registro/alfabetico: el lector varia entre semanas", () => {
+  // Alphabetically-ordered names; with empty history all base scores tie.
+  // The old bug picked the alphabetically-first name ("Aaron") every time.
+  const publishers = Array.from({ length: 6 }, (_, i) =>
+    pub(`p${i}`, `${String.fromCharCode(65 + i)}aron${i}`, { gender: "MALE" }),
+  );
+  const readers = new Set<string>();
+  for (let i = 0; i < 25; i += 1) {
+    // Independent single-week generations with distinct weekIds (fresh state each).
+    const { assignments } = buildAssignmentProposal({
+      weeks: [{ weekId: `week-${i}-xyz`, existingNumbers: [], existingPublisherIds: [] }],
+      publishers,
+      history: emptyHistory,
+    });
+    const reading = assignments.find((x) => x.assignmentNumber === 1)!;
+    readers.add(reading.assignedPublisherId);
+  }
+  assert.ok(readers.size >= 3, `el lector deberia variar entre semanas, distintos=${readers.size}`);
+});
+
+test("regenerar con otra semilla produce una distribucion distinta", () => {
+  const publishers = Array.from({ length: 6 }, (_, i) => pub(`p${i}`, `Pub${i}`, { gender: "MALE" }));
+  const week = () => [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [] }];
+  const run = (seed?: number) =>
+    buildAssignmentProposal({ weeks: week(), publishers, history: emptyHistory, options: seed != null ? { seed } : {} })
+      .assignments.map((a) => `${a.assignmentNumber}:${a.assignedPublisherId}`)
+      .join(",");
+  const a = run(1);
+  const b = run(999999);
+  assert.notEqual(a, b, "distintas semillas deberian reordenar la distribucion");
+});
+
+test("NUNCA asigna una mujer a Lectura de la Biblia: si no hay hombres, la deja sin asignar", () => {
+  // Only women available. Bible Reading (slot 1) must be left UNASSIGNED, never a woman.
+  const publishers = [
+    pub("f1", "Fem1", { gender: "FEMALE" }),
+    pub("f2", "Fem2", { gender: "FEMALE" }),
+    pub("f3", "Fem3", { gender: "FEMALE" }),
+    pub("f4", "Fem4", { gender: "FEMALE" }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({ weeks: oneWeek(), publishers, history: emptyHistory });
+  const reading = assignments.find((x) => x.assignmentNumber === 1);
+  assert.equal(reading, undefined, "la Lectura no debe crearse si no hay hombres");
+  assert.ok(
+    warnings.some((w) => /genero requerido/i.test(w) && /sin asignar/i.test(w)),
+    "debe advertir que se dejo sin asignar por falta de hombres",
+  );
+  // Student parts (no gender restriction) are still assigned to the available women.
+  const studentParts = assignments.filter((x) => x.assignmentNumber !== 1);
+  assert.ok(studentParts.length > 0, "las partes sin restriccion de genero si se asignan");
+});
+
+test("todas las Lecturas del mes quedan con hombres cuando hay hombres suficientes", () => {
+  const publishers = [
+    pub("m1", "M1", { gender: "MALE" }),
+    pub("m2", "M2", { gender: "MALE" }),
+    pub("m3", "M3", { gender: "MALE" }),
+    pub("m4", "M4", { gender: "MALE" }),
+    pub("f1", "F1", { gender: "FEMALE" }),
+    pub("f2", "F2", { gender: "FEMALE" }),
+    pub("f3", "F3", { gender: "FEMALE" }),
+    pub("f4", "F4", { gender: "FEMALE" }),
+  ];
+  const byId = new Map(publishers.map((p) => [p.id, p]));
+  const weeks = Array.from({ length: 4 }, (_, i) => ({ weekId: `w${i}`, existingNumbers: [], existingPublisherIds: [] }));
+  const { assignments } = buildAssignmentProposal({ weeks, publishers, history: emptyHistory });
+  const readings = assignments.filter((x) => x.assignmentNumber === 1);
+  assert.equal(readings.length, 4, "una lectura por semana");
+  for (const r of readings) {
+    assert.equal(byId.get(r.assignedPublisherId)?.gender, "MALE", "toda lectura debe recaer en un hombre");
+  }
+  // Women do receive valid (student) assignments.
+  const womenUsed = assignments.some((a) => byId.get(a.assignedPublisherId)?.gender === "FEMALE");
+  assert.ok(womenUsed, "las mujeres reciben asignaciones validas de Seamos mejores maestros");
+});

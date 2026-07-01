@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { api } from '@/lib/api'
 import ConfirmModal from '@/components/ConfirmModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { isAssigneeGenderAllowed, isCompanionGenderAllowed, type GenderValue } from '@/lib/assignment-rules'
 
 interface PubRef { id: string; name: string }
 interface ProposalAssignment {
@@ -26,7 +27,7 @@ interface ProposalWeek {
   status: string
   assignments: ProposalAssignment[]
 }
-interface Publisher { id: string; name: string; canBeCompanion: boolean }
+interface Publisher { id: string; name: string; canBeCompanion: boolean; gender: GenderValue | null }
 interface Proposal {
   programId: string
   name: string
@@ -242,7 +243,9 @@ export default function ProposalPage() {
                         value={a.assigned?.id || ''}
                         disabled={readOnly || savingRow === `${a.id}-assignedPublisherId`}
                         onChange={(value) => changePublisher(a.id, 'assignedPublisherId', value)}
-                        options={data.publishers.map((p) => ({ value: p.id, label: p.name }))}
+                        options={data.publishers
+                          .filter((p) => isAssigneeGenderAllowed(a.assignmentType, p.gender))
+                          .map((p) => ({ value: p.id, label: p.name }))}
                         placeholder="Seleccionar persona"
                         searchPlaceholder="Buscar publicador..."
                       />
@@ -255,7 +258,16 @@ export default function ProposalPage() {
                             value={a.companion?.id || ''}
                             disabled={readOnly || savingRow === `${a.id}-companionPublisherId`}
                             onChange={(value) => changePublisher(a.id, 'companionPublisherId', value)}
-                            options={companions.map((p) => ({ value: p.id, label: p.name }))}
+                            options={companions
+                              .filter((p) =>
+                                p.id !== a.assigned?.id &&
+                                isCompanionGenderAllowed(
+                                  a.assignmentType,
+                                  data.publishers.find((x) => x.id === a.assigned?.id)?.gender ?? null,
+                                  p.gender,
+                                ),
+                              )
+                              .map((p) => ({ value: p.id, label: p.name }))}
                             placeholder="Sin acompanante"
                             emptyOptionLabel="Sin acompanante"
                             searchPlaceholder="Buscar acompanante..."
