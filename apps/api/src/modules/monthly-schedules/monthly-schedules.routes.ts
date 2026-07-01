@@ -4,7 +4,7 @@ import { prisma } from "@jw-reminders/database";
 import { addDaysToLocalDate } from "../../services/date-utils.js";
 import { createAutomationEvent, monthlyScheduleParts } from "../../services/automation.service.js";
 import { getWolWeekCoordinates } from "@jw-reminders/shared";
-import { importWeekFromWol } from "../../services/wol/wol-importer.service.js";
+import { importWeeksConcurrently } from "../../services/wol/wol-importer.service.js";
 import * as service from "./monthly-schedules.service.js";
 
 const router = Router();
@@ -188,27 +188,22 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
     });
 
     // Responder de inmediato: la importacion desde WOL puede tardar (2 descargas
-    // por semana) y bloquear la respuesta hacia el proxy/navegador. Se dispara en
-    // segundo plano; cada semana pasa de IMPORTING a READY/NEEDS_REVIEW/IMPORT_FAILED.
-    res.json({ created: createdWeekIds.length, totalMeetingDates });
+    // por semana) y bloquear la respuesta. Se dispara en segundo plano EN PARALELO;
+    // el frontend consulta el progreso con GET /:id/weeks-progress y muestra la
+    // pantalla de generacion hasta que todas terminen.
+    res.json({ created: createdWeekIds.length, totalMeetingDates, weekIds: createdWeekIds });
 
-    void (async () => {
-      for (const weekId of createdWeekIds) {
-        try {
-          await importWeekFromWol(weekId);
-        } catch (err) {
-          console.error(`[generate-weeks] import WOL fallo para semana ${weekId}:`, err);
-          try {
-            await prisma.jwMeetingWeek.update({
-              where: { id: weekId },
-              data: { importStatus: "IMPORT_FAILED", importError: err instanceof Error ? err.message : String(err) },
-            });
-          } catch { /* ignore */ }
-        }
-      }
-    })();
+    void importWeeksConcurrently(createdWeekIds, 4);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+router.get("/:id/weeks-progress", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    res.json(await service.getWeeksImportProgress(req.params.id));
+  } catch {
+    res.status(404).json({ error: "Not found" });
   }
 });
 

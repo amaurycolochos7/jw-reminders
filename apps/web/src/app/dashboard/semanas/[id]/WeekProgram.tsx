@@ -44,9 +44,6 @@ export default function WeekProgram({ weekId, onChanged }: { weekId: string; onC
   const [data, setData] = useState<WeekProgramData | null>(null)
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
-  const [manualOpen, setManualOpen] = useState(false)
-  const [manualText, setManualText] = useState('')
-  const [submitting, setSubmitting] = useState(false)
   const [note, setNote] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const load = useCallback(async () => {
@@ -71,28 +68,6 @@ export default function WeekProgram({ weekId, onChanged }: { weekId: string; onC
       else flash('error', d.error || 'No se pudo importar desde WOL')
     } catch { flash('error', 'Error de conexión') } finally {
       setRetrying(false)
-      await load()
-      onChanged?.()
-    }
-  }
-
-  async function submitManual() {
-    if (!manualText.trim()) return
-    setSubmitting(true)
-    try {
-      const res = await api(`/api/meeting-weeks/${weekId}/import-wol-manual`, {
-        method: 'POST',
-        body: JSON.stringify({ text: manualText }),
-      })
-      const d = await res.json()
-      if (res.ok && d.status !== 'IMPORT_FAILED') {
-        flash('success', `Programa capturado (${d.itemCount} asignaciones)`)
-        setManualOpen(false); setManualText('')
-      } else {
-        flash('error', d.error || 'No se pudo interpretar el texto')
-      }
-    } catch { flash('error', 'Error de conexión') } finally {
-      setSubmitting(false)
       await load()
       onChanged?.()
     }
@@ -136,37 +111,11 @@ export default function WeekProgram({ weekId, onChanged }: { weekId: string; onC
           >
             {retrying ? 'Importando...' : 'Reintentar importación'}
           </button>
-          <button
-            onClick={() => setManualOpen((v) => !v)}
-            className="text-sm font-medium text-graphite px-4 py-2 rounded-pill border border-silver-mist hover:bg-fog transition-colors"
-          >
-            Capturar manualmente
-          </button>
         </div>
       </div>
 
       {note && (
         <div className={`mt-3 rounded-xl px-4 py-2.5 text-sm ${note.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{note.text}</div>
-      )}
-
-      {/* Manual capture */}
-      {manualOpen && (
-        <div className="mt-4 border border-silver-mist rounded-card p-4">
-          <label className="block text-sm font-medium text-ink mb-1.5">Pegar el texto del programa de la semana (respaldo si WOL falla)</label>
-          <textarea
-            value={manualText}
-            onChange={(e) => setManualText(e.target.value)}
-            rows={6}
-            placeholder={'Lectura de la Biblia\n(4 mins.) ...\n\n4. Empiece conversaciones\n(3 mins.) ...'}
-            className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 resize-y font-mono"
-          />
-          <div className="flex gap-2 mt-3">
-            <button onClick={submitManual} disabled={submitting || !manualText.trim()} className="bg-azure text-white text-sm font-medium px-5 py-2 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50">
-              {submitting ? 'Procesando...' : 'Importar del texto'}
-            </button>
-            <button onClick={() => { setManualOpen(false); setManualText('') }} className="text-sm text-graphite px-5 py-2 rounded-pill border border-silver-mist hover:bg-fog transition-colors">Cancelar</button>
-          </div>
-        </div>
       )}
 
       {/* Items */}

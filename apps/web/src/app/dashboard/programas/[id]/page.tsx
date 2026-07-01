@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import ConfirmModal from '@/components/ConfirmModal'
+import WeekGenerationModal from './WeekGenerationModal'
 
 interface Week {
   id: string
@@ -116,6 +117,7 @@ export default function ProgramDetailPage() {
   const [editForm, setEditForm] = useState({ meetingDate: '', meetingTime: '' })
   const [savingWeek, setSavingWeek] = useState(false)
   const [editError, setEditError] = useState('')
+  const [showWeekGen, setShowWeekGen] = useState(false)
 
   function notify(type: 'success' | 'error', text: string) {
     setToast({ type, text })
@@ -146,19 +148,7 @@ export default function ProgramDetailPage() {
 
   // ─── Program-level actions ─────────────────────────────
   function askGenerateWeeks() {
-    setConfirm({
-      title: 'Generar semanas del mes',
-      description: (
-        <>Se crearan las semanas de reunion de <strong className="text-ink">{program?.name}</strong> en{' '}
-        <strong className="text-ink">{WEEK_DAYS.find((d) => d.value === Number(weekForm.meetingDayOfWeek))?.label}</strong> a las{' '}
-        <strong className="text-ink">{weekForm.meetingTime}</strong>. Las semanas ya existentes no se duplican.</>
-      ),
-      confirmLabel: 'Generar semanas',
-      run: () => runAction('weeks', () => api(`/api/monthly-schedules/${id}/generate-weeks`, {
-        method: 'POST',
-        body: JSON.stringify({ meetingDayOfWeek: Number(weekForm.meetingDayOfWeek), meetingTime: weekForm.meetingTime }),
-      }), (d) => `${d.created || 0} semanas generadas (${d.totalMeetingDates || 0} fechas de reunion en el mes)`),
-    })
+    setShowWeekGen(true)
   }
 
   function askGenerateAutomations() {
@@ -534,6 +524,16 @@ export default function ProgramDetailPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {showWeekGen && (
+        <WeekGenerationModal
+          programId={program.id}
+          programName={program.name}
+          meetingDayOfWeek={Number(weekForm.meetingDayOfWeek)}
+          meetingTime={weekForm.meetingTime}
+          onClose={(reloaded) => { setShowWeekGen(false); if (reloaded) load() }}
+        />
       )}
 
       <ConfirmModal

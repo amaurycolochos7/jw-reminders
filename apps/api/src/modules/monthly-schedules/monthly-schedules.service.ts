@@ -96,6 +96,50 @@ function weekCompletion(assignmentCount: number, counts: DeliveryCounts): number
   return Math.round((steps.filter(Boolean).length / steps.length) * 100);
 }
 
+// ─── Progreso de importación de semanas (para la pantalla de generación) ─────
+export async function getWeeksImportProgress(id: string) {
+  const weeks = await prisma.jwMeetingWeek.findMany({
+    where: { monthlyScheduleId: id, status: { notIn: [...INACTIVE_WEEK_STATUSES] } },
+    orderBy: { weekStartDate: "asc" },
+    select: {
+      id: true,
+      weekStartDateLocal: true,
+      meetingDateLocal: true,
+      importStatus: true,
+      importError: true,
+      _count: { select: { programItems: true } },
+    },
+  });
+
+  let ready = 0, needsReview = 0, failed = 0, importing = 0, empty = 0;
+  for (const w of weeks) {
+    if (w.importStatus === "READY") ready += 1;
+    else if (w.importStatus === "NEEDS_REVIEW") needsReview += 1;
+    else if (w.importStatus === "IMPORT_FAILED") failed += 1;
+    else if (w.importStatus === "IMPORTING") importing += 1;
+    else empty += 1;
+  }
+
+  return {
+    total: weeks.length,
+    ready,
+    needsReview,
+    failed,
+    importing,
+    empty,
+    // "Terminado" cuando ya no queda ninguna importación en curso.
+    done: importing === 0,
+    weeks: weeks.map((w) => ({
+      id: w.id,
+      weekStartDateLocal: w.weekStartDateLocal,
+      meetingDateLocal: w.meetingDateLocal,
+      importStatus: w.importStatus,
+      itemCount: w._count.programItems,
+      importError: w.importError,
+    })),
+  };
+}
+
 // ─── List with metrics ───────────────────────────────────
 export async function listMonthlySchedules() {
   const schedules = await prisma.monthlySchedule.findMany({

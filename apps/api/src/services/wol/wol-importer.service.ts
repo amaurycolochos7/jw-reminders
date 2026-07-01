@@ -273,3 +273,34 @@ export async function importWeekFromWol(weekId: string, fetcher: WolFetcher = de
     };
   }
 }
+
+
+
+/**
+ * Importa varias semanas EN PARALELO con un límite de concurrencia (para no
+ * saturar WOL). Cada semana es independiente: si una falla queda IMPORT_FAILED
+ * y no afecta a las demás. Pensado para ejecutarse en segundo plano tras crear
+ * las semanas; el frontend consulta el progreso por separado.
+ */
+export async function importWeeksConcurrently(weekIds: string[], concurrency = 4): Promise<void> {
+  let index = 0;
+  const worker = async () => {
+    while (index < weekIds.length) {
+      const weekId = weekIds[index++];
+      try {
+        await importWeekFromWol(weekId);
+      } catch (err) {
+        try {
+          await prisma.jwMeetingWeek.update({
+            where: { id: weekId },
+            data: { importStatus: "IMPORT_FAILED", importError: err instanceof Error ? err.message : String(err) },
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(Math.max(1, concurrency), weekIds.length || 1) }, worker);
+  await Promise.all(workers);
+}

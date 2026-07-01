@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import * as service from "./meeting-weeks.service.js";
-import { importWeekFromWol, importWeekFromText } from "../../services/wol/wol-importer.service.js";
+import { importWeekFromWol } from "../../services/wol/wol-importer.service.js";
 
 const router = Router();
 
@@ -49,15 +49,6 @@ router.post("/:id/generate-automations", async (req: Request<{ id: string }>, re
 router.post("/:id/import-wol", async (req: Request<{ id: string }>, res: Response) => {
   try {
     res.json(await importWeekFromWol(req.params.id));
-  } catch (err: any) { res.status(400).json({ error: err.message }); }
-});
-
-// Captura manual de respaldo: importar desde texto pegado (cuando WOL falla).
-const manualImportSchema = z.object({ text: z.string().min(1), sourceUrl: z.string().optional() });
-router.post("/:id/import-wol-manual", async (req: Request<{ id: string }>, res: Response) => {
-  try {
-    const { text, sourceUrl } = manualImportSchema.parse(req.body);
-    res.json(await importWeekFromText(req.params.id, text, sourceUrl || "manual"));
   } catch (err: any) { res.status(400).json({ error: err.message }); }
 });
 
