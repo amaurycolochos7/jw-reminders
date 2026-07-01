@@ -6,4 +6,4 @@
  * que el código nuevo está vivo en producción sin mutar datos.
  */
 export const APP_VERSION = "1.0.0";
-export const BUILD_TAG = "fix-genero-distribucion";
+export const BUILD_TAG = "p8-publisher-capabilities";
