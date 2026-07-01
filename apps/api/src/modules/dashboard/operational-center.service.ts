@@ -318,6 +318,11 @@ export async function getOperationalCenter() {
   const todayLocal = localToday(config.timezone);
   const tomorrowLocal = addDaysToLocalDate(todayLocal, 1);
   const todayRange = rangeBounds(todayLocal, 1, config.timezone);
+  // Current ISO week (Monday..Sunday) that contains today, for the "Esta semana" section.
+  const todayWeekday = new Date(`${todayLocal}T00:00:00.000Z`).getUTCDay(); // 0=Sun..6=Sat
+  const mondayOffset = (todayWeekday + 6) % 7;
+  const weekStartLocal = addDaysToLocalDate(todayLocal, -mondayOffset);
+  const currentWeekRange = rangeBounds(weekStartLocal, 7, config.timezone);
   const tomorrowRange = rangeBounds(tomorrowLocal, 1, config.timezone);
   const nextSevenRange = rangeBounds(todayLocal, 7, config.timezone);
   const monthStartLocal = monthStart(todayLocal);
@@ -357,6 +362,7 @@ export async function getOperationalCenter() {
     importedEventCount,
     proposalApprovedCount,
     proposalDiscardedCount,
+    thisWeekRaw,
   ] = await Promise.all([
     getWhatsappStatus(),
     prisma.appConfig.findMany({ where: { key: { in: ["TEST_MODE", "TEST_PHONE"] } } }),
@@ -441,6 +447,24 @@ export async function getOperationalCenter() {
     prisma.jwAutomationEvent.count({ where: { eventType: "PROGRAM_IMPORTED" } }),
     prisma.jwAutomationEvent.count({ where: { eventType: "MONTHLY_PROPOSAL_APPROVED" } }),
     prisma.jwAutomationEvent.count({ where: { eventType: "MONTHLY_PROPOSAL_DISCARDED" } }),
+    prisma.jwMeetingWeek.findMany({
+      where: {
+        meetingDate: { gte: currentWeekRange.startUtc, lt: currentWeekRange.endUtc },
+        status: { notIn: ["CANCELLED", "ARCHIVED"] },
+      },
+      orderBy: { meetingDate: "asc" },
+      include: {
+        monthlySchedule: true,
+        assignmentTemplates: true,
+        assignments: {
+          select: {
+            id: true,
+            status: true,
+            reminderDeliveries: { select: { status: true } },
+          },
+        },
+      },
+    }),
   ]);
 
   const configMap = Object.fromEntries(appConfigs.map((item) => [item.key, item.value]));
@@ -450,6 +474,7 @@ export async function getOperationalCenter() {
     || null;
   const programs = programsRaw.map(programSummary);
   const weeks = weeksRaw.map(weekSummary);
+  const thisWeek = thisWeekRaw.map(weekSummary);
   const activePrograms = programs.filter((program) => program.status === "ACTIVE");
   const pendingPrograms = programs.filter((program) => program.status === "DRAFT");
   const archivedPrograms = programs.filter((program) => program.status === "ARCHIVED");
@@ -470,6 +495,7 @@ export async function getOperationalCenter() {
   const workerAttention = overdueDeliveries.length > 0 && (!lastWorkerEvent || (workerEventAgeMinutes !== null && workerEventAgeMinutes > 30));
 
   if (!whatsapp.ready) makeAlert(alerts, "critical", "WhatsApp desconectado", "Los mensajes no saldran hasta reconectar WhatsApp.", "Ir a WhatsApp", "/dashboard/whatsapp");
+  if (activePublishers.length === 0) makeAlert(alerts, "critical", "No hay publicadores registrados", "Registra publicadores para poder crear asignaciones y enviar recordatorios.", "Ir a publicadores", "/dashboard/publicadores");
   if (workerAttention) makeAlert(alerts, "critical", "Worker sin actividad reciente", "Hay entregas vencidas y no hay senales recientes del worker.", "Ver automatizaciones", "/dashboard/automatizaciones?status=failed&range=week");
   if (failedDeliveries.length > 0) makeAlert(alerts, "critical", "Automatizaciones fallidas", `${failedDeliveries.length} entregas requieren revision.`, "Revisar fallos", "/dashboard/automatizaciones?status=failed&range=month");
   if (overdueDeliveries.length > 0) makeAlert(alerts, "warning", "Automatizaciones vencidas", `${overdueDeliveries.length} entregas estan vencidas.`, "Ver vencidas", "/dashboard/automatizaciones?range=week");
@@ -536,6 +562,7 @@ export async function getOperationalCenter() {
       pending: pendingWeeks,
       incomplete: incompleteWeeks,
       ready: readyWeeks,
+      thisWeek,
       totals: {
         active: activeWeeks.length,
         pending: pendingWeeks.length,
