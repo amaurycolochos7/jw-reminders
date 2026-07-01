@@ -159,11 +159,12 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
             congregationName: data.congregationName,
             notes: data.notes,
             // La semana NO nace lista: primero debe importarse el programa real de WOL.
+            // Se marca IMPORTING porque el import se dispara en segundo plano tras responder.
             status: "DRAFT",
             isoYear: coords.year,
             isoWeekNumber: coords.weekNumber,
             wolMeetingsUrl: coords.meetingsUrl,
-            importStatus: "EMPTY",
+            importStatus: "IMPORTING",
           },
         });
         createdWeekIds.push(week.id);
@@ -186,20 +187,26 @@ router.post("/:id/generate-weeks", async (req: Request<{ id: string }>, res: Res
       return { createdWeekIds, totalMeetingDates: dates.length };
     });
 
-    // Tras crear las semanas, importar el programa real de WOL de cada una.
-    // Cada importación es independiente: si una falla, queda IMPORT_FAILED y no
-    // aborta a las demás (nunca se borra la semana).
-    const imports = [];
-    for (const weekId of createdWeekIds) {
-      try {
-        const result = await importWeekFromWol(weekId);
-        imports.push({ weekId, status: result.status, itemCount: result.itemCount, error: result.error });
-      } catch (err: any) {
-        imports.push({ weekId, status: "IMPORT_FAILED", itemCount: 0, error: err?.message || String(err) });
-      }
-    }
+    // Responder de inmediato: la importacion desde WOL puede tardar (2 descargas
+    // por semana) y bloquear la respuesta hacia el proxy/navegador. Se dispara en
+    // segundo plano; cada semana pasa de IMPORTING a READY/NEEDS_REVIEW/IMPORT_FAILED.
+    res.json({ created: createdWeekIds.length, totalMeetingDates });
 
-    res.json({ created: createdWeekIds.length, totalMeetingDates, imports });
+    void (async () => {
+      for (const weekId of createdWeekIds) {
+        try {
+          await importWeekFromWol(weekId);
+        } catch (err) {
+          console.error(`[generate-weeks] import WOL fallo para semana ${weekId}:`, err);
+          try {
+            await prisma.jwMeetingWeek.update({
+              where: { id: weekId },
+              data: { importStatus: "IMPORT_FAILED", importError: err instanceof Error ? err.message : String(err) },
+            });
+          } catch { /* ignore */ }
+        }
+      }
+    })();
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
