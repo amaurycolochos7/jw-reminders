@@ -1051,3 +1051,110 @@ datos QA.
 | Eliminar publicador QA | ✓ Eliminado (GET posterior → 404) |
 
 Datos QA limpiados (búsqueda `?search=QA` → 0 resultados).
+
+
+
+---
+
+# Reporte: Fase 2 — Integrar capacidades al generador (P9)
+
+## Resumen
+
+El generador automático de asignaciones ya no decide solo por género: ahora filtra
+por las **capacidades reales** del publicador. También se ajustó el catálogo para
+que **Perlas Escondidas** y **Palabras de conclusión** sean solo para hombres.
+
+> Alcance: NO se tocó exportación/PDF/Word/S-140. NO se crean automatizaciones.
+
+## Fecha
+
+2026-07-01
+
+## Mapeo de nombres (Fase 2 → campos existentes de Fase 1)
+
+La directiva de Fase 2 usó nombres nuevos; se mapearon a los campos ya desplegados
+en Fase 1 (evita una migración de renombrado disruptiva, sin cambio funcional):
+
+| Directiva Fase 2 | Campo real |
+|---|---|
+| canDoBibleReading | canBibleReading |
+| canGiveTalk | canGiveTalk |
+| canParticipateMinistrySchool | canParticipateSMM |
+| canBeCompanion | canBeCompanion |
+| canChairMeeting | canBeChairman |
+| canPray | canPray |
+| canHandleTreasures | canTreasures |
+| canHandleGems | canSpiritualGems |
+| canHandleLivingAsChristians | canChristianLife |
+| canConductCongregationBibleStudy | canConductCBS |
+| canReadCongregationBibleStudy | canReadCBS |
+| canGiveClosingComments | canConcludingRemarks |
+
+## Reglas integradas al generador
+
+- Lectura de la Biblia → requiere `canBibleReading`.
+- Discurso → requiere `canGiveTalk`.
+- Partes de estudiante (Seamos Mejores Maestros) → requieren `canParticipateSMM`
+  (aplica también al acompañante, que participa en la demostración).
+- Acompañante → requiere `canBeCompanion`.
+
+Nota de alcance: el sistema modela como asignables la Lectura, las partes de
+estudiante y el Discurso. Las partes de reunión (Tesoros, Perlas, Nuestra Vida
+Cristiana, presidente, oración, conductor/lector del Estudio, palabras de
+conclusión) no son tipos asignables en el generador actual; sus reglas de
+capacidad ya se aplican a nivel de publicador (validación estricta del backend) y
+se integrarán al generador cuando esas partes se modelen como asignaciones.
+
+## Diseño
+
+- `isPublisherEligibleForAssignment` (shared + espejo web) ahora es
+  capability-aware: bloquea si la capacidad requerida por el tipo está en `false`
+  (para asignado y acompañante); si la capacidad viene `undefined`, mantiene el
+  comportamiento anterior (solo regla de género) → retrocompatibilidad total.
+- `ASSIGNMENT_TYPE_REQUIRED_CAPABILITY` + `requiredCapabilityForType` mapean tipo
+  → capacidad.
+- El generador (`buildAssignmentProposal`) filtra por slot con la elegibilidad por
+  capacidad; se preservan el equilibrio y la no repetición.
+- **Backfill (migración P9)**: como P8 dejó `canBibleReading`/`canGiveTalk` en
+  `false` por defecto, se alinean los datos existentes con las sugerencias
+  (hombres→lectura, bautizados→discurso, nombrados→partes de reunión). Sin esto el
+  generador no encontraría candidatos para Lectura/Discurso.
+
+## Archivos
+
+Creados: migración `20260701170000_p9_backfill_publisher_capabilities`,
+`apps/api/src/services/assignment-proposal-capabilities.test.ts`.
+Modificados: `packages/shared/src/assignment-rules/index.ts` y su espejo web,
+`packages/shared/src/publisher-capabilities/index.ts` y espejo (Perlas/Conclusión
+maleOnly), `apps/api/src/services/assignment-proposal.ts`,
+`apps/api/src/modules/monthly-schedules/monthly-schedules.service.ts` (selects +
+endpoint de candidatos exponen capacidades), `AssignmentForm.tsx`, `semanas/[id]/
+page.tsx`, `programas/[id]/propuesta/page.tsx`, y las pruebas de reglas.
+
+## Verificación local
+
+- shared build ✓, prisma generate ✓, api build ✓.
+- Pruebas: **94/94** (14 nuevas: 9 del generador por capacidad con el dataset QA
+  requerido + 5 de reglas de elegibilidad por capacidad). Los tests cubren:
+  mujeres nunca en lectura/discurso; SMM incluye mujeres con capacidad; capacidad
+  en `false` bloquea; acompañante requiere `canBeCompanion`; inactivos nunca; y
+  distribución equilibrada / sin repetición.
+- web `tsc --noEmit` ✓.
+
+## Deploy y QA en producción (ejecutado)
+
+- Commit `3dd4662`, build tag `p9-generator-capabilities`. Deploy vía API Dokploy
+  (`compose.deploy`), `composeStatus=done`. `GET /api/version` →
+  `{"build":"p9-generator-capabilities"}`. Migración P9 aplicada al arrancar.
+- **Backfill verificado sobre datos reales**: males con `canBibleReading`=true
+  8/8; females con `canBibleReading`=true 0/12; females con `canParticipateSMM`=true
+  12/12.
+- Endpoint de candidatos expone las capacidades (`canBibleReading`, `canGiveTalk`,
+  `canParticipateSMM`, `isActive`, `canReceiveAssignments`).
+- Generador ejecutado sobre el programa real "Julio 2026" (ya asignado): corre sin
+  errores ni avisos (`created=0` porque los slots ya estaban asignados); no dejó
+  propuesta huérfana.
+- Filtro de capacidad sobre candidatos reales: Lectura = 8 candidatos (todos
+  hombres, 0 mujeres); SMM = 20 candidatos (incluye 12 mujeres). Coincide con las
+  reglas de Fase 2.
+- Sin datos QA que limpiar (no se creó nada persistente).
