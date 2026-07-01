@@ -1,4 +1,5 @@
 import { prisma } from "@jw-reminders/database";
+import { validatePublisherCapabilities } from "@jw-reminders/shared";
 
 const MX_PREFIX = "521";
 
@@ -106,6 +107,12 @@ export async function createPublisher(data: any) {
     ? normalizePhone(data.whatsappPhone)
     : data.phone;
 
+  // Strong validation of congregational status + capabilities (strict rules).
+  const capErrors = validatePublisherCapabilities(data);
+  if (capErrors.length > 0) {
+    throw new Error(capErrors.join(" "));
+  }
+
   return prisma.jwPublisher.create({ data });
 }
 
@@ -120,6 +127,16 @@ export async function updatePublisher(id: string, data: any) {
   }
   if (data.whatsappPhone) {
     data.whatsappPhone = normalizePhone(data.whatsappPhone);
+  }
+
+  // Validate the MERGED state: partial updates must be checked against the
+  // publisher's current gender/appointment/capabilities so strict rules can't
+  // be bypassed by sending only some fields.
+  const current = await prisma.jwPublisher.findUniqueOrThrow({ where: { id } });
+  const merged = { ...current, ...data };
+  const capErrors = validatePublisherCapabilities(merged);
+  if (capErrors.length > 0) {
+    throw new Error(capErrors.join(" "));
   }
 
   return prisma.jwPublisher.update({ where: { id }, data });

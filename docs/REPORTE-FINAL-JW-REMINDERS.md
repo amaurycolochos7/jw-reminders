@@ -912,3 +912,118 @@ Se elimino el programa QA con `DELETE /monthly-schedules/{id}?mode=delete` (borr
 ## Criterio de aceptacion
 
 Cumplido: el generador ya no favorece siempre al mismo publicador; Lectura de la Biblia y Discurso solo permiten hombres; el backend rechaza datos invalidos (400) aunque el frontend falle; el frontend filtra correctamente; las pruebas locales pasan; produccion desplegada y verificada; los datos QA fueron limpiados; reporte final actualizado.
+
+
+
+---
+
+# Reporte: Fase 1 — Publicadores, privilegios y capacidades (P8)
+
+## Resumen
+
+Rediseño del módulo de **Publicadores** para que el sistema entienda con precisión
+qué puede y qué no puede hacer cada persona. Se añadió **estado congregacional**
+(bautizado, precursor regular, nombramiento) y un conjunto de **capacidades
+editables** (partes de la reunión y asignaciones), con **validación estricta en el
+backend** que bloquea combinaciones inválidas, y un **formulario claro en 4 secciones**
+en el frontend.
+
+> Alcance acotado: en esta fase NO se modificó el generador automático de
+> asignaciones, ni importación/exportación, PDF, Word o S-140. Estas capacidades
+> son la base para mejorar el generador en una fase posterior.
+
+## Fecha de implementación
+
+2026-07-01
+
+## Decisión de modelo de datos
+
+Se auditó el esquema actual. Para un conjunto de capacidades fijo y bien conocido,
+la opción más mantenible y consultable es **columnas booleanas tipadas + un enum**
+para el nombramiento (en lugar de JSON no validable o una tabla de capacidades
+1:1 sobredimensionada). Es coherente con los campos previos (`canReceiveAssignments`,
+`canBeCompanion`).
+
+### Enum nuevo
+
+```
+enum AppointmentType { NONE, ELDER, MINISTERIAL_SERVANT }
+```
+
+### Campos nuevos en `JwPublisher`
+
+- Estado congregacional: `isBaptized` (default true), `isRegularPioneer`
+  (default false), `appointment` (default NONE).
+- Capacidades: `canParticipateSMM` (default true), `canBibleReading`,
+  `canGiveTalk`, `canBeChairman`, `canPray`, `canTreasures`, `canSpiritualGems`,
+  `canChristianLife`, `canConductCBS`, `canReadCBS`, `canConcludingRemarks`
+  (todas default false).
+
+Los valores por defecto se eligieron para **no cambiar el comportamiento actual**:
+solo se conceden capacidades neutrales por defecto y el resto quedan en false hasta
+que el administrador las active. Todas las columnas son `NOT NULL` con `DEFAULT`
+(la prueba `migration-safety` verifica que no se agregan columnas NOT NULL sin
+default a tablas existentes).
+
+## Reglas estrictas (bloqueadas por el backend)
+
+Una mujer NO puede tener activas: Lectura de la Biblia, discurso, presidente,
+oración, Tesoros, Nuestra Vida Cristiana, conducir el Estudio Bíblico, ser lector
+del Estudio Bíblico. Y una mujer NO puede ser nombrada. El nombramiento
+(anciano / siervo ministerial) solo puede asignarse a hombres (género MALE
+explícito; el género desconocido no habilita nombramiento).
+
+Nota: "Perlas Escondidas" y "Palabras de conclusión" NO figuran en la lista
+estricta de la directiva, por lo que no se bloquean por género (aunque las
+sugerencias las dejan en false para mujeres). Si en el futuro se desea que sean
+estrictamente masculinas, basta con marcar `maleOnly: true` en el catálogo
+`CAPABILITIES`.
+
+## Sugerencias automáticas (no bloqueantes)
+
+`suggestCapabilities(gender, isBaptized, appointment)`:
+
+- Mujer: SMM + acompañante + recibir asignaciones.
+- Hombre no bautizado: lo anterior + Lectura de la Biblia.
+- Hombre bautizado sin nombramiento: lo anterior + discurso.
+- Anciano / Siervo ministerial: todas las capacidades.
+
+El administrador puede ajustarlas, salvo las reglas estrictas.
+
+## Archivos creados
+
+| Archivo | Descripción |
+|---------|-------------|
+| `packages/database/prisma/migrations/20260701160000_p8_publisher_capabilities/migration.sql` | Migración: CREATE TYPE + ALTER TABLE ADD COLUMN (NOT NULL con DEFAULT) |
+| `packages/shared/src/publisher-capabilities/index.ts` | Fuente de verdad: catálogo de capacidades, validación estricta, sugerencias |
+| `apps/web/src/lib/publisher-capabilities.ts` | Espejo para el frontend (el web no compila el paquete shared) |
+| `apps/api/src/modules/publishers/publisher-capabilities.test.ts` | 16 pruebas de validación, sugerencias y elegibilidad |
+
+## Archivos modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `packages/database/prisma/schema.prisma` | Enum AppointmentType + 14 campos en JwPublisher |
+| `packages/shared/src/index.ts` | Export del módulo publisher-capabilities |
+| `apps/api/src/modules/publishers/publishers.routes.ts` | Zod extendido con estado + capacidades |
+| `apps/api/src/modules/publishers/publishers.service.ts` | Validación fuerte en create/update (update valida el estado fusionado) |
+| `apps/web/src/app/dashboard/publicadores/page.tsx` | Formulario en 4 secciones con switches, sugerencias, bloqueo de reglas estrictas y badges de privilegios |
+
+## Verificación local
+
+- `pnpm --filter @jw-reminders/shared build` ✓
+- `pnpm --filter @jw-reminders/database generate` ✓ (schema válido)
+- `pnpm --filter @jw-reminders/api build` (tsc) ✓
+- `pnpm --filter @jw-reminders/api test` → **79/79 pruebas** (16 nuevas) ✓
+- `tsc --noEmit` en `apps/web` ✓
+- `next build`: compila y valida tipos correctamente; en Windows local falla solo
+  el paso "Collecting build traces" por symlink del output `standalone` (EPERM),
+  lo cual no ocurre en el build de Docker/Linux del deploy.
+
+## Despliegue
+
+El deploy a producción (Dokploy) incluye ejecutar `prisma migrate deploy` para
+aplicar la migración `p8_publisher_capabilities`. Ver pasos de QA en producción:
+crear publicador de prueba, editar capacidades, verificar que el backend rechaza
+combinaciones inválidas (p. ej. mujer con Lectura de la Biblia), y limpiar los
+datos QA.

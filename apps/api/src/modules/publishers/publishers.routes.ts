@@ -11,8 +11,24 @@ const createSchema = z.object({
   whatsappPhone: z.string().optional(),
   gender: z.enum(["MALE", "FEMALE"]).optional(),
   isActive: z.boolean().optional(),
+  // Estado congregacional
+  isBaptized: z.boolean().optional(),
+  isRegularPioneer: z.boolean().optional(),
+  appointment: z.enum(["NONE", "ELDER", "MINISTERIAL_SERVANT"]).optional(),
+  // Capacidades
   canReceiveAssignments: z.boolean().optional(),
   canBeCompanion: z.boolean().optional(),
+  canParticipateSMM: z.boolean().optional(),
+  canBibleReading: z.boolean().optional(),
+  canGiveTalk: z.boolean().optional(),
+  canBeChairman: z.boolean().optional(),
+  canPray: z.boolean().optional(),
+  canTreasures: z.boolean().optional(),
+  canSpiritualGems: z.boolean().optional(),
+  canChristianLife: z.boolean().optional(),
+  canConductCBS: z.boolean().optional(),
+  canReadCBS: z.boolean().optional(),
+  canConcludingRemarks: z.boolean().optional(),
   notes: z.string().optional(),
 });
 

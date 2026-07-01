@@ -15,6 +15,14 @@ enum Gender {
   FEMALE
 }
 
+// Tipo de nombramiento congregacional. NONE = publicador sin nombramiento.
+// Solo puede asignarse a hombres (regla estricta validada en backend).
+enum AppointmentType {
+  NONE
+  ELDER // Anciano
+  MINISTERIAL_SERVANT // Siervo ministerial
+}
+
 enum AssignmentSection {
   BIBLE_READING
   APPLY_YOURSELF
@@ -146,6 +154,24 @@ model JwPublisher {
   isActive              Boolean   @default(true)
   canReceiveAssignments Boolean   @default(true)
   canBeCompanion        Boolean   @default(true)
+  // ─── Estado congregacional ───
+  isBaptized            Boolean         @default(true) // Publicador bautizado.
+  isRegularPioneer      Boolean         @default(false) // Precursor(a) regular. Hombre o mujer.
+  appointment           AppointmentType @default(NONE) // Nombramiento (solo hombres).
+  // ─── Capacidades editables ───
+  // Asignaciones básicas (canReceiveAssignments / canBeCompanion arriba).
+  canParticipateSMM     Boolean   @default(true) // Seamos Mejores Maestros.
+  canBibleReading       Boolean   @default(false) // Lectura de la Biblia (solo hombres).
+  canGiveTalk           Boolean   @default(false) // Discurso (solo hombres).
+  // Partes de la reunión.
+  canBeChairman         Boolean   @default(false) // Presidente (solo hombres).
+  canPray               Boolean   @default(false) // Oración (solo hombres).
+  canTreasures          Boolean   @default(false) // Tesoros de la Biblia (solo hombres).
+  canSpiritualGems      Boolean   @default(false) // Perlas Escondidas.
+  canChristianLife      Boolean   @default(false) // Nuestra Vida Cristiana (solo hombres).
+  canConductCBS         Boolean   @default(false) // Conducir Estudio Bíblico de la Congregación (solo hombres).
+  canReadCBS            Boolean   @default(false) // Lector del Estudio Bíblico de la Congregación (solo hombres).
+  canConcludingRemarks  Boolean   @default(false) // Palabras de conclusión.
   notes                 String?
   deletedAt             DateTime?
   // Future fields

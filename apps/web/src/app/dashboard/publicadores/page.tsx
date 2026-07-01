@@ -2,6 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import {
+  CAPABILITIES,
+  APPOINTMENT_OPTIONS,
+  suggestCapabilities,
+  enforceStrictCapabilities,
+  validatePublisherCapabilities,
+  type CapabilityKey,
+  type GenderValue,
+  type AppointmentValue,
+} from '@/lib/publisher-capabilities'
 
 interface Publisher {
   id: string
@@ -11,8 +21,22 @@ interface Publisher {
   whatsappPhone: string | null
   gender: string | null
   isActive: boolean
+  isBaptized: boolean
+  isRegularPioneer: boolean
+  appointment: AppointmentValue
   canReceiveAssignments: boolean
   canBeCompanion: boolean
+  canParticipateSMM: boolean
+  canBibleReading: boolean
+  canGiveTalk: boolean
+  canBeChairman: boolean
+  canPray: boolean
+  canTreasures: boolean
+  canSpiritualGems: boolean
+  canChristianLife: boolean
+  canConductCBS: boolean
+  canReadCBS: boolean
+  canConcludingRemarks: boolean
   notes: string | null
   deletedAt: string | null
 }
@@ -26,15 +50,87 @@ function toNational(phone: string): string {
   return phone
 }
 
-const emptyForm = {
+type FormState = {
+  fullName: string
+  displayName: string
+  phone: string
+  gender: '' | GenderValue
+  isActive: boolean
+  isBaptized: boolean
+  isRegularPioneer: boolean
+  appointment: AppointmentValue
+  notes: string
+} & Record<CapabilityKey, boolean>
+
+const emptyForm: FormState = {
   fullName: '',
   displayName: '',
   phone: '',
   gender: '',
   isActive: true,
+  isBaptized: true,
+  isRegularPioneer: false,
+  appointment: 'NONE',
+  notes: '',
   canReceiveAssignments: true,
   canBeCompanion: true,
-  notes: '',
+  canParticipateSMM: true,
+  canBibleReading: false,
+  canGiveTalk: false,
+  canBeChairman: false,
+  canPray: false,
+  canTreasures: false,
+  canSpiritualGems: false,
+  canChristianLife: false,
+  canConductCBS: false,
+  canReadCBS: false,
+  canConcludingRemarks: false,
+}
+
+const APPOINTMENT_LABEL: Record<AppointmentValue, string> = {
+  NONE: '',
+  ELDER: 'Anciano',
+  MINISTERIAL_SERVANT: 'Siervo ministerial',
+}
+
+const BASIC_CAPS = CAPABILITIES.filter((c) => c.group === 'basic')
+const MEETING_CAPS = CAPABILITIES.filter((c) => c.group === 'meeting')
+
+/** Accessible toggle switch. */
+function Toggle({
+  checked,
+  disabled,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean
+  disabled?: boolean
+  onChange: (v: boolean) => void
+  label: string
+  hint?: string
+}) {
+  return (
+    <label className={`flex items-center justify-between gap-3 py-1.5 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+      <span className="text-sm text-ink">
+        {label}
+        {hint && <span className="block text-xs text-graphite">{hint}</span>}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => !disabled && onChange(!checked)}
+        className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${
+          checked ? 'bg-azure' : 'bg-silver-mist'
+        } ${disabled ? 'cursor-not-allowed' : ''}`}
+      >
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+      </button>
+    </label>
+  )
 }
 
 export default function PublicadoresPage() {
@@ -42,7 +138,7 @@ export default function PublicadoresPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Publisher | null>(null)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
@@ -72,27 +168,117 @@ export default function PublicadoresPage() {
       fullName: p.fullName,
       displayName: p.displayName || '',
       phone: toNational(p.phone),
-      gender: p.gender || '',
+      gender: (p.gender as GenderValue | null) || '',
       isActive: p.isActive,
+      isBaptized: p.isBaptized,
+      isRegularPioneer: p.isRegularPioneer,
+      appointment: p.appointment || 'NONE',
+      notes: p.notes || '',
       canReceiveAssignments: p.canReceiveAssignments,
       canBeCompanion: p.canBeCompanion,
-      notes: p.notes || '',
+      canParticipateSMM: p.canParticipateSMM,
+      canBibleReading: p.canBibleReading,
+      canGiveTalk: p.canGiveTalk,
+      canBeChairman: p.canBeChairman,
+      canPray: p.canPray,
+      canTreasures: p.canTreasures,
+      canSpiritualGems: p.canSpiritualGems,
+      canChristianLife: p.canChristianLife,
+      canConductCBS: p.canConductCBS,
+      canReadCBS: p.canReadCBS,
+      canConcludingRemarks: p.canConcludingRemarks,
     })
     setError('')
     setShowForm(true)
   }
 
+  const isFemale = form.gender === 'FEMALE'
+  const isMale = form.gender === 'MALE'
+
+  /** Applies a gender change, enforcing strict rules immediately. */
+  function changeGender(gender: '' | GenderValue) {
+    setForm((prev) => {
+      const next = { ...prev, gender }
+      if (gender === 'FEMALE') {
+        // Strict: clear male-only capabilities and appointment.
+        const enforced = enforceStrictCapabilities({ ...next, gender: 'FEMALE' as GenderValue })
+        return { ...next, ...enforced, gender }
+      }
+      return next
+    })
+  }
+
+  function changeAppointment(appointment: AppointmentValue) {
+    setForm((prev) => ({ ...prev, appointment }))
+  }
+
+  function setCap(key: CapabilityKey, value: boolean) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  /** Fills capabilities with suggestions based on current congregational status. */
+  function applySuggestions() {
+    setForm((prev) => {
+      const suggested = suggestCapabilities({
+        gender: prev.gender || null,
+        isBaptized: prev.isBaptized,
+        appointment: prev.appointment,
+      })
+      return { ...prev, ...suggested }
+    })
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
     setError('')
+
+    // Client-side strict validation (backend re-validates authoritatively).
+    const capErrors = validatePublisherCapabilities({
+      gender: form.gender || null,
+      isBaptized: form.isBaptized,
+      isRegularPioneer: form.isRegularPioneer,
+      appointment: form.appointment,
+      canReceiveAssignments: form.canReceiveAssignments,
+      canBeCompanion: form.canBeCompanion,
+      canParticipateSMM: form.canParticipateSMM,
+      canBibleReading: form.canBibleReading,
+      canGiveTalk: form.canGiveTalk,
+      canBeChairman: form.canBeChairman,
+      canPray: form.canPray,
+      canTreasures: form.canTreasures,
+      canSpiritualGems: form.canSpiritualGems,
+      canChristianLife: form.canChristianLife,
+      canConductCBS: form.canConductCBS,
+      canReadCBS: form.canReadCBS,
+      canConcludingRemarks: form.canConcludingRemarks,
+    })
+    if (capErrors.length > 0) {
+      setError(capErrors.join(' '))
+      return
+    }
+
+    setSaving(true)
     try {
       const body: any = {
         fullName: form.fullName,
         phone: form.phone,
         isActive: form.isActive,
+        isBaptized: form.isBaptized,
+        isRegularPioneer: form.isRegularPioneer,
+        appointment: form.appointment,
         canReceiveAssignments: form.canReceiveAssignments,
         canBeCompanion: form.canBeCompanion,
+        canParticipateSMM: form.canParticipateSMM,
+        canBibleReading: form.canBibleReading,
+        canGiveTalk: form.canGiveTalk,
+        canBeChairman: form.canBeChairman,
+        canPray: form.canPray,
+        canTreasures: form.canTreasures,
+        canSpiritualGems: form.canSpiritualGems,
+        canChristianLife: form.canChristianLife,
+        canConductCBS: form.canConductCBS,
+        canReadCBS: form.canReadCBS,
+        canConcludingRemarks: form.canConcludingRemarks,
       }
       if (form.displayName) body.displayName = form.displayName
       if (form.gender) body.gender = form.gender
@@ -132,6 +318,20 @@ export default function PublicadoresPage() {
     } catch {} finally { setDeleting(false) }
   }
 
+  function renderCapToggle(cap: (typeof CAPABILITIES)[number]) {
+    const blocked = isFemale && cap.maleOnly
+    return (
+      <Toggle
+        key={cap.key}
+        label={cap.label}
+        checked={form[cap.key]}
+        disabled={blocked}
+        hint={blocked ? 'No disponible para mujeres (regla fija)' : undefined}
+        onChange={(v) => setCap(cap.key, v)}
+      />
+    )
+  }
+
   if (loading) return (
     <div className="space-y-4 animate-pulse">
       <div className="h-8 w-56 bg-silver-mist rounded-pill" />
@@ -165,103 +365,144 @@ export default function PublicadoresPage() {
       {/* Create/Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowForm(false)}>
-          <div className="bg-white rounded-card p-7 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-card p-7 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-ink tracking-tight mb-5">
               {editing ? 'Editar publicador' : 'Nuevo publicador'}
             </h2>
             {error && <p className="text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-xl">{error}</p>}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1.5">Nombre completo</label>
-                  <input
-                    type="text"
-                    required
-                    value={form.fullName}
-                    onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                    className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
-                  />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* ─── 1. Datos básicos ─── */}
+              <section className="space-y-4">
+                <h3 className="text-sm font-semibold text-ink uppercase tracking-wide">1. Datos básicos</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1.5">Nombre completo</label>
+                    <input
+                      type="text"
+                      required
+                      value={form.fullName}
+                      onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+                      className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1.5">Nombre visible</label>
+                    <input
+                      type="text"
+                      value={form.displayName}
+                      onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                      placeholder="Nombre corto"
+                      className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1.5">Nombre visible</label>
-                  <input
-                    type="text"
-                    value={form.displayName}
-                    onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                    placeholder="Nombre corto"
-                    className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
-                  />
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1.5">Telefono nacional</label>
-                <input
-                  type="tel"
-                  required
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/[^\d]/g, '') })}
-                  placeholder="9611234567"
-                  maxLength={10}
-                  className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1.5">Telefono nacional</label>
+                    <input
+                      type="tel"
+                      required
+                      value={form.phone}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/[^\d]/g, '') })}
+                      placeholder="9611234567"
+                      maxLength={10}
+                      className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
+                    />
+                    <p className="text-xs text-graphite mt-1">10 digitos sin prefijo 521</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1.5">Genero</label>
+                    <select
+                      value={form.gender}
+                      onChange={(e) => changeGender(e.target.value as '' | GenderValue)}
+                      className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white"
+                    >
+                      <option value="">Seleccionar</option>
+                      <option value="MALE">Masculino</option>
+                      <option value="FEMALE">Femenino</option>
+                    </select>
+                  </div>
+                </div>
+
+                <Toggle label="Activo" checked={form.isActive} onChange={(v) => setForm({ ...form, isActive: v })} />
+              </section>
+
+              {/* ─── 2. Estado congregacional ─── */}
+              <section className="space-y-2 border-t border-silver-mist pt-5">
+                <h3 className="text-sm font-semibold text-ink uppercase tracking-wide mb-2">2. Estado congregacional</h3>
+                <Toggle label="Bautizado" checked={form.isBaptized} onChange={(v) => setForm({ ...form, isBaptized: v })} />
+                <Toggle
+                  label="Precursor regular"
+                  hint="Puede ser hombre o mujer"
+                  checked={form.isRegularPioneer}
+                  onChange={(v) => setForm({ ...form, isRegularPioneer: v })}
                 />
-                <p className="text-xs text-graphite mt-1">10 digitos sin prefijo 521</p>
-              </div>
+                <div className="pt-2">
+                  <label className="block text-sm font-medium text-ink mb-1.5">Nombramiento</label>
+                  <select
+                    value={form.appointment}
+                    disabled={!isMale}
+                    onChange={(e) => changeAppointment(e.target.value as AppointmentValue)}
+                    className={`w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white ${!isMale ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {APPOINTMENT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  {!isMale && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      Solo los hombres pueden ser nombrados (anciano o siervo ministerial).
+                    </p>
+                  )}
+                </div>
+              </section>
 
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1.5">Genero</label>
-                <select
-                  value={form.gender}
-                  onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                  className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white"
-                >
-                  <option value="">Seleccionar</option>
-                  <option value="MALE">Masculino</option>
-                  <option value="FEMALE">Femenino</option>
-                </select>
-              </div>
+              {/* ─── 3. Capacidades ─── */}
+              <section className="space-y-3 border-t border-silver-mist pt-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="text-sm font-semibold text-ink uppercase tracking-wide">3. Capacidades</h3>
+                  <button
+                    type="button"
+                    onClick={applySuggestions}
+                    className="text-xs font-medium text-azure px-3 py-1.5 rounded-pill border border-azure/30 hover:bg-azure/5 transition-colors"
+                  >
+                    Sugerir según estado
+                  </button>
+                </div>
+                {isFemale && (
+                  <p className="text-xs text-amber-700 p-2.5 bg-amber-50 rounded-xl">
+                    Algunas capacidades están reservadas a hombres (reglas fijas) y aparecen deshabilitadas.
+                  </p>
+                )}
 
-              <div className="space-y-2 border-t border-silver-mist pt-4">
-                <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.isActive}
-                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                    className="w-4 h-4 rounded border-silver-mist text-azure focus:ring-azure/30"
-                  />
-                  Activo
-                </label>
-                <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.canReceiveAssignments}
-                    onChange={(e) => setForm({ ...form, canReceiveAssignments: e.target.checked })}
-                    className="w-4 h-4 rounded border-silver-mist text-azure focus:ring-azure/30"
-                  />
-                  Puede recibir asignaciones
-                </label>
-                <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.canBeCompanion}
-                    onChange={(e) => setForm({ ...form, canBeCompanion: e.target.checked })}
-                    className="w-4 h-4 rounded border-silver-mist text-azure focus:ring-azure/30"
-                  />
-                  Puede ser acompanante
-                </label>
-              </div>
+                <div>
+                  <p className="text-xs font-medium text-graphite mb-1">Asignaciones básicas</p>
+                  <div className="divide-y divide-silver-mist/60">
+                    {BASIC_CAPS.map(renderCapToggle)}
+                  </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1.5">Notas</label>
+                <div>
+                  <p className="text-xs font-medium text-graphite mb-1 mt-2">Partes de la reunión</p>
+                  <div className="divide-y divide-silver-mist/60">
+                    {MEETING_CAPS.map(renderCapToggle)}
+                  </div>
+                </div>
+              </section>
+
+              {/* ─── 4. Notas ─── */}
+              <section className="border-t border-silver-mist pt-5">
+                <h3 className="text-sm font-semibold text-ink uppercase tracking-wide mb-2">4. Notas</h3>
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={2}
                   className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 resize-none"
                 />
-              </div>
+              </section>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button type="submit" disabled={saving} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 disabled:opacity-50">
                   {saving ? 'Guardando...' : 'Guardar'}
                 </button>
@@ -330,6 +571,17 @@ export default function PublicadoresPage() {
                     <p className="text-sm font-medium text-ink truncate">{p.fullName}</p>
                     {p.displayName && <p className="text-xs text-graphite">{p.displayName}</p>}
                     <p className="text-xs text-graphite font-mono mt-1">{toNational(p.phone)}</p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {p.appointment !== 'NONE' && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-pill bg-indigo-50 text-indigo-700">{APPOINTMENT_LABEL[p.appointment]}</span>
+                      )}
+                      {p.isRegularPioneer && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-pill bg-sky-50 text-sky-700">Precursor</span>
+                      )}
+                      {!p.isBaptized && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-pill bg-fog text-graphite">No bautizado</span>
+                      )}
+                    </div>
                   </div>
                   <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-pill flex-shrink-0 ${p.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-fog text-graphite'}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-500' : 'bg-silver-mist'}`} />
@@ -360,8 +612,7 @@ export default function PublicadoresPage() {
                     <th className="text-left px-6 py-4 font-medium text-graphite">Nombre</th>
                     <th className="text-left px-6 py-4 font-medium text-graphite">Telefono</th>
                     <th className="text-left px-6 py-4 font-medium text-graphite">Estado</th>
-                    <th className="text-left px-6 py-4 font-medium text-graphite">Asignaciones</th>
-                    <th className="text-left px-6 py-4 font-medium text-graphite">Acompanante</th>
+                    <th className="text-left px-6 py-4 font-medium text-graphite">Privilegios</th>
                     <th className="text-right px-6 py-4 font-medium text-graphite">Acciones</th>
                   </tr>
                 </thead>
@@ -380,14 +631,20 @@ export default function PublicadoresPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-xs ${p.canReceiveAssignments ? 'text-emerald-600' : 'text-graphite'}`}>
-                          {p.canReceiveAssignments ? 'Si' : 'No'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`text-xs ${p.canBeCompanion ? 'text-emerald-600' : 'text-graphite'}`}>
-                          {p.canBeCompanion ? 'Si' : 'No'}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {p.appointment !== 'NONE' && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-pill bg-indigo-50 text-indigo-700">{APPOINTMENT_LABEL[p.appointment]}</span>
+                          )}
+                          {p.isRegularPioneer && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-pill bg-sky-50 text-sky-700">Precursor</span>
+                          )}
+                          {!p.isBaptized && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-pill bg-fog text-graphite">No bautizado</span>
+                          )}
+                          {p.appointment === 'NONE' && !p.isRegularPioneer && p.isBaptized && (
+                            <span className="text-xs text-graphite">Publicador</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
