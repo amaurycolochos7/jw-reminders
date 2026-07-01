@@ -156,7 +156,7 @@ export default function PublicadoresPage() {
         <input
           type="text"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setLoading(true) }}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre o telefono..."
           className="w-full pl-10 pr-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
         />
