@@ -51,6 +51,57 @@ function isTargetTitle(title: string): boolean {
   return TARGET_TITLES.some((t) => n.includes(t));
 }
 
+/**
+ * Marcadores de límite: encabezados de sección, cánticos, cierre y pie de página
+ * de WOL. Al toparse con uno, termina el cuerpo de la asignación en curso (evita
+ * arrastrar contenido de otras secciones o del footer).
+ */
+const STOP_MARKERS = [
+  "tesoros de la biblia",
+  "seamos mejores maestros",
+  "nuestra vida cristiana",
+  "cancion",
+  "cantico",
+  "necesidades",
+  "estudio biblico de la congregacion",
+  "palabras de introduccion",
+  "palabras de conclusion",
+  "busquemos perlas escondidas",
+  "analicemos",
+  "publicaciones",
+  "cerrar sesion",
+  "iniciar sesion",
+  "copyright",
+  "condiciones de uso",
+  "politica de privacidad",
+  "configuracion",
+  "compartir",
+  "jw.org",
+];
+
+function isStopMarker(line: string): boolean {
+  const n = normalizeTitle(line);
+  return STOP_MARKERS.some((m) => n === m || n.startsWith(`${m} `) || n.startsWith(`${m}.`));
+}
+
+/** Línea que es un encabezado en MAYÚSCULAS (sección), sin minúsculas ni dígitos. */
+function isAllCapsHeaderLine(line: string): boolean {
+  const t = line.trim();
+  if (/[a-záéíóúñü]/.test(t)) return false; // tiene minúsculas → no es header de sección
+  if (!/[A-ZÁÉÍÓÚÑÜ]/.test(t)) return false;
+  const letters = t.replace(/[^A-Za-zÁÉÍÓÚÑÜ]/g, "");
+  return letters.length >= 6 && t.split(/\s+/).length >= 2;
+}
+
+/** Corta la descripción en el primer marcador de sección/pie que se haya colado. */
+function sanitizeDescription(text: string): string {
+  const cut = text.replace(
+    /\s*(SEAMOS MEJORES MAESTROS|NUESTRA VIDA CRISTIANA|TESOROS DE LA BIBLIA|BUSQUEMOS PERLAS ESCONDIDAS|Canci[oó]n\b|C[aá]ntico\b|Necesidades de|Estudio b[ií]blico|Palabras de (introducci[oó]n|conclusi[oó]n)|Publicaciones|Cerrar sesi[oó]n|Iniciar sesi[oó]n|Copyright|Condiciones de uso|Pol[ií]tica de privacidad)[\s\S]*$/,
+    "",
+  );
+  return cut;
+}
+
 /** Normaliza espacios, saltos de línea repetidos y espacios antes de puntos. */
 function normalizeWhitespace(text: string): string {
   return text
@@ -157,7 +208,9 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
 
     if (!isTargetTitle(titleCandidate)) continue;
 
-    // El cuerpo son la(s) línea(s) siguiente(s) hasta el próximo encabezado objetivo.
+    // El cuerpo son las líneas siguientes hasta un límite: otra parte objetivo,
+    // otro encabezado numerado, un encabezado de sección en MAYÚSCULAS, o un
+    // marcador de sección/cántico/cierre/pie de página.
     let body = "";
     let j = i + 1;
     for (; j < lines.length; j += 1) {
@@ -166,6 +219,9 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
       const nextHeaded = next.match(/^\s*(\d{1,2})\.\s+(.*)$/);
       const nextTitle = nextHeaded ? nextHeaded[2].trim() : next;
       if (isTargetTitle(nextTitle)) break;
+      if (nextHeaded) break;            // cualquier parte numerada inicia otro item
+      if (isStopMarker(next)) break;    // sección / cántico / cierre / footer
+      if (isAllCapsHeaderLine(next)) break; // encabezado de sección en MAYÚSCULAS
       body += (body ? " " : "") + next;
     }
     i = j - 1;
@@ -177,7 +233,7 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
     const { context, rest: afterContext } = extractContext(afterLesson);
     const { reference, rest: afterReference } = extractReference(afterContext);
 
-    const description = tidy(afterReference);
+    const description = tidy(sanitizeDescription(afterReference));
     const type = mapWolTitleToType(titleCandidate);
 
     items.push({

@@ -113,6 +113,36 @@ test("parseWolProgram extrae las 4 partes del caso base", () => {
   assert.equal(discurso.requiresAssistant, false);
 });
 
+test("parseWolProgram no arrastra secciones/footer del texto real de WOL", () => {
+  const noisy = `
+TESOROS DE LA BIBLIA
+3. Lectura de la Biblia
+(4 mins.) Jer 12:1-11 (th lección 2).
+SEAMOS MEJORES MAESTROS
+4. Empiece conversaciones
+(3 mins.) PREDICACIÓN INFORMAL. Empiece una conversación después de que alguien haga o diga algo amable (lmd lección 1 punto 4).
+5. Haga revisitas
+(4 mins.) DE CASA EN CASA. La persona tiene hijos (lmd lección 3 punto 3).
+6. Discurso
+(5 mins.) lmd apéndice A punto 17. Título: Jesús fue un gran maestro y sus consejos siempre funcionan (th lección 14).
+NUESTRA VIDA CRISTIANA
+Canción 109
+7. Necesidades de la congregación (15 mins.)
+8. Estudio bíblico de la congregación (30 mins.) lfb lecciones 98, 99.
+Palabras de conclusión (3 mins.) | Canción 69 y oración
+Copyright © 2026 Watch Tower
+`;
+  const { items } = parseWolProgram(noisy)
+  assert.equal(items.length, 4)
+  const byTitle = Object.fromEntries(items.map((i) => [i.title, i]))
+  assert.equal(byTitle['Lectura de la Biblia'].description, 'Jer 12:1-11')
+  assert.equal(byTitle['Lectura de la Biblia'].itemNumber, 3)
+  assert.equal(byTitle['Discurso'].description, 'Título: Jesús fue un gran maestro y sus consejos siempre funcionan')
+  assert.equal(byTitle['Discurso'].reference, 'lmd apéndice A punto 17')
+  assert.equal(byTitle['Discurso'].lesson, 'th lección 14')
+  assert.equal(byTitle['Empiece conversaciones'].context, 'PREDICACIÓN INFORMAL')
+})
+
 test("parseWolProgram no inventa datos con texto vacío o desconocido", () => {
   assert.equal(parseWolProgram("").items.length, 0);
   assert.equal(parseWolProgram("Cántico 88 y oración\nPalabras de introducción (1 min.)").items.length, 0);
