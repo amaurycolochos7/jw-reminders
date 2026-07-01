@@ -51,6 +51,11 @@ function isTargetTitle(title: string): boolean {
   return TARGET_TITLES.some((t) => n.includes(t));
 }
 
+/** ¿La línea contiene un marcador de duración "(N mins.)"? Entonces es DETALLE, no encabezado. */
+function hasDurationMarker(line: string): boolean {
+  return /\(\s*\d+\s*mins?\.?/i.test(line);
+}
+
 /**
  * Marcadores de límite: encabezados de sección, cánticos, cierre y pie de página
  * de WOL. Al toparse con uno, termina el cuerpo de la asignación en curso (evita
@@ -207,6 +212,9 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
     const titleCandidate = headed ? headed[2].trim() : line;
 
     if (!isTargetTitle(titleCandidate)) continue;
+    // Una línea con "(N mins.)" es DETALLE de una parte (p. ej. "(4 mins.) Discurso...")
+    // y NO un encabezado, aunque contenga una palabra de título objetivo.
+    if (!headed && hasDurationMarker(line)) continue;
 
     // El cuerpo son las líneas siguientes hasta un límite: otra parte objetivo,
     // otro encabezado numerado, un encabezado de sección en MAYÚSCULAS, o un
@@ -218,7 +226,8 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
       if (!next) break;
       const nextHeaded = next.match(/^\s*(\d{1,2})\.\s+(.*)$/);
       const nextTitle = nextHeaded ? nextHeaded[2].trim() : next;
-      if (isTargetTitle(nextTitle)) break;
+      // Sólo un ENCABEZADO objetivo (sin duración en la línea) inicia otro item.
+      if (isTargetTitle(nextTitle) && !hasDurationMarker(next)) break;
       if (nextHeaded) break;            // cualquier parte numerada inicia otro item
       if (isStopMarker(next)) break;    // sección / cántico / cierre / footer
       if (isAllCapsHeaderLine(next)) break; // encabezado de sección en MAYÚSCULAS

@@ -143,6 +143,30 @@ Copyright © 2026 Watch Tower
   assert.equal(byTitle['Empiece conversaciones'].context, 'PREDICACIÓN INFORMAL')
 })
 
+test("una parte de estudiante impartida como Discurso no rompe el parseo", () => {
+  const sample = `
+3. Lectura de la Biblia
+(4 mins.) Jer 19:1-11 (th lección 5).
+4. Empiece conversaciones
+(4 mins.) Ofrézcale a la persona un curso de la Biblia (lmd lección 8 punto 3).
+5. Haga revisitas
+(4 mins.) Siga analizando con la persona el tratado (lmd lección 9 punto 3).
+6. Explique sus creencias
+(4 mins.) Discurso. ijwbq artículo 44. Título: ¿Qué dice la Biblia sobre el libre albedrío? (th lección 20).
+`;
+  const { items } = parseWolProgram(sample)
+  assert.equal(items.length, 4)
+  const byTitle = Object.fromEntries(items.map((i) => [i.title, i]))
+  const explique = byTitle['Explique sus creencias']
+  assert.ok(explique, 'debe existir el item Explique sus creencias')
+  assert.equal(explique.durationMinutes, 4)
+  assert.equal(explique.requiresAssistant, true)
+  assert.ok(explique.description && explique.description.includes('libre albedrío'))
+  assert.equal(explique.lesson, 'th lección 20')
+  // No debe haber items basura sin título reconocible.
+  assert.ok(items.every((i) => i.title && i.durationMinutes != null))
+})
+
 test("parseWolProgram no inventa datos con texto vacío o desconocido", () => {
   assert.equal(parseWolProgram("").items.length, 0);
   assert.equal(parseWolProgram("Cántico 88 y oración\nPalabras de introducción (1 min.)").items.length, 0);
