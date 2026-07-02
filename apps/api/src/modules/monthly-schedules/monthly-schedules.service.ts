@@ -539,6 +539,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
         select: {
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
           isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
+          appointment: true,
           canBibleReading: true, canGiveTalk: true, canParticipateSMM: true,
           canBeChairman: true, canPray: true, canTreasures: true, canSpiritualGems: true,
           canChristianLife: true, canConductCBS: true, canReadCBS: true, canConcludingRemarks: true,
@@ -628,6 +629,7 @@ export async function generateAssignmentsDirect(id: string) {
         select: {
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
           isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
+          appointment: true,
           canBibleReading: true, canGiveTalk: true, canParticipateSMM: true,
           canBeChairman: true, canPray: true, canTreasures: true, canSpiritualGems: true,
           canChristianLife: true, canConductCBS: true, canReadCBS: true, canConcludingRemarks: true,

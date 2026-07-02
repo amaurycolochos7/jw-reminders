@@ -35,6 +35,9 @@ export interface ProposalPublisher {
   canReceiveAssignments: boolean;
   canBeCompanion: boolean;
   gender?: "MALE" | "FEMALE" | null;
+  // Nombramiento congregacional. Usado por la regla mensual "un siervo
+  // ministerial preside una vez al mes". Opcional para retrocompatibilidad.
+  appointment?: "NONE" | "ELDER" | "MINISTERIAL_SERVANT" | null;
   // Capacidades reales (Fase 2). Opcionales para retrocompatibilidad con
   // llamadas/tests que no las proveen (en ese caso se usa solo la regla de género).
   canBibleReading?: boolean;
@@ -270,5 +273,75 @@ export function buildAssignmentProposal(input: {
     }
   }
 
+  // ─── Regla mensual: un siervo ministerial preside al menos una vez al mes ───
+  // Se aplica como post-pase sobre las asignaciones de CHAIRMAN ya generadas del
+  // conjunto de semanas (el mes). Si ninguna semana tiene a un siervo ministerial
+  // presidiendo, se reasigna la presidencia de UNA semana a un siervo ministerial
+  // elegible, eligiendo de forma equilibrada (menor carga) y evitando duplicar
+  // persona en esa semana. Si no hay ninguno elegible, se registra una advertencia.
+  enforceMinisterialServantChairman(assignments, input.publishers, baseScore, warnings, seed);
+
   return { assignments, warnings };
+}
+
+/**
+ * Garantiza que, en el conjunto de semanas dado (un mes), al menos una CHAIRMAN
+ * la ocupe un siervo ministerial. Muta `assignments` en su lugar.
+ */
+function enforceMinisterialServantChairman(
+  assignments: ProposedAssignment[],
+  publishers: ProposalPublisher[],
+  baseScore: (id: string) => number,
+  warnings: string[],
+  seed?: number,
+): void {
+  const chairmanAssignments = assignments.filter((a) => a.assignmentType === "CHAIRMAN");
+  if (chairmanAssignments.length === 0) return; // No hay presidencia que ajustar.
+
+  const pubById = new Map(publishers.map((p) => [p.id, p]));
+  const isMS = (id: string | null | undefined) =>
+    !!id && pubById.get(id)?.appointment === "MINISTERIAL_SERVANT";
+
+  // Ya se cumple: alguna semana tiene siervo ministerial presidiendo.
+  if (chairmanAssignments.some((a) => isMS(a.assignedPublisherId))) return;
+
+  // Candidatos: siervos ministeriales elegibles para presidir.
+  const msCandidates = publishers.filter(
+    (p) => p.appointment === "MINISTERIAL_SERVANT" && isPublisherEligibleForAssignment(p, "CHAIRMAN", "ASSIGNEE"),
+  );
+  if (msCandidates.length === 0) {
+    warnings.push(
+      "Ningún siervo ministerial elegible para presidir este mes; la presidencia queda en anciano(s). Revise nombramientos y la capacidad de presidente.",
+    );
+    return;
+  }
+
+  // Personas usadas por semana (para no duplicar a alguien en su propia semana).
+  const usedByWeek = new Map<string, Set<string>>();
+  for (const a of assignments) {
+    if (!usedByWeek.has(a.weekId)) usedByWeek.set(a.weekId, new Set());
+    usedByWeek.get(a.weekId)!.add(a.assignedPublisherId);
+    if (a.companionPublisherId) usedByWeek.get(a.weekId)!.add(a.companionPublisherId);
+  }
+
+  // Elegir el siervo ministerial con menor carga (equilibrio/rotación entre meses),
+  // con desempate estable por hash + semilla.
+  const rankedMS = [...msCandidates].sort((a, b) => {
+    const diff = baseScore(a.id) - baseScore(b.id);
+    if (diff !== 0) return diff;
+    return hashStringToInt(`ms|${seed ?? 0}|${a.id}`) - hashStringToInt(`ms|${seed ?? 0}|${b.id}`);
+  });
+
+  // Elegir una semana de presidencia para reasignar: preferir una donde el siervo
+  // ministerial elegido NO esté ya ocupado esa semana.
+  for (const ms of rankedMS) {
+    const target =
+      chairmanAssignments.find((a) => !(usedByWeek.get(a.weekId)?.has(ms.id))) ??
+      chairmanAssignments[0];
+    if (target) {
+      target.assignedPublisherId = ms.id;
+      target.companionPublisherId = null;
+      return;
+    }
+  }
 }

@@ -100,6 +100,23 @@ export async function createAssignment(data: any) {
     const capabilityError = validateAssignmentCapability(data.assignmentType, assigned);
     if (capabilityError) throw new Error(capabilityError);
 
+    // No permitir dos asignaciones para la MISMA parte real de la semana
+    // (salvo canceladas o propuestas). Si ya existe, se debe editar, no duplicar.
+    if (data.programItemId) {
+      const existing = await tx.jwAssignment.findFirst({
+        where: {
+          programItemId: data.programItemId,
+          status: { notIn: ["PROPOSED", "CANCELLED"] },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new Error(
+          "Ya existe una asignación para esta parte de la semana. Edítala en lugar de crear una nueva.",
+        );
+      }
+    }
+
     const assignedSnapshot = publisherSnapshot(assigned);
     const companionSnapshot = publisherSnapshot(companion);
     const assignment = await tx.jwAssignment.create({
@@ -152,6 +169,26 @@ export async function updateAssignment(id: string, data: any) {
 
     const capabilityError = validateAssignmentCapability(effectiveType, effectiveAssigned);
     if (capabilityError) throw new Error(capabilityError);
+
+    // Si se cambia/asigna la parte real, no permitir que colisione con otra
+    // asignación (distinta de esta) para la misma parte.
+    const effectiveProgramItemId =
+      "programItemId" in data ? data.programItemId : before.programItemId;
+    if (effectiveProgramItemId) {
+      const clash = await tx.jwAssignment.findFirst({
+        where: {
+          programItemId: effectiveProgramItemId,
+          status: { notIn: ["PROPOSED", "CANCELLED"] },
+          id: { not: id },
+        },
+        select: { id: true },
+      });
+      if (clash) {
+        throw new Error(
+          "Ya existe otra asignación para esta parte de la semana.",
+        );
+      }
+    }
 
     const changedFields = changedRelevantFields(before, data);
     const assignment = await tx.jwAssignment.update({

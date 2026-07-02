@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Fragment } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { getAssignmentTypeRule, isInformationalType } from '@/lib/assignment-rules'
-import AssignmentForm from './AssignmentForm'
+import AssignmentForm, { type WeekPart } from './AssignmentForm'
 import AssignmentReminders from './AssignmentReminders'
 import WeekAutomations from './WeekAutomations'
 import WeekProgram from './WeekProgram'
@@ -175,6 +175,7 @@ export default function SemanaDetallePage() {
 
   const [week, setWeek] = useState<MeetingWeek | null>(null)
   const [publishers, setPublishers] = useState<Publisher[]>([])
+  const [parts, setParts] = useState<WeekPart[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -225,10 +226,21 @@ export default function SemanaDetallePage() {
     } catch { /* ignore */ }
   }, [])
 
+  const loadParts = useCallback(async () => {
+    try {
+      const res = await api(`/api/meeting-weeks/${weekId}/program`)
+      if (res.ok) {
+        const data = await res.json()
+        setParts(Array.isArray(data.items) ? data.items : [])
+      }
+    } catch { /* ignore */ }
+  }, [weekId])
+
   useEffect(() => {
     loadWeek()
     loadPublishers()
-  }, [loadWeek, loadPublishers])
+    loadParts()
+  }, [loadWeek, loadPublishers, loadParts])
 
   // ─── Assignment Actions ──────────────────────────────────
 
@@ -296,6 +308,7 @@ export default function SemanaDetallePage() {
     setShowForm(false)
     setEditingAssignment(null)
     await loadWeek()
+    await loadParts()
   }
 
   // ─── Bulk Generate Reminders ───────────────────────────────
@@ -684,6 +697,7 @@ export default function SemanaDetallePage() {
           weekId={weekId}
           publishers={publishers}
           assignment={editingAssignment}
+          parts={parts}
           existingNumbers={(week?.assignments || []).map((a) => a.assignmentNumber)}
           onClose={() => { setShowForm(false); setEditingAssignment(null) }}
           onSuccess={handleFormSuccess}

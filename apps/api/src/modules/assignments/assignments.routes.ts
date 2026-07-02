@@ -45,6 +45,8 @@ const createSchema = z.object({
   companionPublisherId: z.string().optional(),
   room: z.enum(["MAIN", "AUXILIARY"]),
   notes: z.string().optional(),
+  // Parte real de la semana (MeetingProgramItem) sobre la que se asigna.
+  programItemId: z.string().optional(),
 });
 
 const updateSchema = createSchema.partial();

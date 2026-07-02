@@ -75,8 +75,25 @@ export async function getMeetingWeek(id: string) {
 export async function getWeekProgram(id: string) {
   const week = await prisma.jwMeetingWeek.findUniqueOrThrow({
     where: { id },
-    include: { programItems: { orderBy: { sortOrder: "asc" } } },
+    include: {
+      programItems: { orderBy: { sortOrder: "asc" } },
+      // Asignaciones reales (no propuestas, no canceladas) para enlazar cada parte
+      // con su asignación existente y saber si ya tiene a alguien asignado.
+      assignments: {
+        where: { status: { notIn: ["PROPOSED", "CANCELLED"] } },
+        include: { assigned: true },
+      },
+    },
   });
+
+  // Índice de asignación por programItemId (una parte real -> una asignación).
+  const assignmentByItem = new Map<string, (typeof week.assignments)[number]>();
+  for (const a of week.assignments) {
+    if (a.programItemId && !assignmentByItem.has(a.programItemId)) {
+      assignmentByItem.set(a.programItemId, a);
+    }
+  }
+
   return {
     id: week.id,
     meetingDateLocal: week.meetingDateLocal,
@@ -89,20 +106,37 @@ export async function getWeekProgram(id: string) {
     wolMeetingsUrl: week.wolMeetingsUrl,
     wolProgramUrl: week.wolProgramUrl,
     itemCount: week.programItems.length,
-    items: week.programItems.map((item) => ({
-      id: item.id,
-      itemNumber: item.itemNumber,
-      section: item.section,
-      title: item.title,
-      assignmentType: item.assignmentType,
-      durationMinutes: item.durationMinutes,
-      context: item.context,
-      description: item.description,
-      reference: item.reference,
-      lesson: item.lesson,
-      requiresAssistant: item.requiresAssistant,
-      sourceUrl: item.sourceUrl,
-    })),
+    items: week.programItems.map((item) => {
+      const assignment = assignmentByItem.get(item.id) ?? null;
+      return {
+        id: item.id,
+        itemNumber: item.itemNumber,
+        sortOrder: item.sortOrder,
+        section: item.section,
+        title: item.title,
+        assignmentType: item.assignmentType,
+        durationMinutes: item.durationMinutes,
+        context: item.context,
+        description: item.description,
+        reference: item.reference,
+        lesson: item.lesson,
+        requiresAssistant: item.requiresAssistant,
+        // Fase 3: partes informativas (canciones) no se asignan.
+        requiresAssignee: item.requiresAssignee,
+        needsCompanion: item.requiresAssistant,
+        sourceUrl: item.sourceUrl,
+        // Enlace con la asignación real de esa parte (si existe).
+        assignment: assignment
+          ? {
+              id: assignment.id,
+              status: assignment.status,
+              assignedPublisherId: assignment.assignedPublisherId,
+              assignedName:
+                assignment.assigned?.displayName || assignment.assigned?.fullName || null,
+            }
+          : null,
+      };
+    }),
   };
 }
 

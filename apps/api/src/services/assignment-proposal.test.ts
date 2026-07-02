@@ -217,3 +217,88 @@ test("todas las Lecturas del mes quedan con hombres cuando hay hombres suficient
   const womenUsed = assignments.some((a) => byId.get(a.assignedPublisherId)?.gender === "FEMALE");
   assert.ok(womenUsed, "las mujeres reciben asignaciones validas de Seamos mejores maestros");
 });
+
+
+
+// ─── Regla mensual: un siervo ministerial preside una vez al mes ───
+
+const CHAIRMAN_SLOT = {
+  assignmentNumber: 1,
+  section: "OPENING" as const,
+  assignmentType: "CHAIRMAN",
+  title: "Presidente de la reunión",
+  room: "MAIN" as const,
+  needsCompanion: false,
+};
+
+function chairmanWeeks(ids: string[]) {
+  return ids.map((weekId) => ({ weekId, existingNumbers: [], existingPublisherIds: [], slots: [CHAIRMAN_SLOT] }));
+}
+
+test("SM mensual: al menos una semana la preside un siervo ministerial", () => {
+  const publishers = [
+    pub("elder1", "Elder Uno", { gender: "MALE", appointment: "ELDER", canBeChairman: true }),
+    pub("elder2", "Elder Dos", { gender: "MALE", appointment: "ELDER", canBeChairman: true }),
+    pub("ms1", "Siervo Uno", { gender: "MALE", appointment: "MINISTERIAL_SERVANT", canBeChairman: true }),
+  ];
+  for (let seed = 0; seed < 6; seed++) {
+    const { assignments, warnings } = buildAssignmentProposal({
+      weeks: chairmanWeeks(["w1", "w2", "w3", "w4"]),
+      publishers,
+      history: emptyHistory,
+      options: { seed },
+    });
+    const chairs = assignments.filter((a) => a.assignmentType === "CHAIRMAN");
+    assert.equal(chairs.length, 4);
+    assert.ok(chairs.some((a) => a.assignedPublisherId === "ms1"), `seed ${seed}: un siervo ministerial debe presidir`);
+    assert.ok(!warnings.some((w) => w.includes("siervo ministerial")), "no debe advertir cuando hay SM elegible");
+  }
+});
+
+test("SM mensual: si no hay siervo ministerial elegible, se advierte y quedan ancianos", () => {
+  const publishers = [
+    pub("elder1", "Elder Uno", { gender: "MALE", appointment: "ELDER", canBeChairman: true }),
+    pub("elder2", "Elder Dos", { gender: "MALE", appointment: "ELDER", canBeChairman: true }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({
+    weeks: chairmanWeeks(["w1", "w2", "w3"]),
+    publishers,
+    history: emptyHistory,
+  });
+  const chairs = assignments.filter((a) => a.assignmentType === "CHAIRMAN");
+  assert.ok(chairs.length > 0);
+  assert.ok(chairs.every((a) => ["elder1", "elder2"].includes(a.assignedPublisherId)));
+  assert.ok(warnings.some((w) => w.toLowerCase().includes("siervo ministerial")), "debe advertir la ausencia de SM");
+});
+
+test("SM mensual: un siervo ministerial sin capacidad de presidente NO cuenta (advierte)", () => {
+  const publishers = [
+    pub("elder1", "Elder Uno", { gender: "MALE", appointment: "ELDER", canBeChairman: true }),
+    // Siervo ministerial pero sin capacidad de presidente -> no elegible para presidir.
+    pub("ms0", "Siervo Sin Cap", { gender: "MALE", appointment: "MINISTERIAL_SERVANT", canBeChairman: false }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({
+    weeks: chairmanWeeks(["w1", "w2"]),
+    publishers,
+    history: emptyHistory,
+  });
+  const chairs = assignments.filter((a) => a.assignmentType === "CHAIRMAN");
+  assert.ok(chairs.every((a) => a.assignedPublisherId === "elder1"));
+  assert.ok(!chairs.some((a) => a.assignedPublisherId === "ms0"), "un SM sin capacidad no debe presidir");
+  assert.ok(warnings.some((w) => w.toLowerCase().includes("siervo ministerial")));
+});
+
+test("SM mensual: si un siervo ministerial ya preside, no se altera", () => {
+  // Un solo siervo ministerial elegible: presidirá todas por ser el único con capacidad.
+  const publishers = [
+    pub("ms1", "Siervo Uno", { gender: "MALE", appointment: "MINISTERIAL_SERVANT", canBeChairman: true }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({
+    weeks: chairmanWeeks(["w1", "w2"]),
+    publishers,
+    history: emptyHistory,
+  });
+  const chairs = assignments.filter((a) => a.assignmentType === "CHAIRMAN");
+  assert.ok(chairs.every((a) => a.assignedPublisherId === "ms1"));
+  assert.ok(!warnings.some((w) => w.includes("siervo ministerial")));
+});
