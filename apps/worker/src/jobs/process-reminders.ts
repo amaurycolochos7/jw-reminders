@@ -7,6 +7,7 @@ import {
   resolveOutboundMessage,
   classifyNotification,
   buildGroupedPersonMessage,
+  buildMonthlyInitialMessage,
   formatMeetingTime,
   formatDateSpanish,
 } from "@jw-reminders/shared";
@@ -106,7 +107,7 @@ async function markCancelled(id: string, reason: string) {
 // programa y ordenar las partes en el mensaje agrupado.
 const DELIVERY_INCLUDE = {
   automationPlan: true,
-  assignment: { include: { meetingWeek: true, assigned: true, companion: true, programItem: true } },
+  assignment: { include: { meetingWeek: { include: { monthlySchedule: true } }, assigned: true, companion: true, programItem: true } },
   publisher: true,
 } satisfies Prisma.ReminderDeliveryInclude;
 
@@ -379,6 +380,61 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
   await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
 }
 
+const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+function monthLabelFor(fresh: FreshDelivery): string {
+  const sched = fresh.assignment!.meetingWeek.monthlySchedule;
+  if (sched?.name) return sched.name;
+  const d = fresh.assignment!.meetingWeek.meetingDate;
+  return `${MESES_ES[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/**
+ * AVISO INICIAL MENSUAL: un solo mensaje por persona con TODAS sus asignaciones
+ * del mes (todas las semanas), agrupadas por fecha de reunión, marcando el rol
+ * de acompañante. `deliveries` comparten publisher + mes + INITIAL_NOTICE.
+ */
+async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig: SendConfig) {
+  const first = deliveries[0];
+  const publisher = first.publisher!;
+  const phone = resolvePhone(publisher, sendConfig);
+  if (!phone) {
+    const reason = sendConfig.testMode ? "TEST_MODE activo pero TEST_PHONE no configurado" : "Destinatario sin telefono valido";
+    for (const d of deliveries) await markSkipped(d.id, reason);
+    return;
+  }
+
+  const items = deliveries.map((d) => {
+    const w = d.assignment!.meetingWeek;
+    return {
+      meetingDateText: formatDateSpanish(w.meetingDate),
+      sortDate: w.meetingDateLocal || w.meetingDate.toISOString().slice(0, 10),
+      sortOrder: d.assignment!.programItem?.sortOrder ?? d.assignment!.assignmentNumber,
+      title: d.assignment!.title,
+      isCompanion: d.recipientRole === "COMPANION",
+    };
+  });
+
+  const message = buildMonthlyInitialMessage({
+    personName: publisher.displayName || publisher.fullName,
+    monthLabel: monthLabelFor(first),
+    items,
+  });
+
+  await prisma.reminderDelivery.updateMany({
+    where: { id: { in: deliveries.map((d) => d.id) } },
+    data: { status: "SENDING", lastAttemptAt: new Date() },
+  });
+  for (const d of deliveries) {
+    await event("REMINDER_SENDING", "ReminderDelivery", d.id, { reminderType: d.reminderType, monthly: deliveries.length });
+  }
+
+  const result = await sendWhatsappMessage(phone, message);
+  for (const d of deliveries) await recordDeliveryAudit(d, phone, message, result);
+  for (const d of deliveries) await finalizeDeliveryStatus(d, result);
+
+  await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+}
+
 /**
  * Reclama atómicamente los deliveries del grupo, uno a uno por (id, statusEsperado).
  * updateMany es atómico a nivel de fila: sólo el tick que transiciona la fila de
@@ -476,7 +532,11 @@ export async function processReminders() {
       }
       if (sendable.length === 0) continue;
 
-      if (sendable.length >= 2 && isGroupCombinable(sendable)) {
+      if (sendable[0].reminderType === "INITIAL_NOTICE" && !sendable.some((d) => typeof d.customMessage === "string" && d.customMessage.trim().length > 0)) {
+        // Aviso inicial MENSUAL: un solo mensaje por persona con todo el mes.
+        await performMonthlyInitialSend(sendable, sendConfig);
+        sentThisRun += 1;
+      } else if (sendable.length >= 2 && isGroupCombinable(sendable)) {
         // 2b–f. Un solo mensaje agrupado para todo el grupo (cuenta como 1 envío).
         await performGroupedSend(sendable, sendConfig);
         sentThisRun += 1;

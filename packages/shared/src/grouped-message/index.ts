@@ -41,6 +41,10 @@ export interface GroupedPersonMessageInput {
 const GROUPED_ENCOURAGEMENT =
   "Le animamos a prepararse con anticipación para hacer sus asignaciones de la mejor manera. ¡Jehová bendecirá su esfuerzo!";
 
+/** Frase de bendición de cierre para recordatorios y avisos (sin puntualidad). */
+export const BLESSING_LINE =
+  "Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.";
+
 /**
  * Formatea una hora "HH:mm" (24h) a "h:mm a.m./p.m." en español. Si el valor no
  * coincide con ese formato, se devuelve tal cual (no se inventa nada).
@@ -85,6 +89,66 @@ export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): str
   if (input.includeEncouragement) {
     lines.push(GROUPED_ENCOURAGEMENT);
   }
+
+  // Cierre con bendición en todos los recordatorios agrupados.
+  lines.push(BLESSING_LINE);
+
+  return lines.join("\n");
+}
+
+// ─── Aviso inicial MENSUAL ───────────────────────────────
+// Un solo mensaje por persona con TODAS sus asignaciones del mes, agrupadas por
+// fecha de reunión. Marca las partes en las que participa como acompañante.
+
+export interface MonthlyInitialItem {
+  /** Fecha de la reunión ya formateada en español (p. ej. "viernes 10 de julio"). */
+  meetingDateText: string;
+  /** Clave para ordenar por fecha (p. ej. "2026-07-10"). */
+  sortDate: string;
+  /** Orden de la parte dentro del programa de esa semana. */
+  sortOrder: number;
+  /** Título de la parte. */
+  title: string;
+  /** True si participa como acompañante. */
+  isCompanion?: boolean;
+}
+
+export interface MonthlyInitialInput {
+  personName: string;
+  /** Etiqueta del mes, p. ej. "Julio 2026". */
+  monthLabel: string;
+  items: MonthlyInitialItem[];
+}
+
+/**
+ * Construye el aviso inicial MENSUAL. Determinista y sin efectos.
+ * Agrupa las asignaciones por fecha de reunión y las ordena por fecha y por el
+ * orden del programa. No incluye recordatorios de puntualidad.
+ */
+export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
+  const byDate = new Map<string, { text: string; sortDate: string; items: MonthlyInitialItem[] }>();
+  for (const it of input.items) {
+    const g = byDate.get(it.meetingDateText) ?? { text: it.meetingDateText, sortDate: it.sortDate, items: [] };
+    g.items.push(it);
+    byDate.set(it.meetingDateText, g);
+  }
+  const dates = [...byDate.values()].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+
+  const lines: string[] = [];
+  lines.push(`Hola ${input.personName}.`);
+  lines.push("");
+  lines.push(`Estas son sus asignaciones para las reuniones de ${input.monthLabel}:`);
+  for (const d of dates) {
+    lines.push("");
+    lines.push(`📅 ${d.text}`);
+    const parts = [...d.items].sort((a, b) => a.sortOrder - b.sortOrder);
+    for (const p of parts) {
+      lines.push(`   • ${p.title}${p.isCompanion ? " (como acompañante)" : ""}`);
+    }
+  }
+  lines.push("");
+  lines.push("Le invitamos a prepararse con anticipación para cada una.");
+  lines.push(BLESSING_LINE);
 
   return lines.join("\n");
 }

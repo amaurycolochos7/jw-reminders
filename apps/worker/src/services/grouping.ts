@@ -15,11 +15,17 @@
 export interface GroupableDelivery {
   publisherId: string;
   reminderType: string;
-  assignment: { meetingWeekId: string };
+  assignment: { meetingWeekId: string; meetingWeek?: { monthlyScheduleId?: string | null } | null };
 }
 
-/** Clave de agrupación por persona + semana + bucket de recordatorio. */
+/** Clave de agrupación por persona + semana + bucket de recordatorio.
+ * Excepción: el AVISO INICIAL (INITIAL_NOTICE) se agrupa por persona + MES
+ * (programa mensual), para enviar UN solo resumen mensual por persona. */
 export function groupKey(d: GroupableDelivery): string {
+  if (d.reminderType === "INITIAL_NOTICE") {
+    const month = d.assignment.meetingWeek?.monthlyScheduleId ?? d.assignment.meetingWeekId;
+    return `${d.publisherId}|month:${month}|INITIAL_NOTICE`;
+  }
   return `${d.publisherId}|${d.assignment.meetingWeekId}|${d.reminderType}`;
 }
 
