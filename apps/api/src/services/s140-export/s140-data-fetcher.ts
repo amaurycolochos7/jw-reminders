@@ -12,6 +12,8 @@ import type { S140WeekData, S140ExportInput } from "./s140-export.service.js";
 /**
  * Fetch the weekly bible reading range from WOL program page.
  * Returns something like "JEREMÍAS 13-15" or empty string.
+ * The reading is typically the SECOND <h> element on the page
+ * (first is the date range, second is the bible reading).
  */
 async function fetchBibleReadingFromWol(wolProgramUrl: string | null): Promise<string> {
   if (!wolProgramUrl) return "";
@@ -21,32 +23,34 @@ async function fetchBibleReadingFromWol(wolProgramUrl: string | null): Promise<s
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept-Language": "es",
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return "";
     const html = await res.text();
     
-    // The weekly Bible reading appears in WOL inside an element that contains
-    // the book name + chapters, typically in a header or the page title.
-    // Pattern: look for text like "JEREMÍAS 13-15" or "ISAÍAS 45-47" in upper sections.
-    
-    // Strategy 1: Extract from <title> or <h1>/<h2> that typically contains the reading range
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-    if (titleMatch) {
-      // Title often is like "6-12 de julio | Jeremías 13-15" or similar
-      const title = titleMatch[1];
-      const bibleMatch = title.match(/\|\s*(.+?)(?:\s*\||$)/);
-      if (bibleMatch) return bibleMatch[1].trim().toUpperCase();
+    // The Bible reading is the second <h1>/<h2>/<h3> header on the page.
+    // First header = date range ("6-12 DE JULIO"), second = reading ("JEREMÍAS 13-15").
+    const headerRegex = /<h[123][^>]*>([\s\S]*?)<\/h[123]>/gi;
+    const headers: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = headerRegex.exec(html)) !== null) {
+      const text = match[1].replace(/<[^>]+>/g, "").trim();
+      if (text) headers.push(text);
+      if (headers.length >= 3) break;
     }
     
-    // Strategy 2: Look for a specific pattern in first header elements
-    const headerMatch = html.match(/<h[12][^>]*>[^<]*?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+\d+[–\-,\s\d]*)+)[^<]*<\/h[12]>/i);
-    if (headerMatch) return headerMatch[1].trim().toUpperCase();
-    
-    // Strategy 3: Look for text with Bible book pattern near top
-    const textBlock = html.slice(0, 5000);
-    const bookPattern = textBlock.match(/(?:Génesis|Éxodo|Levítico|Números|Deuteronomio|Josué|Jueces|Rut|Samuel|Reyes|Crónicas|Esdras|Nehemías|Ester|Job|Salmo|Proverbios|Eclesiastés|Cantares|Isaías|Jeremías|Lamentaciones|Ezequiel|Daniel|Oseas|Joel|Amós|Abdías|Jonás|Miqueas|Nahúm|Habacuc|Sofonías|Ageo|Zacarías|Malaquías|Mateo|Marcos|Lucas|Juan|Hechos|Romanos|Corintios|Gálatas|Efesios|Filipenses|Colosenses|Tesalonicenses|Timoteo|Tito|Filemón|Hebreos|Santiago|Pedro|Judas|Apocalipsis|Revelación)\s+\d+[\d\s,–\-;]*/i);
-    if (bookPattern) return bookPattern[0].trim().toUpperCase();
+    // Second header should be the Bible reading (e.g., "JEREMÍAS 13-15")
+    if (headers.length >= 2) {
+      const candidate = headers[1];
+      // Verify it looks like a Bible reference (book name + numbers)
+      if (/[A-ZÁÉÍÓÚÑ]/.test(candidate) && /\d/.test(candidate)) {
+        return candidate.toUpperCase();
+      }
+      // Even without numbers, if it's short and all caps, it's likely the reading
+      if (candidate.length < 40 && candidate === candidate.toUpperCase()) {
+        return candidate;
+      }
+    }
     
     return "";
   } catch {
