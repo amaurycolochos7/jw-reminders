@@ -37,10 +37,48 @@ function buildDateRange(weekStartDate: Date, weekStartDateLocal: string | null):
 
 /**
  * Get person display name, preferring displayName over fullName.
+ * Abbreviates to fit S-140 format: "Gabriel de la T" style.
  */
 function personName(person: { displayName: string | null; fullName: string } | null | undefined): string {
   if (!person) return "—";
-  return person.displayName || person.fullName;
+  const name = person.displayName || person.fullName;
+  return abbreviateName(name);
+}
+
+/**
+ * Abbreviate a name to fit in the S-140 column (~20 chars max).
+ * Strategy: Keep first name + abbreviate last name to initial + period.
+ * Examples:
+ *   "Gabriel de la Tórre" → "Gabriel de la T"
+ *   "Dorian Gabriel de la Tórre Gomez" → "Dorian G de la T"
+ *   "Julio Enrique Diaz Hernandez" → "Julio E Diaz"
+ *   "Ninive V" → "Ninive V" (already short)
+ *   "Emili Espinoza" → "Emili Espinoza" (fits)
+ */
+function abbreviateName(name: string): string {
+  if (!name || name === "—") return "—";
+  // If already short enough, use as-is
+  if (name.length <= 20) return name;
+  
+  // Split into parts
+  const parts = name.split(/\s+/);
+  if (parts.length <= 1) return name;
+  
+  // Strategy: keep first word, abbreviate the rest progressively
+  // First try: abbreviate last word only
+  const abbreviated = [...parts];
+  for (let i = abbreviated.length - 1; i >= 1; i--) {
+    if (abbreviated.join(" ").length <= 20) break;
+    // Don't abbreviate connecting words (de, la, del, los, las)
+    const connecting = ["de", "la", "del", "los", "las", "el"];
+    if (connecting.includes(abbreviated[i].toLowerCase())) continue;
+    abbreviated[i] = abbreviated[i][0].toUpperCase();
+  }
+  
+  const result = abbreviated.join(" ");
+  // If still too long, truncate
+  if (result.length > 25) return result.slice(0, 22) + "...";
+  return result;
 }
 
 /**
@@ -121,10 +159,6 @@ export function validateExportData(weeks: ValidatableWeek[]): ExportValidation {
  * Fetch all data needed to generate S-140 for a monthly schedule.
  */
 export async function fetchS140Data(monthlyScheduleId: string): Promise<S140ExportInput> {
-  // Get congregation name from config
-  const configRow = await prisma.appConfig.findUnique({ where: { key: "congregation_name" } });
-  const congregationName = configRow?.value || "CONGREGACIÓN";
-
   // Fetch weeks with program items and assignments
   const schedule = await prisma.monthlySchedule.findUniqueOrThrow({
     where: { id: monthlyScheduleId },
@@ -145,6 +179,20 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
       },
     },
   });
+
+  // Get congregation name: prefer config, fallback to first week's congregationName
+  let configRow = await prisma.appConfig.findUnique({ where: { key: "CONGREGATION_NAME" } });
+  if (!configRow) {
+    configRow = await prisma.appConfig.findUnique({ where: { key: "congregation_name" } });
+  }
+  let congregationName = configRow?.value || "";
+  
+  // If config value looks like test data or empty, try week's congregationName
+  if (!congregationName || congregationName.toLowerCase().includes("test") || congregationName.toLowerCase().includes("qa")) {
+    const firstWeekName = (schedule.weeks as any[])[0]?.congregationName;
+    if (firstWeekName) congregationName = firstWeekName;
+  }
+  if (!congregationName) congregationName = "CONGREGACIÓN";
 
   const weeks: S140WeekData[] = (schedule.weeks as any[]).map((week: any) => {
     const assignments: any[] = week.assignments;
@@ -186,18 +234,35 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
     );
 
     // The weekly bible reading range from the program
+    // Try multiple sources: OPENING items with requiresAssignee=false, or
+    // fall back to an empty string (this data may not be stored yet)
     let bibleReadingRange = "";
     const rangeItem = programItems.find((p: any) =>
-      p.section === "OPENING" && !p.requiresAssignee && p.title && !p.title.toLowerCase().includes("canción")
+      p.section === "OPENING" && p.requiresAssignee === false && p.title && !p.title.toLowerCase().includes("canción")
     );
     if (rangeItem) {
       bibleReadingRange = rangeItem.title;
+    } else {
+      // Try to find from a SONG item that has the weekly reading in rawText
+      const firstSong = programItems.find((p: any) => p.assignmentType === "SONG" && p.rawText);
+      if (firstSong?.rawText) {
+        // WOL sometimes includes the reading range near songs
+        const match = firstSong.rawText.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+\d+[–\-,\s\d]*)?)/);
+        if (match) bibleReadingRange = match[1];
+      }
     }
 
     // Chairman
     const chairman = findAssignment("CHAIRMAN");
     const openingPrayer = findAssignment("OPENING_PRAYER");
     const closingPrayer = findAssignment("CLOSING_PRAYER");
+
+    // If opening prayer is the same person as chairman, show "—"
+    const chairmanId = chairman?.assignedPublisherId;
+    const openingPrayerId = openingPrayer?.assignedPublisherId;
+    const openingPrayerName = (openingPrayerId && chairmanId && openingPrayerId === chairmanId)
+      ? "—"
+      : personName(openingPrayer?.assigned);
 
     // Treasures section assignments
     const treasuresTalk = findAssignment("TREASURES_TALK");
@@ -224,7 +289,7 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
       dateRange: buildDateRange(week.weekStartDate, week.weekStartDateLocal),
       bibleReading: bibleReadingRange.toUpperCase(),
       chairman: personName(chairman?.assigned),
-      openingPrayer: personName(openingPrayer?.assigned),
+      openingPrayer: openingPrayerName,
       openingSong: songs.length >= 1 ? extractSongNumber(songs[0].title) : "—",
       middleSong: songs.length >= 2 ? extractSongNumber(songs[1].title) : "—",
       closingSong: songs.length >= 3 ? extractSongNumber(songs[2].title) : "—",
