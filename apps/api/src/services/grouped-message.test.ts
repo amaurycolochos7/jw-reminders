@@ -123,11 +123,10 @@ test("Nuestra Vida Cristiana: número, sección, título y duración", () => {
   ]);
 });
 
-test("Estudio Bíblico (conductor): incluye rol conductor y duración", () => {
+test("Estudio Bíblico (conductor): no repite el título redundante con la sección", () => {
   assert.deepEqual(renderPartLines(EBC_COND), [
     "• Punto 8",
     "*Estudio Bíblico de la Congregación (conductor)*",
-    "Estudio bíblico de la congregación",
     "30 minutos",
   ]);
 });
@@ -278,6 +277,27 @@ test("Recordatorio sin hora conocida no imprime línea de hora", () => {
 });
 
 // ─── formatMeetingTime ────────────────────────────────────────────────────────
+
+test("Recordatorio de 7 días: SIN hora y SIN duración, sin repetir sección/título", () => {
+  const msg = buildGroupedPersonMessage({
+    personName: "Gabriel de la Tórre",
+    meetingDateText: "viernes 10 de julio de 2026",
+    meetingTimeText: "15:00",
+    parts: [TESOROS, EBC_COND],
+    showTime: false,
+    showDuration: false,
+  });
+  assert.ok(msg.includes("*Viernes 10 de julio de 2026*"));
+  assert.ok(!msg.includes("p.m.") && !msg.includes("a.m."), "7 días no lleva hora");
+  assert.ok(!/\bminutos?\b/.test(msg), "7 días no lleva duración");
+  // No repite el título redundante del EBC.
+  assert.ok(msg.includes("*Estudio Bíblico de la Congregación (conductor)*"));
+  assert.ok(!msg.includes("\nEstudio bíblico de la congregación"), "no repite el título del EBC");
+  // Tesoros sí conserva su título real (no es redundante).
+  assert.ok(msg.includes("*Tesoros de la Biblia*") && msg.includes("Predique con valor"));
+  assertMarkdownOk(msg);
+  assertNoEmptyGaps(msg);
+});
 
 test("formatMeetingTime convierte 24h a am/pm y respeta valores no reconocidos", () => {
   assert.equal(formatMeetingTime("19:00"), "7:00 p.m.");

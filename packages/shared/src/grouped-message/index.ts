@@ -55,9 +55,32 @@ function dateHeader(text: string): string {
   return capitalize(text.trim().replace(/^(\p{L}+),\s+/u, "$1 "));
 }
 
-/** Normaliza para comparar título vs. sección (evita duplicar la misma línea). */
-function normalizeLabel(s: string): string {
-  return s.trim().toLocaleLowerCase("es");
+/**
+ * Normaliza para comparar: minúsculas, sin acentos, sin paréntesis (p. ej.
+ * "(conductor)"), sin puntuación y con espacios colapsados.
+ */
+function stripForCompare(s: string): string {
+  return s
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * ¿El título repite lo mismo que la sección y por tanto NO debe imprimirse?
+ * Se ignoran mayúsculas, acentos y sufijos entre paréntesis, de modo que
+ * "Estudio bíblico de la congregación" es redundante con
+ * "Estudio Bíblico de la Congregación (conductor)".
+ */
+function isRedundantTitle(title: string | null | undefined, section: string): boolean {
+  if (!title) return true;
+  const t = stripForCompare(title);
+  if (!t) return true;
+  return t === stripForCompare(section);
 }
 
 /** "10 minutos", "1 minuto"; null si no aplica (0 o ausente). */
@@ -102,7 +125,7 @@ export interface MessagePart {
  *   Acompañante:|Estudiante:   (solo si existe la contraparte)
  *   {nombre}
  */
-export function renderPartLines(part: MessagePart): string[] {
+export function renderPartLines(part: MessagePart, opts: { showDuration?: boolean } = {}): string[] {
   const lines: string[] = [];
   const label = `*${part.sectionLabel.trim()}*`;
 
@@ -113,13 +136,15 @@ export function renderPartLines(part: MessagePart): string[] {
     lines.push(`• ${label}`);
   }
 
-  // Título real (solo si aporta algo distinto a la sección).
-  if (part.title && normalizeLabel(part.title) !== normalizeLabel(part.sectionLabel)) {
-    lines.push(part.title.trim());
+  // Título real: solo si aporta algo distinto a la sección (sin repetir).
+  if (!isRedundantTitle(part.title, part.sectionLabel)) {
+    lines.push(part.title!.trim());
   }
 
-  const dur = durationLine(part.durationMinutes);
-  if (dur) lines.push(dur);
+  if (opts.showDuration !== false) {
+    const dur = durationLine(part.durationMinutes);
+    if (dur) lines.push(dur);
+  }
 
   if (part.isApplyYourself) {
     // Seamos Mejores Maestros: rol + contraparte, según el destinatario.
@@ -151,11 +176,11 @@ export function renderPartLines(part: MessagePart): string[] {
 }
 
 /** Une bloques de partes separados por una línea en blanco, sin dejar huecos dobles. */
-function appendParts(lines: string[], parts: MessagePart[]): void {
+function appendParts(lines: string[], parts: MessagePart[], opts: { showDuration?: boolean } = {}): void {
   const ordered = [...parts].sort((a, b) => a.sortOrder - b.sortOrder);
   for (const p of ordered) {
     lines.push("");
-    for (const l of renderPartLines(p)) lines.push(l);
+    for (const l of renderPartLines(p, opts)) lines.push(l);
   }
 }
 
@@ -213,12 +238,16 @@ export interface GroupedPersonMessageInput {
   /** Hora de la reunión "HH:mm" (24h) o ya formateada; se muestra en 12h. */
   meetingTimeText?: string | null;
   parts: MessagePart[];
+  /** Mostrar la hora de la reunión. Por defecto true. El recordatorio de 7 días la omite. */
+  showTime?: boolean;
+  /** Mostrar la duración de cada parte. Por defecto true. El recordatorio de 7 días la omite. */
+  showDuration?: boolean;
 }
 
 /**
  * Recordatorio (7/3/1 días): una persona con una o varias partes en la misma
- * reunión recibe UN solo mensaje. Misma estructura que el aviso inicial pero
- * para una única fecha y CON la hora de la reunión.
+ * reunión recibe UN solo mensaje. Misma estructura que el aviso inicial.
+ * El recordatorio de 7 días omite hora y duración (`showTime`/`showDuration`).
  */
 export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): string {
   const parts = [...input.parts].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -232,10 +261,12 @@ export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): str
   );
   lines.push("");
   lines.push(`*${dateHeader(input.meetingDateText)}*`);
-  const time = formatMeetingTime(input.meetingTimeText ?? null);
-  if (time) lines.push(time);
+  if (input.showTime !== false) {
+    const time = formatMeetingTime(input.meetingTimeText ?? null);
+    if (time) lines.push(time);
+  }
 
-  appendParts(lines, parts);
+  appendParts(lines, parts, { showDuration: input.showDuration !== false });
 
   lines.push("");
   lines.push(BLESSING_LINE);

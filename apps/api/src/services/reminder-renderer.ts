@@ -96,11 +96,14 @@ export async function renderReminderMessage(reminder: any): Promise<string> {
     });
   }
 
-  // Recordatorios 7/3/1 días (CON hora).
+  // Recordatorios 7/3/1 días. El de 7 días omite hora y duración.
+  const isSevenDay = reminderType === "SEVEN_DAYS_BEFORE";
   return buildGroupedPersonMessage({
     personName,
     meetingDateText: formatDateSpanish(meetingDate),
     meetingTimeText: assignment.meetingWeek.meetingTime,
     parts: [part],
+    showTime: !isSevenDay,
+    showDuration: !isSevenDay,
   });
 }

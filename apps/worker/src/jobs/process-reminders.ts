@@ -375,11 +375,15 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
 
   const parts = deliveries.map(deliveryToMessagePart);
 
+  // El recordatorio de 7 días omite hora y duración (petición del usuario).
+  const isSevenDay = first.reminderType === "SEVEN_DAYS_BEFORE";
   const message = buildGroupedPersonMessage({
     personName: personDisplayName(publisher),
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
     parts,
+    showTime: !isSevenDay,
+    showDuration: !isSevenDay,
   });
 
   await prisma.reminderDelivery.updateMany({
