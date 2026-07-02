@@ -39,7 +39,7 @@ function buildDateRange(weekStartDate: Date, weekStartDateLocal: string | null):
  * Get person display name, preferring displayName over fullName.
  * Abbreviates to fit S-140 format: "Gabriel de la T" style.
  */
-function personName(person: { displayName: string | null; fullName: string } | null | undefined): string {
+function personName(person: { displayName: string | null; fullName: string; id?: string } | null | undefined): string {
   if (!person) return "—";
   const name = person.displayName || person.fullName;
   return abbreviateName(name);
@@ -171,8 +171,8 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
           assignments: {
             where: { status: { notIn: ["CANCELLED", "PROPOSED"] } },
             include: {
-              assigned: { select: { displayName: true, fullName: true } },
-              companion: { select: { displayName: true, fullName: true } },
+              assigned: { select: { id: true, displayName: true, fullName: true } },
+              companion: { select: { id: true, displayName: true, fullName: true } },
             },
           },
         },
@@ -287,7 +287,7 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
 
     return {
       dateRange: buildDateRange(week.weekStartDate, week.weekStartDateLocal),
-      bibleReading: bibleReadingRange.toUpperCase(),
+      bibleReading: (bibleReadingRange || "").toUpperCase(),
       chairman: personName(chairman?.assigned),
       openingPrayer: openingPrayerName,
       openingSong: songs.length >= 1 ? extractSongNumber(songs[0].title) : "—",
