@@ -1300,3 +1300,75 @@ independientes.
   las pruebas unitarias desplegadas; no se creó ninguna asignación real en
   producción para no dejar datos residuales (no existe borrado físico de
   asignaciones). No se generaron datos QA que limpiar.
+
+
+
+---
+
+# Corrección — Selector de partes reales de la semana + reglas — COMPLETADA
+
+## Fecha
+
+2026-07-01
+
+## Resumen
+
+El modal "Agregar asignación" dentro de una semana ya **no muestra una lista
+genérica de tipos**: ahora muestra únicamente las **partes reales de esa semana**
+(los `MeetingProgramItem` importados de WOL), con su título, sección, número,
+duración y estado (asignada / sin asignar).
+
+## Cambios
+
+- **Frontend (`AssignmentForm`)**: nuevo paso "elegir parte" que lista las partes
+  reales de la semana agrupadas por sección, con filtros (Sin asignar / Asignadas /
+  Todas + por sección) y las no asignadas primero. Al elegir una parte sin asignar
+  se abre el formulario con tipo/título/duración/`programItemId` fijados; al elegir
+  una parte ya asignada se **edita** esa asignación (no se duplica). Acción
+  separada **"Agregar parte manual"** para casos fuera del programa. Los candidatos
+  se filtran por capacidad (`isPublisherEligibleForAssignment`).
+- **Backend `getWeekProgram`**: cada parte incluye `sortOrder`, `requiresAssignee`,
+  `needsCompanion` y el enlace con su asignación real (`assignment`: id, estado,
+  persona), para que el selector muestre el estado correcto.
+- **Backend asignaciones**: `programItemId` aceptado en el esquema; **prevención de
+  duplicados por parte real** en creación y edición (si ya existe una asignación
+  no cancelada/propuesta para esa parte → **400**, no guarda). La validación de
+  capacidades ya existente sigue bloqueando (400) a quien no puede la parte.
+- **Generador — siervo ministerial presidiendo**: nueva regla mensual. Si ninguna
+  semana del mes tiene a un siervo ministerial como presidente, el generador
+  reasigna la presidencia de una semana a un siervo ministerial elegible (rotación
+  equilibrada por carga, evitando duplicar persona en la misma semana). Si no hay
+  ninguno elegible, registra una advertencia y deja ancianos. (4 pruebas unitarias.)
+
+## Reglas de capacidad confirmadas
+
+- Oración inicial / oración final / palabras de conclusión → capacidad de
+  **presidente** (no capacidades separadas).
+- Lector del Estudio Bíblico → capacidad **propia** (`canReadCBS`); tener solo
+  Lectura de la Biblia NO habilita como lector EBC.
+
+## Verificación (local)
+
+- Typecheck shared/api/web/worker: 0. Builds api/worker/web/shared: 0.
+- Pruebas: **API 118/118** (incluye las 4 nuevas del siervo ministerial), worker 8/8.
+
+## Deploy y validación en producción
+
+- Commit `7aafa56`, push a `main`, deploy Dokploy → `composeStatus` done.
+- `GET /api/version` → `p11-week-parts-selector` (código nuevo vivo).
+- **QA en producción (semana temporal desechable, luego eliminada):**
+  - Importada una semana real → 13 partes; `/api/meeting-weeks/:id/program`
+    devuelve la forma enriquecida (`sortOrder`, `requiresAssignee`,
+    `needsCompanion`, `assignment`).
+  - Asignar la Lectura a un publicador con capacidad → **201**; al releer, la
+    parte aparece enlazada con su persona (el selector la mostrará como "Asignada").
+  - Segundo intento sobre la **misma parte** → **400** "Ya existe una asignación
+    para esta parte…" (sin duplicar).
+  - No-presidente en Oración inicial → **400** (capacidad de presidente).
+  - Publicador sin `canReadCBS` en Lector EBC → **400** (capacidad propia del
+    lector, distinta de Lectura de la Biblia).
+  - Limpieza: la semana QA se eliminó en cascada; el conteo volvió a 4, sin
+    residuos.
+- La regla mensual del siervo ministerial se valida con las pruebas unitarias
+  desplegadas (en producción no hay publicadores nombrados actualmente, por lo que
+  no se generó una propuesta real para no crear datos).
