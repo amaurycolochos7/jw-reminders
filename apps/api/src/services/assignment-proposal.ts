@@ -281,7 +281,37 @@ export function buildAssignmentProposal(input: {
   // persona en esa semana. Si no hay ninguno elegible, se registra una advertencia.
   enforceMinisterialServantChairman(assignments, input.publishers, baseScore, warnings, seed);
 
+  // ─── Autocompletado del inicio: oración inicial + palabras de introducción ──
+  // Por defecto las realiza el mismo presidente. Tras fijar la presidencia de
+  // cada semana (incluida la regla del siervo ministerial), la oración inicial
+  // (OPENING_PRAYER) y las palabras de introducción (OPENING_COMMENTS) toman el
+  // mismo publicador que preside esa semana. La oración final (CLOSING_PRAYER)
+  // NO se toca: queda independiente para asignarse aparte.
+  autofillOpeningPartsFromChairman(assignments);
+
   return { assignments, warnings };
+}
+
+/**
+ * Hace que, por cada semana, la oración inicial y las palabras de introducción
+ * queden asignadas al mismo publicador que preside (CHAIRMAN). Muta
+ * `assignments` en su lugar. No crea partes que no existan; solo alinea las que
+ * el programa de la semana ya incluye.
+ */
+export function autofillOpeningPartsFromChairman(assignments: ProposedAssignment[]): void {
+  const chairmanByWeek = new Map<string, string>();
+  for (const a of assignments) {
+    if (a.assignmentType === "CHAIRMAN") chairmanByWeek.set(a.weekId, a.assignedPublisherId);
+  }
+  for (const a of assignments) {
+    if (a.assignmentType === "OPENING_PRAYER" || a.assignmentType === "OPENING_COMMENTS") {
+      const chairId = chairmanByWeek.get(a.weekId);
+      if (chairId) {
+        a.assignedPublisherId = chairId;
+        a.companionPublisherId = null;
+      }
+    }
+  }
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   isCompanionGenderAllowed,
   isPublisherEligibleForAssignment,
   getAssignmentTypeRule,
+  typeHasNoDuration,
   type GenderValue,
 } from '@/lib/assignment-rules'
 
@@ -318,7 +319,8 @@ export default function AssignmentForm({ weekId, publishers, assignment, parts, 
   function validate(): string | null {
     if (!form.title.trim()) return 'El titulo es obligatorio'
     if (!form.assignedPublisherId) return 'Debes seleccionar una persona'
-    if (form.durationMinutes && (isNaN(Number(form.durationMinutes)) || Number(form.durationMinutes) < 1)) return 'La duracion debe ser un numero positivo'
+    const durationRelevant = !typeHasNoDuration(form.assignmentType) && form.assignmentType !== 'OPENING_COMMENTS'
+    if (durationRelevant && form.durationMinutes && (isNaN(Number(form.durationMinutes)) || Number(form.durationMinutes) < 1)) return 'La duracion debe ser un numero positivo'
     if (form.assignedPublisherId && form.companionPublisherId && form.assignedPublisherId === form.companionPublisherId) return 'La persona y el acompanante no pueden ser la misma'
     return null
   }
@@ -339,7 +341,13 @@ export default function AssignmentForm({ weekId, publishers, assignment, parts, 
         room: form.room,
         assignedPublisherId: form.assignedPublisherId,
       }
-      if (form.durationMinutes) body.durationMinutes = Number(form.durationMinutes)
+      if (typeHasNoDuration(form.assignmentType)) {
+        // Presidente y oraciones: sin duración (no se envía; queda null).
+      } else if (form.assignmentType === 'OPENING_COMMENTS') {
+        body.durationMinutes = 1 // informativa
+      } else if (form.durationMinutes) {
+        body.durationMinutes = Number(form.durationMinutes)
+      }
       if (form.context.trim()) body.context = form.context.trim()
       if (form.reference.trim()) body.reference = form.reference.trim()
       if (showCompanion && form.companionPublisherId) body.companionPublisherId = form.companionPublisherId
@@ -485,6 +493,15 @@ export default function AssignmentForm({ weekId, publishers, assignment, parts, 
           {rule.allowedAssigneeGenders.length > 0 && (
             <p className="text-xs text-graphite -mt-2">Esta parte solo puede asignarse a hombres.</p>
           )}
+          {form.assignmentType === 'OPENING_PRAYER' && (
+            <p className="text-xs text-graphite -mt-2">Por defecto la realiza el presidente. Puedes cambiarla a otra persona capacitada.</p>
+          )}
+          {form.assignmentType === 'OPENING_COMMENTS' && (
+            <p className="text-xs text-graphite -mt-2">Normalmente las realiza el presidente.</p>
+          )}
+          {form.assignmentType === 'CLOSING_PRAYER' && (
+            <p className="text-xs text-graphite -mt-2">No necesariamente la hace el presidente; puede asignarse a cualquier persona capacitada.</p>
+          )}
 
           {/* Persona */}
           <div>
@@ -520,18 +537,31 @@ export default function AssignmentForm({ weekId, publishers, assignment, parts, 
             </div>
           )}
 
-          {/* Duracion */}
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">Duracion (min)</label>
-            <input
-              type="number"
-              min={1}
-              value={form.durationMinutes}
-              onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
-              className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
-              placeholder="5"
-            />
-          </div>
+          {/* Duracion — se oculta en presidente y oraciones (no se cronometran);
+              en palabras de introducción es informativa (1 min). */}
+          {typeHasNoDuration(form.assignmentType) ? (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">Duración</label>
+              <p className="text-sm text-graphite px-4 py-2.5 bg-fog rounded-xl">Sin duración</p>
+            </div>
+          ) : form.assignmentType === 'OPENING_COMMENTS' ? (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">Duración</label>
+              <p className="text-sm text-graphite px-4 py-2.5 bg-fog rounded-xl">1 min (informativa)</p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">Duracion (min)</label>
+              <input
+                type="number"
+                min={1}
+                value={form.durationMinutes}
+                onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
+                className="w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30"
+                placeholder="5"
+              />
+            </div>
+          )}
 
           {/* Notas */}
           <div>

@@ -3,6 +3,7 @@ import {
   validateAssignmentGenders,
   requiredCapabilityForType,
   getAssignmentTypeRule,
+  isChairmanAutofillType,
   type EligibilityPublisher,
 } from "@jw-reminders/shared";
 import {
@@ -32,6 +33,24 @@ function validateAssignmentCapability(
     const label = getAssignmentTypeRule(assignmentType).label;
     return `El publicador no tiene la capacidad requerida para "${label}".`;
   }
+  return null;
+}
+
+/**
+ * Valida el ESTADO congregacional del publicador asignado, independientemente
+ * del tipo de parte (spec: no permitir inactivos, eliminados, ni sin permiso de
+ * recibir asignaciones). Devuelve un mensaje en español o null si es válido.
+ */
+function validateAssignedStatus(assigned: {
+  isActive?: boolean | null;
+  deletedAt?: Date | string | null;
+  canReceiveAssignments?: boolean | null;
+  fullName?: string | null;
+}): string | null {
+  if (assigned.deletedAt) return "El publicador fue eliminado y no puede recibir asignaciones.";
+  if (assigned.isActive === false) return "El publicador está inactivo y no puede recibir asignaciones.";
+  if (assigned.canReceiveAssignments === false)
+    return "El publicador no tiene permiso para recibir asignaciones.";
   return null;
 }
 
@@ -100,6 +119,9 @@ export async function createAssignment(data: any) {
     const capabilityError = validateAssignmentCapability(data.assignmentType, assigned);
     if (capabilityError) throw new Error(capabilityError);
 
+    const statusError = validateAssignedStatus(assigned);
+    if (statusError) throw new Error(statusError);
+
     // No permitir dos asignaciones para la MISMA parte real de la semana
     // (salvo canceladas o propuestas). Si ya existe, se debe editar, no duplicar.
     if (data.programItemId) {
@@ -145,6 +167,45 @@ function changedRelevantFields(before: any, data: any) {
   return RELEVANT_FIELDS.filter((field) => Object.prototype.hasOwnProperty.call(data, field) && data[field] !== before[field]);
 }
 
+/**
+ * Resincroniza la oración inicial y las palabras de introducción de una semana
+ * con el presidente. Solo toca las que siguen autocompletadas
+ * (`autoFilledFromChairman = true`): las editadas manualmente se respetan. Debe
+ * ejecutarse dentro de una transacción.
+ */
+async function propagateChairmanToOpeningParts(
+  tx: any,
+  meetingWeekId: string,
+  chairmanPublisherId: string,
+): Promise<void> {
+  const siblings = await tx.jwAssignment.findMany({
+    where: {
+      meetingWeekId,
+      assignmentType: { in: ["OPENING_PRAYER", "OPENING_COMMENTS"] },
+      autoFilledFromChairman: true,
+      status: { notIn: ["CANCELLED"] },
+    },
+    select: { id: true, assignedPublisherId: true },
+  });
+  for (const sibling of siblings) {
+    if (sibling.assignedPublisherId === chairmanPublisherId) continue;
+    await tx.jwAssignment.update({
+      where: { id: sibling.id },
+      data: { assignedPublisherId: chairmanPublisherId, version: { increment: 1 } },
+    });
+    await applyAssignmentSnapshots(tx, sibling.id);
+    await createAutomationEvent(tx, {
+      eventType: "ASSIGNMENT_UPDATED",
+      entityType: "JwAssignment",
+      entityId: sibling.id,
+      metadata: { changedFields: ["assignedPublisherId"], reason: "chairman_autofill" },
+    });
+    if (await hasAssignmentAutomation(tx, sibling.id)) {
+      await regenerateAssignmentAutomation(tx, sibling.id, "assignment_changed");
+    }
+  }
+}
+
 export async function updateAssignment(id: string, data: any) {
   return prisma.$transaction(async (tx) => {
     const before = await tx.jwAssignment.findUniqueOrThrow({ where: { id } });
@@ -170,6 +231,15 @@ export async function updateAssignment(id: string, data: any) {
     const capabilityError = validateAssignmentCapability(effectiveType, effectiveAssigned);
     if (capabilityError) throw new Error(capabilityError);
 
+    // Solo validar estado del asignado si se está cambiando la persona asignada
+    // (no bloquear ediciones de otros campos sobre asignaciones legacy cuyo
+    // publicador pudo desactivarse después). El cambio de persona sí exige un
+    // publicador válido (activo, no eliminado, con permiso de recibir).
+    if ("assignedPublisherId" in data && data.assignedPublisherId) {
+      const statusError = validateAssignedStatus(effectiveAssigned);
+      if (statusError) throw new Error(statusError);
+    }
+
     // Si se cambia/asigna la parte real, no permitir que colisione con otra
     // asignación (distinta de esta) para la misma parte.
     const effectiveProgramItemId =
@@ -191,13 +261,19 @@ export async function updateAssignment(id: string, data: any) {
     }
 
     const changedFields = changedRelevantFields(before, data);
-    const assignment = await tx.jwAssignment.update({
-      where: { id },
-      data: {
-        ...data,
-        version: { increment: 1 },
-      },
-    });
+
+    // Edición manual de la persona en oración inicial / palabras de introducción:
+    // deja de estar "autocompletada", así el cambio de presidente ya no la pisa.
+    const updateData: any = { ...data, version: { increment: 1 } };
+    const assignedPersonChanged =
+      "assignedPublisherId" in data &&
+      !!data.assignedPublisherId &&
+      data.assignedPublisherId !== before.assignedPublisherId;
+    if ("assignedPublisherId" in data && isChairmanAutofillType(effectiveType)) {
+      updateData.autoFilledFromChairman = false;
+    }
+
+    const assignment = await tx.jwAssignment.update({ where: { id }, data: updateData });
     await applyAssignmentSnapshots(tx, id);
 
     await createAutomationEvent(tx, {
@@ -209,6 +285,12 @@ export async function updateAssignment(id: string, data: any) {
 
     if (changedFields.length > 0 && (await hasAssignmentAutomation(tx, id))) {
       await regenerateAssignmentAutomation(tx, id, "assignment_changed");
+    }
+
+    // Cambiar el presidente resincroniza la oración inicial y las palabras de
+    // introducción de esa semana que sigan autocompletadas (no editadas a mano).
+    if (effectiveType === "CHAIRMAN" && assignedPersonChanged) {
+      await propagateChairmanToOpeningParts(tx, before.meetingWeekId, effectiveAssignedId);
     }
 
     return assignment;

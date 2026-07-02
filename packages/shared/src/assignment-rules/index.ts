@@ -387,6 +387,32 @@ export function isInformationalType(type: string): boolean {
   return type === "SONG";
 }
 
+/**
+ * Tipos de parte que NO llevan duración cronometrada: el presidente es un rol,
+ * y las oraciones (inicial/final) no se cronometran. La UI oculta el campo de
+ * duración para estos tipos y NO debe mostrar "0 min". "Palabras de introducción"
+ * (OPENING_COMMENTS) SÍ tiene duración (1 min, informativa) y no está aquí.
+ */
+export const NO_DURATION_TYPES: AssignmentTypeId[] = ["CHAIRMAN", "OPENING_PRAYER", "CLOSING_PRAYER"];
+
+/** ¿Este tipo de parte se muestra sin duración? (presidente y oraciones). */
+export function typeHasNoDuration(type: string): boolean {
+  return NO_DURATION_TYPES.includes(type as AssignmentTypeId);
+}
+
+/**
+ * Partes del inicio de la reunión que por defecto realiza el mismo presidente y
+ * que se AUTOCOMPLETAN con la persona asignada como presidente: la oración
+ * inicial y las palabras de introducción. La oración final (CLOSING_PRAYER) NO
+ * está aquí: es independiente y se asigna aparte.
+ */
+export const CHAIRMAN_AUTOFILL_TYPES: AssignmentTypeId[] = ["OPENING_PRAYER", "OPENING_COMMENTS"];
+
+/** ¿Este tipo se autocompleta con el presidente (oración inicial / palabras de introducción)? */
+export function isChairmanAutofillType(type: string): boolean {
+  return CHAIRMAN_AUTOFILL_TYPES.includes(type as AssignmentTypeId);
+}
+
 export interface AssignmentTypeOption {
   value: AssignmentTypeId;
   label: string;

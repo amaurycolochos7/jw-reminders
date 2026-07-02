@@ -76,3 +76,16 @@ test("una persona con una sola parte => grupo de tamaño 1 (degenera a envío in
   assert.equal(groups.length, 1);
   assert.equal(groups[0].length, 1);
 });
+
+test("presidente + oración inicial + palabras de introducción de la misma persona/semana forman UN grupo", () => {
+  const deliveries = [
+    d("d1", "chair", "w1", "DAY_BEFORE"), // Presidente
+    d("d2", "chair", "w1", "DAY_BEFORE"), // Oración inicial
+    d("d3", "chair", "w1", "DAY_BEFORE"), // Palabras de introducción
+    d("d4", "otra", "w1", "DAY_BEFORE"), // otra persona
+  ];
+  const groups = groupDeliveries(deliveries);
+  const chairGroup = groups.find((g) => g[0].publisherId === "chair")!;
+  assert.equal(chairGroup.length, 3, "las 3 partes del presidente van en un solo mensaje");
+  assert.equal(groups.length, 2, "el presidente y la otra persona son grupos distintos");
+});

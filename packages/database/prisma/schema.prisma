@@ -283,6 +283,11 @@ model JwAssignment {
   status                 AssignmentStatus  @default(DRAFT)
   version                Int               @default(1)
   programItemId          String? // Item real de WOL sobre el que se asigna (si aplica).
+  // Inicio de reunión: true cuando la oración inicial / palabras de introducción
+  // se autocompletaron con el presidente y NO se han editado manualmente. Si el
+  // administrador cambia la persona a mano, pasa a false y deja de sincronizarse
+  // automáticamente al cambiar el presidente.
+  autoFilledFromChairman Boolean           @default(false)
   completedAt            DateTime?
   cancelledAt            DateTime?
   createdAt              DateTime          @default(now())

@@ -172,6 +172,28 @@ export function isInformationalType(type: string): boolean {
   return type === 'SONG'
 }
 
+/**
+ * Tipos de parte que NO llevan duración (espejo de packages/shared): el
+ * presidente es un rol y las oraciones no se cronometran. La UI oculta el campo
+ * de duración y no muestra "0 min". "Palabras de introducción" (OPENING_COMMENTS)
+ * SÍ tiene duración (1 min informativa) y no está aquí.
+ */
+export const NO_DURATION_TYPES: AssignmentTypeId[] = ['CHAIRMAN', 'OPENING_PRAYER', 'CLOSING_PRAYER']
+
+export function typeHasNoDuration(type: string): boolean {
+  return NO_DURATION_TYPES.includes(type as AssignmentTypeId)
+}
+
+/**
+ * Partes del inicio que por defecto realiza el presidente y se autocompletan con
+ * él: oración inicial y palabras de introducción. La oración final es aparte.
+ */
+export const CHAIRMAN_AUTOFILL_TYPES: AssignmentTypeId[] = ['OPENING_PRAYER', 'OPENING_COMMENTS']
+
+export function isChairmanAutofillType(type: string): boolean {
+  return CHAIRMAN_AUTOFILL_TYPES.includes(type as AssignmentTypeId)
+}
+
 /** Espejo de packages/shared: única fuente de verdad de elegibilidad. */
 export function isPublisherEligibleForAssignment(
   publisher: EligibilityPublisher,

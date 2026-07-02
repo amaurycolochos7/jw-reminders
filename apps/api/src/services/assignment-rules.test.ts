@@ -10,6 +10,8 @@ import {
   isPublisherEligibleForAssignment,
   requiredCapabilityForType,
   validateAssignmentGenders,
+  typeHasNoDuration,
+  isChairmanAutofillType,
 } from "@jw-reminders/shared";
 
 test("deriva seccion, titulo y duracion desde el tipo", () => {
@@ -163,5 +165,54 @@ test("un publicador SIN capacidad de presidente NUNCA es elegible para esas part
   };
   for (const type of ["CHAIRMAN", "OPENING_PRAYER", "CLOSING_PRAYER", "CONCLUDING_COMMENTS", "OPENING_COMMENTS"]) {
     assert.equal(isPublisherEligibleForAssignment(nonChairman, type), false, `no-presidente no debe poder ${type}`);
+  }
+});
+
+// ─── Reglas del inicio de reunión (presidente / oraciones / introducción) ────
+
+test("duración: presidente y oraciones no llevan duración; palabras de introducción sí", () => {
+  assert.equal(typeHasNoDuration("CHAIRMAN"), true);
+  assert.equal(typeHasNoDuration("OPENING_PRAYER"), true);
+  assert.equal(typeHasNoDuration("CLOSING_PRAYER"), true);
+  assert.equal(typeHasNoDuration("OPENING_COMMENTS"), false, "palabras de introducción sí tiene duración");
+  assert.equal(typeHasNoDuration("BIBLE_READING"), false);
+  assert.equal(deriveDurationMinutes("OPENING_COMMENTS"), 1);
+  assert.equal(deriveDurationMinutes("CHAIRMAN"), 0);
+  assert.equal(deriveDurationMinutes("OPENING_PRAYER"), 0);
+  assert.equal(deriveDurationMinutes("CLOSING_PRAYER"), 0);
+});
+
+test("autocompletado: oración inicial y palabras de introducción siguen al presidente; oración final no", () => {
+  assert.equal(isChairmanAutofillType("OPENING_PRAYER"), true);
+  assert.equal(isChairmanAutofillType("OPENING_COMMENTS"), true);
+  assert.equal(isChairmanAutofillType("CLOSING_PRAYER"), false, "la oración final es independiente");
+  assert.equal(isChairmanAutofillType("CHAIRMAN"), false);
+});
+
+test("no elegible: inactivo, eliminado o sin permiso de recibir, para partes de inicio", () => {
+  const base = {
+    canReceiveAssignments: true,
+    canBeCompanion: true,
+    gender: "MALE" as const,
+    canBeChairman: true,
+  };
+  for (const type of ["CHAIRMAN", "OPENING_PRAYER", "OPENING_COMMENTS", "CLOSING_PRAYER"]) {
+    assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: false, deletedAt: null }, type), false, `inactivo no elegible (${type})`);
+    assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: true, deletedAt: new Date() }, type), false, `eliminado no elegible (${type})`);
+    assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: true, deletedAt: null, canReceiveAssignments: false }, type), false, `sin permiso no elegible (${type})`);
+  }
+});
+
+test("mujer no elegible para partes de inicio (male-only) aunque tuviera capacidad", () => {
+  const woman = {
+    isActive: true,
+    deletedAt: null,
+    canReceiveAssignments: true,
+    canBeCompanion: true,
+    gender: "FEMALE" as const,
+    canBeChairman: true,
+  };
+  for (const type of ["CHAIRMAN", "OPENING_PRAYER", "OPENING_COMMENTS", "CLOSING_PRAYER"]) {
+    assert.equal(isPublisherEligibleForAssignment(woman, type), false, `mujer no elegible (${type})`);
   }
 });

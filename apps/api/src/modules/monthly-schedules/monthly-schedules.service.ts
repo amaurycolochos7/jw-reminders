@@ -1,5 +1,5 @@
 import { prisma, ReminderStatus } from "@jw-reminders/database";
-import { validateAssignmentGenders, typeNeedsCompanion } from "@jw-reminders/shared";
+import { validateAssignmentGenders, typeNeedsCompanion, isChairmanAutofillType } from "@jw-reminders/shared";
 import {
   applyAssignmentSnapshots,
   createAutomationEvent,
@@ -581,6 +581,7 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
             room: a.room,
             status: "PROPOSED",
             programItemId: a.programItemId ?? undefined,
+            autoFilledFromChairman: isChairmanAutofillType(a.assignmentType),
           },
         });
         created += 1;
@@ -683,6 +684,7 @@ export async function generateAssignmentsDirect(id: string) {
             room: a.room,
             status: "DRAFT",
             programItemId: a.programItemId ?? undefined,
+            autoFilledFromChairman: isChairmanAutofillType(a.assignmentType),
           },
         });
         created += 1;
