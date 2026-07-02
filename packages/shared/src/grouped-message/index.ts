@@ -1,47 +1,28 @@
 /**
- * Agrupación de mensajes por persona y semana (Fase 3).
+ * Generador ÚNICO de los mensajes de WhatsApp (fuente de verdad del texto).
  *
- * Núcleo PURO (sin efectos ni dependencias): construye el texto de un único
- * mensaje que lista todas las partes que una persona tiene en la misma reunión.
- * El worker agrupa los `ReminderDelivery` hermanos (misma persona + misma semana
- * + mismo tipo de recordatorio) y usa este helper para el cuerpo.
+ * El sistema usa SOLO cuatro mensajes activos:
+ *   1. Aviso inicial mensual  → buildMonthlyInitialMessage  (SIN hora)
+ *   2. Recordatorio 7 días     → buildGroupedPersonMessage  (CON hora)
+ *   3. Recordatorio 3 días     → buildGroupedPersonMessage  (CON hora)
+ *   4. Recordatorio 1 día      → buildGroupedPersonMessage  (CON hora)
  *
- * Reglas:
- *  - Varias partes  → un solo mensaje con lista de partes (ordenadas por orden
- *    de programa).
- *  - Una sola parte → mensaje individual equivalente (sin lista con viñetas).
- *  - La hora de reunión se incluye si se conoce.
+ * (El recordatorio del "mismo día" NO existe y no debe reintroducirse.)
+ *
+ * Núcleo PURO (sin efectos ni acceso a DB): el worker y el preview del panel
+ * consumen estos helpers para construir exactamente el mismo texto.
+ *
+ * Reglas de formato (WhatsApp Markdown):
+ *  - Negritas con *asterisco* SIN espacio pegado por dentro y con espacio por
+ *    fuera. Nunca `*texto *` ni `Etiqueta:*texto*`; siempre `Etiqueta: *texto*`.
+ *  - Cada parte muestra información COMPLETA: número de punto, sección, título
+ *    real y duración; y en Seamos Mejores Maestros además rol y acompañante /
+ *    estudiante.
+ *  - Bloques opcionales (título, acompañante, estudiante) solo se imprimen si
+ *    existen; nunca se generan líneas vacías ni etiquetas huérfanas.
  */
 
-export interface GroupedPart {
-  /** Título de la parte tal como se mostrará (p. ej. "Presidente"). */
-  title: string;
-  /** Orden dentro del programa de la semana (para ordenar la lista). */
-  sortOrder: number;
-}
-
-export interface GroupedPersonMessageInput {
-  /** Nombre de pila / display de la persona. */
-  personName: string;
-  /** Fecha de la reunión ya formateada en español (p. ej. "viernes 3 de julio"). */
-  meetingDateText: string;
-  /** Hora de la reunión ya formateada (p. ej. "7:00 p.m."). Opcional. */
-  meetingTimeText?: string | null;
-  /** Partes asignadas a la persona en esa semana. */
-  parts: GroupedPart[];
-  /**
-   * Si es true, añade una línea animando a prepararse con anticipación (Opción A).
-   * Se usa solo para el AVISO INICIAL agrupado, no para los recordatorios, igual
-   * que en las plantillas individuales.
-   */
-  includeEncouragement?: boolean;
-}
-
-/** Texto de ánimo (Opción A) para el aviso inicial agrupado. */
-const GROUPED_ENCOURAGEMENT =
-  "Le animamos a prepararse con anticipación para hacer sus asignaciones de la mejor manera. ¡Jehová bendecirá su esfuerzo!";
-
-/** Frase de bendición de cierre para recordatorios y avisos (sin puntualidad). */
+/** Frase de bendición de cierre, común a los cuatro mensajes. */
 export const BLESSING_LINE =
   "Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.";
 
@@ -61,87 +42,139 @@ export function formatMeetingTime(time: string | null | undefined): string | nul
   return `${hour12}:${minutes} ${period}`;
 }
 
-/**
- * Construye el mensaje agrupado. Determinista y sin efectos.
- */
-export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): string {
-  const parts = [...input.parts].sort((a, b) => a.sortOrder - b.sortOrder);
-  const lines: string[] = [];
-  lines.push(`Hola ${input.personName}.`);
+/** Pone en mayúscula la primera letra (p. ej. "viernes 10..." -> "Viernes 10..."). */
+function capitalize(s: string): string {
+  return s.length ? s[0].toLocaleUpperCase("es") + s.slice(1) : s;
+}
 
-  if (parts.length <= 1) {
-    const title = parts[0]?.title ?? "una asignación";
-    lines.push(`Le recordamos su asignación para la reunión del ${input.meetingDateText}:`);
-    lines.push(title + ".");
+/** Normaliza para comparar título vs. sección (evita duplicar la misma línea). */
+function normalizeLabel(s: string): string {
+  return s.trim().toLocaleLowerCase("es");
+}
+
+/** "10 minutos", "1 minuto"; null si no aplica (0 o ausente). */
+function durationLine(min?: number | null): string | null {
+  if (min == null || min <= 0) return null;
+  return `${min} ${min === 1 ? "minuto" : "minutos"}`;
+}
+
+/**
+ * Datos de UNA parte asignada a la persona destinataria. Se comparte por los
+ * cuatro mensajes para garantizar una estructura visual idéntica.
+ */
+export interface MessagePart {
+  /** Orden dentro del programa de la semana (para ordenar la lista). */
+  sortOrder: number;
+  /** Número del punto en el programa (WOL). Si no existe, no se muestra "Punto N". */
+  pointNumber?: number | null;
+  /** Etiqueta de la sección / tipo de parte (p. ej. "Tesoros de la Biblia"). */
+  sectionLabel: string;
+  /** Título real de la parte (p. ej. "Predique con valor"). */
+  title?: string | null;
+  /** Duración en minutos, si aplica (>0). */
+  durationMinutes?: number | null;
+  /** True si la parte es de "Seamos Mejores Maestros" (lleva rol y acompañante). */
+  isApplyYourself?: boolean;
+  /** Rol del destinatario en la parte. */
+  recipientRole?: "ASSIGNED" | "COMPANION" | null;
+  /** Nombre del acompañante (para mostrar al estudiante principal). */
+  companionName?: string | null;
+  /** Nombre del estudiante principal (para mostrar al acompañante). */
+  assignedName?: string | null;
+}
+
+/**
+ * Construye las líneas de UNA parte. Estructura:
+ *
+ *   • Punto {n}
+ *   *{sección}*
+ *   {título real}          (solo si difiere de la sección)
+ *   {n} minutos            (solo si hay duración)
+ *   Como estudiante|ayudante   (solo Seamos Mejores Maestros)
+ *   Acompañante:|Estudiante:   (solo si existe la contraparte)
+ *   {nombre}
+ */
+export function renderPartLines(part: MessagePart): string[] {
+  const lines: string[] = [];
+  const label = `*${part.sectionLabel.trim()}*`;
+
+  if (part.pointNumber != null && part.pointNumber > 0) {
+    lines.push(`• Punto ${part.pointNumber}`);
+    lines.push(label);
   } else {
-    lines.push(`Estas son sus asignaciones para la reunión del ${input.meetingDateText}:`);
-    for (const part of parts) {
-      lines.push(`• ${part.title}.`);
+    lines.push(`• ${label}`);
+  }
+
+  // Título real (solo si aporta algo distinto a la sección).
+  if (part.title && normalizeLabel(part.title) !== normalizeLabel(part.sectionLabel)) {
+    lines.push(part.title.trim());
+  }
+
+  const dur = durationLine(part.durationMinutes);
+  if (dur) lines.push(dur);
+
+  if (part.isApplyYourself) {
+    // Seamos Mejores Maestros: rol + contraparte, según el destinatario.
+    if (part.recipientRole === "COMPANION") {
+      lines.push("Como ayudante");
+      const student = part.assignedName?.trim();
+      if (student) {
+        lines.push("Estudiante:");
+        lines.push(student);
+      }
+    } else {
+      lines.push("Como estudiante");
+      const companion = part.companionName?.trim();
+      if (companion) {
+        lines.push("Acompañante:");
+        lines.push(companion);
+      }
+    }
+  } else {
+    // Parte que no es de estudiante pero excepcionalmente tenga acompañante.
+    const companion = part.companionName?.trim();
+    if (companion) {
+      lines.push("Acompañante:");
+      lines.push(companion);
     }
   }
 
-  const time = formatMeetingTime(input.meetingTimeText ?? null);
-  if (time) {
-    lines.push(`Hora de reunión: ${time}.`);
-  }
-
-  // Ánimo a prepararse con anticipación (solo aviso inicial agrupado).
-  if (input.includeEncouragement) {
-    lines.push(GROUPED_ENCOURAGEMENT);
-  }
-
-  // Cierre con bendición en todos los recordatorios agrupados.
-  lines.push(BLESSING_LINE);
-
-  return lines.join("\n");
+  return lines;
 }
 
-// ─── Aviso inicial MENSUAL ───────────────────────────────
-// Un solo mensaje por persona con TODAS sus asignaciones del mes, agrupadas por
-// fecha de reunión. Marca las partes en las que participa como acompañante.
+/** Une bloques de partes separados por una línea en blanco, sin dejar huecos dobles. */
+function appendParts(lines: string[], parts: MessagePart[]): void {
+  const ordered = [...parts].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const p of ordered) {
+    lines.push("");
+    for (const l of renderPartLines(p)) lines.push(l);
+  }
+}
 
-export interface MonthlyInitialItem {
-  /** Fecha de la reunión ya formateada en español (p. ej. "viernes 10 de julio"). */
+// ─── 1) AVISO INICIAL MENSUAL (SIN hora) ─────────────────────────────────────
+
+export interface MonthlyInitialItem extends MessagePart {
+  /** Fecha de la reunión ya formateada (p. ej. "viernes 10 de julio de 2026"). */
   meetingDateText: string;
-  /** Hora de reunión "HH:mm" (24h) o ya formateada; se muestra en 12h. */
-  meetingTimeText?: string | null;
   /** Clave para ordenar por fecha (p. ej. "2026-07-10"). */
   sortDate: string;
-  /** Orden de la parte dentro del programa de esa semana. */
-  sortOrder: number;
-  /** Número de la parte en el programa (p. ej. 3). */
-  assignmentNumber?: number | null;
-  /** Título de la parte. */
-  title: string;
-  /** Duración en minutos, si aplica. */
-  durationMinutes?: number | null;
-  /** True si participa como acompañante. */
-  isCompanion?: boolean;
 }
 
 export interface MonthlyInitialInput {
   personName: string;
-  /** Etiqueta del mes, p. ej. "Julio 2026". */
-  monthLabel: string;
+  /** Nombre del mes en minúscula, p. ej. "julio". */
+  monthName: string;
   items: MonthlyInitialItem[];
 }
 
 /**
- * Construye el aviso inicial MENSUAL. Determinista y sin efectos.
- * - Agrupa las asignaciones por fecha de reunión (ordenadas por fecha y programa).
- * - Fecha y mes en *negrita* (formato WhatsApp), sin emojis.
- * - Cada parte muestra número, título y duración (si aplica); marca acompañante.
- * - Hora en formato 12 horas. No incluye recordatorios de puntualidad.
+ * Aviso inicial mensual: un solo mensaje por persona con TODAS sus asignaciones
+ * del mes, agrupadas por fecha de reunión. NO incluye la hora de la reunión.
  */
 export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
-  const byDate = new Map<string, { text: string; sortDate: string; time: string | null; items: MonthlyInitialItem[] }>();
+  const byDate = new Map<string, { text: string; sortDate: string; items: MonthlyInitialItem[] }>();
   for (const it of input.items) {
-    const g = byDate.get(it.meetingDateText) ?? {
-      text: it.meetingDateText,
-      sortDate: it.sortDate,
-      time: formatMeetingTime(it.meetingTimeText ?? null),
-      items: [],
-    };
+    const g = byDate.get(it.meetingDateText) ?? { text: it.meetingDateText, sortDate: it.sortDate, items: [] };
     g.items.push(it);
     byDate.set(it.meetingDateText, g);
   }
@@ -150,26 +183,53 @@ export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
   const lines: string[] = [];
   lines.push(`Hola ${input.personName}.`);
   lines.push("");
-  lines.push(`Le compartimos sus asignaciones para las reuniones de *${input.monthLabel}*:`);
+  lines.push(`Le compartimos sus asignaciones para las reuniones del mes de ${input.monthName}.`);
+
   for (const d of dates) {
     lines.push("");
-    lines.push(d.time ? `*${capitalize(d.text)}* — ${d.time}` : `*${capitalize(d.text)}*`);
-    const parts = [...d.items].sort((a, b) => a.sortOrder - b.sortOrder);
-    for (const p of parts) {
-      const num = p.assignmentNumber != null ? `${p.assignmentNumber}. ` : "";
-      const dur = p.durationMinutes != null && p.durationMinutes > 0 ? ` · ${p.durationMinutes} min` : "";
-      const comp = p.isCompanion ? " · como acompañante" : "";
-      lines.push(`• ${num}${p.title}${dur}${comp}`);
-    }
+    lines.push(`*${capitalize(d.text)}*`); // fecha en negrita, SIN hora
+    appendParts(lines, d.items);
   }
-  lines.push("");
-  lines.push("Le invitamos a prepararse con anticipación para cada una.");
-  lines.push(BLESSING_LINE);
 
+  lines.push("");
+  lines.push(BLESSING_LINE);
   return lines.join("\n");
 }
 
-/** Pone en mayúscula la primera letra (p. ej. "viernes 10..." -> "Viernes 10..."). */
-function capitalize(s: string): string {
-  return s.length ? s[0].toLocaleUpperCase("es") + s.slice(1) : s;
+// ─── 2/3/4) RECORDATORIOS 7d / 3d / 1d (CON hora) ────────────────────────────
+
+export interface GroupedPersonMessageInput {
+  personName: string;
+  /** Fecha de la reunión ya formateada (p. ej. "viernes 31 de julio de 2026"). */
+  meetingDateText: string;
+  /** Hora de la reunión "HH:mm" (24h) o ya formateada; se muestra en 12h. */
+  meetingTimeText?: string | null;
+  parts: MessagePart[];
+}
+
+/**
+ * Recordatorio (7/3/1 días): una persona con una o varias partes en la misma
+ * reunión recibe UN solo mensaje. Misma estructura que el aviso inicial pero
+ * para una única fecha y CON la hora de la reunión.
+ */
+export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): string {
+  const parts = [...input.parts].sort((a, b) => a.sortOrder - b.sortOrder);
+  const lines: string[] = [];
+  lines.push(`Hola ${input.personName}.`);
+  lines.push("");
+  lines.push(
+    parts.length > 1
+      ? "Le recordamos sus asignaciones para la próxima reunión:"
+      : "Le recordamos su asignación para la próxima reunión:",
+  );
+  lines.push("");
+  lines.push(`*${capitalize(input.meetingDateText)}*`);
+  const time = formatMeetingTime(input.meetingTimeText ?? null);
+  if (time) lines.push(time);
+
+  appendParts(lines, parts);
+
+  lines.push("");
+  lines.push(BLESSING_LINE);
+  return lines.join("\n");
 }

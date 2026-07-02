@@ -8,14 +8,20 @@ import {
   classifyNotification,
   buildGroupedPersonMessage,
   buildMonthlyInitialMessage,
-  formatMeetingTime,
   formatDateSpanish,
+  ASSIGNMENT_TYPE_LABELS,
+  type MessagePart,
 } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
 import { groupDeliveries } from "../services/grouping.js";
 
 const BATCH_SIZE = Number(process.env.WORKER_BATCH_SIZE || 50);
+
+const MESES_ES_LOWER = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
 
 /**
  * Send configuration. Source of truth is AppConfig (DB), set from the admin panel.
@@ -322,11 +328,38 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
   await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
 }
 
+/** Nombre visible de un publicador (displayName con respaldo en fullName). */
+function personDisplayName(p?: { displayName: string | null; fullName: string } | null): string {
+  return p ? (p.displayName || p.fullName) : "";
+}
+
 /**
- * Envío AGRUPADO (Fase 3, Opción A): una persona con VARIAS partes en la misma
- * semana + mismo bucket recibe UN SOLO mensaje. `deliveries` ya están validados y
- * comparten publisher/semana/reminderType. Todos comparten el mismo
- * providerMessageId y el mismo resultado (éxito/fallo).
+ * Mapea un delivery a la parte "rica" que consumen los generadores de mensaje
+ * (número de punto, sección, título, duración, rol y contraparte). Es la ÚNICA
+ * fuente de datos por parte, compartida por el aviso inicial y los recordatorios.
+ */
+function deliveryToMessagePart(d: FreshDelivery): MessagePart {
+  const a = d.assignment!;
+  return {
+    // Orden del programa; respaldo en el número interno de la asignación.
+    sortOrder: a.programItem?.sortOrder ?? a.assignmentNumber,
+    // Número real del punto en el programa (WOL). Sin él, no se muestra "Punto N".
+    pointNumber: a.programItem?.itemNumber ?? null,
+    sectionLabel: ASSIGNMENT_TYPE_LABELS[a.assignmentType] || a.assignmentType,
+    title: a.title,
+    durationMinutes: a.durationMinutes,
+    isApplyYourself: a.section === "APPLY_YOURSELF",
+    recipientRole: d.recipientRole,
+    companionName: personDisplayName(a.companion) || null,
+    assignedName: personDisplayName(a.assigned) || null,
+  };
+}
+
+/**
+ * Envío AGRUPADO: una persona con una o varias partes en la misma reunión +
+ * mismo bucket recibe UN SOLO mensaje (recordatorio 7/3/1 días). `deliveries` ya
+ * están validados y comparten publisher/semana/reminderType. Todos comparten el
+ * mismo providerMessageId y el mismo resultado (éxito/fallo).
  */
 async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendConfig) {
   const first = deliveries[0];
@@ -340,20 +373,13 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
     return;
   }
 
-  // Partes ordenadas por el programa (sortOrder del MeetingProgramItem; si la
-  // asignación no tiene programItem, se usa assignmentNumber como respaldo).
-  const parts = deliveries.map((d) => ({
-    title: d.assignment!.title,
-    sortOrder: d.assignment!.programItem?.sortOrder ?? d.assignment!.assignmentNumber,
-  }));
+  const parts = deliveries.map(deliveryToMessagePart);
 
   const message = buildGroupedPersonMessage({
-    personName: publisher.displayName || publisher.fullName,
+    personName: personDisplayName(publisher),
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
     parts,
-    // Solo el aviso inicial agrupado lleva el ánimo a prepararse con anticipación.
-    includeEncouragement: first.reminderType === "INITIAL_NOTICE",
   });
 
   await prisma.reminderDelivery.updateMany({
@@ -380,12 +406,13 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
   await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
 }
 
-const MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-function monthLabelFor(fresh: FreshDelivery): string {
-  const sched = fresh.assignment!.meetingWeek.monthlySchedule;
-  if (sched?.name) return sched.name;
+/** Nombre del mes en minúscula (p. ej. "julio") para el aviso inicial. */
+function monthNameFor(fresh: FreshDelivery): string {
   const d = fresh.assignment!.meetingWeek.meetingDate;
-  return `${MESES_ES[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const local = fresh.assignment!.meetingWeek.meetingDateLocal;
+  // Preferimos la fecha local ("YYYY-MM-DD") para evitar corrimientos por zona horaria.
+  const monthIndex = local ? Number(local.slice(5, 7)) - 1 : d.getUTCMonth();
+  return MESES_ES_LOWER[monthIndex] ?? MESES_ES_LOWER[d.getUTCMonth()];
 }
 
 /**
@@ -406,20 +433,15 @@ async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig
   const items = deliveries.map((d) => {
     const w = d.assignment!.meetingWeek;
     return {
+      ...deliveryToMessagePart(d),
       meetingDateText: formatDateSpanish(w.meetingDate),
-      meetingTimeText: w.meetingTime,
       sortDate: w.meetingDateLocal || w.meetingDate.toISOString().slice(0, 10),
-      sortOrder: d.assignment!.programItem?.sortOrder ?? d.assignment!.assignmentNumber,
-      assignmentNumber: d.assignment!.assignmentNumber,
-      title: d.assignment!.title,
-      durationMinutes: d.assignment!.durationMinutes,
-      isCompanion: d.recipientRole === "COMPANION",
     };
   });
 
   const message = buildMonthlyInitialMessage({
-    personName: publisher.displayName || publisher.fullName,
-    monthLabel: monthLabelFor(first),
+    personName: personDisplayName(publisher),
+    monthName: monthNameFor(first),
     items,
   });
 
@@ -464,14 +486,21 @@ async function claimGroup(group: FreshDelivery[]): Promise<string[]> {
   return claimedIds;
 }
 
-/** ¿Puede el grupo enviarse como UN mensaje agrupado con buildGroupedPersonMessage? */
-function isGroupCombinable(group: FreshDelivery[]): boolean {
-  if (group.length < 2) return false;
-  // Los avisos especiales (cambio/cancelación) no comparten el texto genérico de
-  // "recordatorio de asignaciones": conservan su plantilla individual.
+/** ¿El delivery tiene un mensaje personalizado (override) no vacío? */
+function hasCustom(d: FreshDelivery): boolean {
+  return typeof d.customMessage === "string" && d.customMessage.trim().length > 0;
+}
+
+/**
+ * ¿El grupo debe renderizarse con el generador rico y uniforme
+ * (buildGroupedPersonMessage)? Aplica a recordatorios normales (una o varias
+ * partes). Se excluyen los avisos especiales (cambio/cancelación) y cualquier
+ * delivery con customMessage, que conservan su plantilla editable individual.
+ */
+function isRichReminderGroup(group: FreshDelivery[]): boolean {
+  if (group.length < 1) return false;
   if (isSpecialNotice(group[0].reminderType)) return false;
-  // customMessage es un override por delivery que debe respetarse individualmente.
-  if (group.some((d) => typeof d.customMessage === "string" && d.customMessage.trim().length > 0)) return false;
+  if (group.some(hasCustom)) return false;
   return true;
 }
 
@@ -535,18 +564,18 @@ export async function processReminders() {
       }
       if (sendable.length === 0) continue;
 
-      if (sendable[0].reminderType === "INITIAL_NOTICE" && !sendable.some((d) => typeof d.customMessage === "string" && d.customMessage.trim().length > 0)) {
+      if (sendable[0].reminderType === "INITIAL_NOTICE" && !sendable.some(hasCustom)) {
         // Aviso inicial MENSUAL: un solo mensaje por persona con todo el mes.
         await performMonthlyInitialSend(sendable, sendConfig);
         sentThisRun += 1;
-      } else if (sendable.length >= 2 && isGroupCombinable(sendable)) {
-        // 2b–f. Un solo mensaje agrupado para todo el grupo (cuenta como 1 envío).
+      } else if (isRichReminderGroup(sendable)) {
+        // Recordatorio 7/3/1 días: SIEMPRE un mensaje rico y uniforme por persona
+        // (una o varias partes), con la misma estructura que el aviso inicial.
         await performGroupedSend(sendable, sendConfig);
         sentThisRun += 1;
       } else {
-        // Grupo de 1, aviso especial o con customMessage: envío individual
-        // (comportamiento original, plantilla editable + customMessage). Se
-        // respeta el tope: cada mensaje individual cuenta y corta al llegar.
+        // Aviso especial (cambio/cancelación) o delivery con customMessage:
+        // envío individual con plantilla editable + customMessage. Respeta el tope.
         for (const f of sendable) {
           await performSingleSend(f, sendConfig);
           sentThisRun += 1;

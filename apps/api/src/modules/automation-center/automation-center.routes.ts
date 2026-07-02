@@ -404,7 +404,7 @@ router.get("/deliveries/:id/preview", async (req: Request<{ id: string }>, res: 
       where: { id: req.params.id },
       include: {
         publisher: true,
-        assignment: { include: { assigned: true, companion: true, meetingWeek: true } },
+        assignment: { include: { assigned: true, companion: true, meetingWeek: true, programItem: true } },
       },
     });
     const templateMessage = await renderReminderMessage(delivery);
