@@ -7,7 +7,13 @@
  */
 
 export type GenderValue = 'MALE' | 'FEMALE'
-export type SectionId = 'BIBLE_READING' | 'APPLY_YOURSELF'
+export type SectionId =
+  | 'BIBLE_READING'
+  | 'APPLY_YOURSELF'
+  | 'OPENING'
+  | 'TREASURES'
+  | 'LIVING_AS_CHRISTIANS'
+  | 'CONCLUSION'
 export type AssignmentTypeId =
   | 'BIBLE_READING'
   | 'START_CONVERSATION'
@@ -17,6 +23,18 @@ export type AssignmentTypeId =
   | 'MAKE_DISCIPLES'
   | 'TALK'
   | 'OTHER'
+  // Fase 3: resto de la reunión.
+  | 'CHAIRMAN'
+  | 'OPENING_COMMENTS'
+  | 'OPENING_PRAYER'
+  | 'TREASURES_TALK'
+  | 'SPIRITUAL_GEMS'
+  | 'CHRISTIAN_LIVING'
+  | 'CONGREGATION_BIBLE_STUDY_CONDUCTOR'
+  | 'CONGREGATION_BIBLE_STUDY_READER'
+  | 'CONCLUDING_COMMENTS'
+  | 'CLOSING_PRAYER'
+  | 'SONG'
 
 export interface AssignmentTypeRule {
   type: AssignmentTypeId
@@ -38,6 +56,18 @@ export const ASSIGNMENT_TYPE_RULES: Record<AssignmentTypeId, AssignmentTypeRule>
   MAKE_DISCIPLES: { type: 'MAKE_DISCIPLES', label: 'Haga discípulos', section: 'APPLY_YOURSELF', defaultTitle: 'Haga discípulos', defaultDurationMinutes: 5, needsCompanion: true, allowedAssigneeGenders: [], companionSameGender: true },
   TALK: { type: 'TALK', label: 'Discurso', section: 'APPLY_YOURSELF', defaultTitle: 'Discurso', defaultDurationMinutes: 5, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
   OTHER: { type: 'OTHER', label: 'Otra asignación', section: 'APPLY_YOURSELF', defaultTitle: 'Otra asignación', defaultDurationMinutes: 5, needsCompanion: false, allowedAssigneeGenders: [], companionSameGender: false },
+  // ─── Fase 3: resto de la reunión. Todas sin acompañante y solo hombres. ───
+  CHAIRMAN: { type: 'CHAIRMAN', label: 'Presidente', section: 'OPENING', defaultTitle: 'Presidente de la reunión', defaultDurationMinutes: 0, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  OPENING_COMMENTS: { type: 'OPENING_COMMENTS', label: 'Palabras de introducción', section: 'OPENING', defaultTitle: 'Palabras de introducción', defaultDurationMinutes: 1, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  OPENING_PRAYER: { type: 'OPENING_PRAYER', label: 'Oración inicial', section: 'OPENING', defaultTitle: 'Oración inicial', defaultDurationMinutes: 0, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  TREASURES_TALK: { type: 'TREASURES_TALK', label: 'Tesoros de la Biblia', section: 'TREASURES', defaultTitle: 'Tesoros de la Biblia', defaultDurationMinutes: 10, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  SPIRITUAL_GEMS: { type: 'SPIRITUAL_GEMS', label: 'Busquemos perlas escondidas', section: 'TREASURES', defaultTitle: 'Busquemos perlas escondidas', defaultDurationMinutes: 10, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  CHRISTIAN_LIVING: { type: 'CHRISTIAN_LIVING', label: 'Nuestra Vida Cristiana', section: 'LIVING_AS_CHRISTIANS', defaultTitle: 'Nuestra Vida Cristiana', defaultDurationMinutes: 15, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  CONGREGATION_BIBLE_STUDY_CONDUCTOR: { type: 'CONGREGATION_BIBLE_STUDY_CONDUCTOR', label: 'Estudio Bíblico de la Congregación (conductor)', section: 'LIVING_AS_CHRISTIANS', defaultTitle: 'Estudio bíblico de la congregación', defaultDurationMinutes: 30, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  CONGREGATION_BIBLE_STUDY_READER: { type: 'CONGREGATION_BIBLE_STUDY_READER', label: 'Estudio Bíblico de la Congregación (lector)', section: 'LIVING_AS_CHRISTIANS', defaultTitle: 'Lector del estudio bíblico de la congregación', defaultDurationMinutes: 0, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  CONCLUDING_COMMENTS: { type: 'CONCLUDING_COMMENTS', label: 'Palabras de conclusión', section: 'CONCLUSION', defaultTitle: 'Palabras de conclusión', defaultDurationMinutes: 3, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  CLOSING_PRAYER: { type: 'CLOSING_PRAYER', label: 'Oración final', section: 'CONCLUSION', defaultTitle: 'Oración final', defaultDurationMinutes: 0, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  SONG: { type: 'SONG', label: 'Canción', section: 'OPENING', defaultTitle: 'Canción', defaultDurationMinutes: 0, needsCompanion: false, allowedAssigneeGenders: [], companionSameGender: false },
 }
 
 export function getAssignmentTypeRule(type: string): AssignmentTypeRule {
@@ -77,6 +107,19 @@ export function isCompanionGenderAllowed(
 
 export type AssignmentRole = 'ASSIGNEE' | 'COMPANION'
 
+export type RequiredCapability =
+  | 'canBibleReading'
+  | 'canGiveTalk'
+  | 'canParticipateSMM'
+  | 'canBeChairman'
+  | 'canPray'
+  | 'canTreasures'
+  | 'canSpiritualGems'
+  | 'canChristianLife'
+  | 'canConductCBS'
+  | 'canReadCBS'
+  | 'canConcludingRemarks'
+
 export interface EligibilityPublisher {
   isActive?: boolean
   deletedAt?: Date | string | null
@@ -87,12 +130,21 @@ export interface EligibilityPublisher {
   canBibleReading?: boolean
   canGiveTalk?: boolean
   canParticipateSMM?: boolean
+  // Capacidades de partes de reunión (Fase 3).
+  canBeChairman?: boolean
+  canPray?: boolean
+  canTreasures?: boolean
+  canSpiritualGems?: boolean
+  canChristianLife?: boolean
+  canConductCBS?: boolean
+  canReadCBS?: boolean
+  canConcludingRemarks?: boolean
 }
 
-/** Capacidad requerida por tipo de asignación (Fase 2). null = sin capacidad específica. */
+/** Capacidad requerida por tipo de asignación. null = sin capacidad específica. */
 export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   AssignmentTypeId,
-  'canBibleReading' | 'canGiveTalk' | 'canParticipateSMM' | null
+  RequiredCapability | null
 > = {
   BIBLE_READING: 'canBibleReading',
   START_CONVERSATION: 'canParticipateSMM',
@@ -102,12 +154,26 @@ export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   MAKE_DISCIPLES: 'canParticipateSMM',
   TALK: 'canGiveTalk',
   OTHER: null,
+  CHAIRMAN: 'canBeChairman',
+  OPENING_COMMENTS: 'canBeChairman',
+  OPENING_PRAYER: 'canPray',
+  TREASURES_TALK: 'canTreasures',
+  SPIRITUAL_GEMS: 'canSpiritualGems',
+  CHRISTIAN_LIVING: 'canChristianLife',
+  CONGREGATION_BIBLE_STUDY_CONDUCTOR: 'canConductCBS',
+  CONGREGATION_BIBLE_STUDY_READER: 'canReadCBS',
+  CONCLUDING_COMMENTS: 'canConcludingRemarks',
+  CLOSING_PRAYER: 'canPray',
+  SONG: null,
 }
 
-export function requiredCapabilityForType(
-  type: string,
-): 'canBibleReading' | 'canGiveTalk' | 'canParticipateSMM' | null {
+export function requiredCapabilityForType(type: string): RequiredCapability | null {
   return ASSIGNMENT_TYPE_REQUIRED_CAPABILITY[type as AssignmentTypeId] ?? null
+}
+
+/** ¿Es una parte informativa (no asignable), como una canción? */
+export function isInformationalType(type: string): boolean {
+  return type === 'SONG'
 }
 
 /** Espejo de packages/shared: única fuente de verdad de elegibilidad. */
@@ -128,14 +194,27 @@ export function isPublisherEligibleForAssignment(
   return true
 }
 
-/** Tipos ordenados para mostrar en el selector "Parte". */
+/**
+ * Tipos ordenados para mostrar en el selector "Parte". Excluye SONG (informativa,
+ * no asignable). El orden refleja el flujo de la reunión.
+ */
 export const ASSIGNMENT_TYPE_OPTIONS: { value: AssignmentTypeId; label: string }[] = [
+  { value: 'CHAIRMAN', label: 'Presidente' },
+  { value: 'OPENING_COMMENTS', label: 'Palabras de introducción' },
+  { value: 'OPENING_PRAYER', label: 'Oración inicial' },
+  { value: 'TREASURES_TALK', label: 'Tesoros de la Biblia' },
+  { value: 'SPIRITUAL_GEMS', label: 'Busquemos perlas escondidas' },
   { value: 'BIBLE_READING', label: 'Lectura de la Biblia' },
   { value: 'START_CONVERSATION', label: 'Empiece conversaciones' },
   { value: 'MAKE_RETURN_VISIT', label: 'Haga revisitas' },
-  { value: 'BIBLE_STUDY', label: 'Curso bíblico (haga discípulos)' },
+  { value: 'BIBLE_STUDY', label: 'Curso bíblico' },
   { value: 'EXPLAIN_BELIEFS', label: 'Explique sus creencias' },
   { value: 'MAKE_DISCIPLES', label: 'Haga discípulos' },
   { value: 'TALK', label: 'Discurso' },
+  { value: 'CHRISTIAN_LIVING', label: 'Nuestra Vida Cristiana' },
+  { value: 'CONGREGATION_BIBLE_STUDY_CONDUCTOR', label: 'Estudio Bíblico de la Congregación (conductor)' },
+  { value: 'CONGREGATION_BIBLE_STUDY_READER', label: 'Estudio Bíblico de la Congregación (lector)' },
+  { value: 'CONCLUDING_COMMENTS', label: 'Palabras de conclusión' },
+  { value: 'CLOSING_PRAYER', label: 'Oración final' },
   { value: 'OTHER', label: 'Otra asignación' },
 ]

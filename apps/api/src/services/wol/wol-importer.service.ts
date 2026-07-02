@@ -152,6 +152,7 @@ async function persistItems(weekId: string, items: ParsedProgramItem[], sourceUr
         reference: item.reference ?? undefined,
         lesson: item.lesson ?? undefined,
         requiresAssistant: item.requiresAssistant,
+        requiresAssignee: item.requiresAssignee ?? true,
         sourceUrl,
         sortOrder: item.sortOrder,
         rawText: item.rawText ?? undefined,
@@ -167,10 +168,54 @@ async function persistItems(weekId: string, items: ParsedProgramItem[], sourceUr
         reference: item.reference ?? null,
         lesson: item.lesson ?? null,
         requiresAssistant: item.requiresAssistant,
+        requiresAssignee: item.requiresAssignee ?? true,
         sourceUrl,
         sortOrder: item.sortOrder,
         rawText: item.rawText ?? null,
       },
+    });
+  }
+}
+
+/**
+ * Partes estándar de la reunión que NO aparecen en el texto de WOL con nombre
+ * (se asignan localmente): Presidente, Oración inicial y Oración final. Se crean
+ * como MeetingProgramItem con `sortOrder` reservado fuera del rango del parser
+ * (negativos al inicio, alto al cierre) para no colisionar con los items
+ * parseados. Idempotente por el upsert (weekId, sortOrder): reimportar no duplica.
+ *
+ * No pasan por `itemLooksComplete`, así que no disparan NEEDS_REVIEW aunque no
+ * tengan duración. El administrador asigna la persona después.
+ */
+const STANDARD_PARTS: Array<{
+  sortOrder: number;
+  itemNumber: number | null;
+  section: string;
+  title: string;
+  assignmentType: string;
+}> = [
+  { sortOrder: -100, itemNumber: null, section: "OPENING", title: "Presidente de la reunión", assignmentType: "CHAIRMAN" },
+  { sortOrder: -99, itemNumber: null, section: "OPENING", title: "Oración inicial", assignmentType: "OPENING_PRAYER" },
+  { sortOrder: 9000, itemNumber: null, section: "CONCLUSION", title: "Oración final", assignmentType: "CLOSING_PRAYER" },
+];
+
+export async function ensureStandardMeetingParts(weekId: string): Promise<void> {
+  for (const part of STANDARD_PARTS) {
+    await prisma.meetingProgramItem.upsert({
+      where: { meetingWeekId_sortOrder: { meetingWeekId: weekId, sortOrder: part.sortOrder } },
+      create: {
+        meetingWeekId: weekId,
+        itemNumber: part.itemNumber ?? undefined,
+        section: part.section,
+        title: part.title,
+        assignmentType: part.assignmentType as any,
+        requiresAssistant: false,
+        requiresAssignee: true,
+        sortOrder: part.sortOrder,
+      },
+      // No pisar título/tipo/sección si ya existe: el administrador podría
+      // haberlos ajustado. Solo garantiza la existencia de la fila.
+      update: {},
     });
   }
 }
@@ -202,6 +247,8 @@ async function finalizeImport(
   }
 
   await persistItems(weekId, items, urls.programUrl ?? "");
+  // Fase 3: crear partes estándar que no vienen de WOL (presidente, oraciones).
+  await ensureStandardMeetingParts(weekId);
 
   const incomplete = items.filter((i) => !itemLooksComplete(i));
   const status: "READY" | "NEEDS_REVIEW" = incomplete.length > 0 || warnings.length > 0 ? "NEEDS_REVIEW" : "READY";

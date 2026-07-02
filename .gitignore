@@ -44,3 +44,11 @@ coverage/
 # Temp
 tmp/
 temp/
+
+# Local tooling / artifacts (never commit)
+.gstack/
+plink.exe
+# Root-level DB backups may contain PII — never commit (prisma/**/*.sql is fine)
+/*.sql
+instrucciones-gstack.md
+comandos para usar gstack

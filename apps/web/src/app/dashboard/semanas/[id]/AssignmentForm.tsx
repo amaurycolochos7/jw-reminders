@@ -28,6 +28,14 @@ interface Publisher {
   canBibleReading?: boolean
   canGiveTalk?: boolean
   canParticipateSMM?: boolean
+  canBeChairman?: boolean
+  canPray?: boolean
+  canTreasures?: boolean
+  canSpiritualGems?: boolean
+  canChristianLife?: boolean
+  canConductCBS?: boolean
+  canReadCBS?: boolean
+  canConcludingRemarks?: boolean
 }
 
 interface Assignment {
@@ -115,6 +123,14 @@ export default function AssignmentForm({ weekId, publishers, assignment, existin
         canBibleReading: p.canBibleReading,
         canGiveTalk: p.canGiveTalk,
         canParticipateSMM: p.canParticipateSMM,
+        canBeChairman: p.canBeChairman,
+        canPray: p.canPray,
+        canTreasures: p.canTreasures,
+        canSpiritualGems: p.canSpiritualGems,
+        canChristianLife: p.canChristianLife,
+        canConductCBS: p.canConductCBS,
+        canReadCBS: p.canReadCBS,
+        canConcludingRemarks: p.canConcludingRemarks,
       },
       form.assignmentType,
       'ASSIGNEE',

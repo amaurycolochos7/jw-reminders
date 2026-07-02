@@ -1,5 +1,10 @@
 import { prisma } from "@jw-reminders/database";
-import { validateAssignmentGenders } from "@jw-reminders/shared";
+import {
+  validateAssignmentGenders,
+  requiredCapabilityForType,
+  getAssignmentTypeRule,
+  type EligibilityPublisher,
+} from "@jw-reminders/shared";
 import {
   applyAssignmentSnapshots,
   archiveAssignmentAutomation,
@@ -10,6 +15,25 @@ import {
   publisherSnapshot,
   regenerateAssignmentAutomation,
 } from "../../services/automation.service.js";
+
+/**
+ * Valida que el publicador asignado tenga la capacidad requerida por el tipo de
+ * parte (Fase 3). Devuelve un mensaje de error en español o null si es válido.
+ * Conservador: si la capacidad viene `undefined` (dato legacy) no se bloquea;
+ * solo bloquea cuando está explícitamente en `false`, igual que la elegibilidad.
+ */
+function validateAssignmentCapability(
+  assignmentType: string,
+  assigned: EligibilityPublisher,
+): string | null {
+  const capField = requiredCapabilityForType(assignmentType);
+  if (!capField) return null;
+  if (assigned[capField] === false) {
+    const label = getAssignmentTypeRule(assignmentType).label;
+    return `El publicador no tiene la capacidad requerida para "${label}".`;
+  }
+  return null;
+}
 
 const RELEVANT_FIELDS = [
   "assignmentNumber",
@@ -73,6 +97,9 @@ export async function createAssignment(data: any) {
     });
     if (genderError) throw new Error(genderError);
 
+    const capabilityError = validateAssignmentCapability(data.assignmentType, assigned);
+    if (capabilityError) throw new Error(capabilityError);
+
     const assignedSnapshot = publisherSnapshot(assigned);
     const companionSnapshot = publisherSnapshot(companion);
     const assignment = await tx.jwAssignment.create({
@@ -122,6 +149,9 @@ export async function updateAssignment(id: string, data: any) {
       companionGender: effectiveCompanion?.gender ?? null,
     });
     if (genderError) throw new Error(genderError);
+
+    const capabilityError = validateAssignmentCapability(effectiveType, effectiveAssigned);
+    if (capabilityError) throw new Error(capabilityError);
 
     const changedFields = changedRelevantFields(before, data);
     const assignment = await tx.jwAssignment.update({

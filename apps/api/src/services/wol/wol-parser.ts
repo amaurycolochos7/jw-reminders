@@ -2,6 +2,7 @@ import {
   requiresAssistant,
   mapWolTitleToType,
   mapWolTitleToSection,
+  deriveSection,
   normalizeTitle,
 } from "@jw-reminders/shared";
 
@@ -20,6 +21,11 @@ export interface ParsedProgramItem {
   reference: string | null;
   lesson: string | null;
   requiresAssistant: boolean;
+  /**
+   * Fase 3: false = parte informativa (p. ej. canción) que se muestra pero NO
+   * genera slot/asignación/recordatorio. Por defecto true (asignable).
+   */
+  requiresAssignee?: boolean;
   sortOrder: number;
   rawText: string;
 }
@@ -30,11 +36,16 @@ export interface ParseWolResult {
 }
 
 /**
- * Títulos de las partes que hoy nos interesa extraer. El parser sólo emite
- * items cuyo encabezado coincide con uno de estos (evita capturar cánticos,
- * tesoros, etc.). Fácil de ampliar.
+ * Títulos de partes de título FIJO que el parser reconoce por su texto. Cubren
+ * las partes SMM históricas y las partes de reunión (Fase 3) con nombre estable
+ * (perlas, introducción, conclusión, estudio bíblico de la congregación,
+ * canciones). Las partes de TÍTULO VARIABLE (Tesoros punto 1, partes de Nuestra
+ * Vida Cristiana) NO están aquí: se detectan por la sección en curso.
+ * El tipo real siempre lo decide `mapWolTitleToType`; esta lista sólo decide qué
+ * encabezados emiten item.
  */
 const TARGET_TITLES = [
+  // SMM (sin cambios)
   "lectura de la biblia",
   "empiece conversaciones",
   "primera conversacion",
@@ -44,6 +55,14 @@ const TARGET_TITLES = [
   "explique sus creencias",
   "curso biblico",
   "discurso",
+  // Fase 3: partes de reunión con título fijo
+  "busquemos perlas escondidas",
+  "perlas escondidas",
+  "palabras de introduccion",
+  "palabras de conclusion",
+  "estudio biblico de la congregacion",
+  "cancion",
+  "cantico",
 ];
 
 function isTargetTitle(title: string): boolean {
@@ -51,9 +70,17 @@ function isTargetTitle(title: string): boolean {
   return TARGET_TITLES.some((t) => n.includes(t));
 }
 
-/** ¿La línea contiene un marcador de duración "(N mins.)"? Entonces es DETALLE, no encabezado. */
-function hasDurationMarker(line: string): boolean {
-  return /\(\s*\d+\s*mins?\.?/i.test(line);
+/**
+ * Sección en curso derivada de un encabezado en MAYÚSCULAS de WOL. Se usa para
+ * detectar las partes de TÍTULO VARIABLE: el punto 1 de "Tesoros de la Biblia"
+ * y las partes (1..N) de "Nuestra Vida Cristiana", que no tienen texto fijo.
+ */
+function detectSectionHeader(line: string): "TREASURES" | "SMM" | "LIVING" | null {
+  const n = normalizeTitle(line);
+  if (n === "tesoros de la biblia" || n.startsWith("tesoros de la biblia")) return "TREASURES";
+  if (n === "seamos mejores maestros" || n.startsWith("seamos mejores maestros")) return "SMM";
+  if (n === "nuestra vida cristiana" || n.startsWith("nuestra vida cristiana")) return "LIVING";
+  return null;
 }
 
 /**
@@ -198,44 +225,85 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
   const text = normalizeWhitespace(rawText || "");
   if (!text) return { items: [], warnings: ["Texto vacío: no se pudo extraer ninguna asignación."] };
 
-  const lines = text.split("\n");
+  // Algunas líneas de WOL combinan dos partes con " | " (p. ej.
+  // "Palabras de conclusión (3 mins.) | Canción 69 y oración"). Las separamos
+  // para tratar cada parte como una línea independiente.
+  const lines = text
+    .split("\n")
+    .flatMap((l) => l.split("|").map((s) => s.trim()))
+    .filter((l) => l.length > 0);
   const items: ParsedProgramItem[] = [];
   let sortOrder = 0;
+  // Sección en curso: fija el tipo de las partes de TÍTULO VARIABLE (Tesoros
+  // punto 1 → TREASURES_TALK; partes de Nuestra Vida Cristiana → CHRISTIAN_LIVING).
+  let currentSection: "TREASURES" | "SMM" | "LIVING" | null = null;
+
+  const DURATION_RE = /\(\s*\d+\s*mins?\.?\s*\)/i;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i].trim();
     if (!line) continue;
 
+    // Encabezado de sección en MAYÚSCULAS: sólo actualiza el contexto de sección.
+    const sec = detectSectionHeader(line);
+    if (sec) {
+      currentSection = sec;
+      continue;
+    }
+
     // Encabezado: "4. Empiece conversaciones" o "Lectura de la Biblia".
     const headed = line.match(/^\s*(\d{1,2})\.\s+(.*)$/);
     const itemNumber = headed ? parseInt(headed[1], 10) : null;
-    const titleCandidate = headed ? headed[2].trim() : line;
+    const afterNumber = headed ? headed[2].trim() : line;
 
-    if (!isTargetTitle(titleCandidate)) continue;
-    // Una línea con "(N mins.)" es DETALLE de una parte (p. ej. "(4 mins.) Discurso...")
-    // y NO un encabezado, aunque contenga una palabra de título objetivo.
-    if (!headed && hasDurationMarker(line)) continue;
+    // Las partes de reunión traen título Y duración en la MISMA línea
+    // ("Palabras de introducción (1 min.)"). El título es lo que va ANTES del
+    // marcador de duración; el resto (marcador + detalles) es cuerpo en línea.
+    const durMatch = afterNumber.match(DURATION_RE);
+    let titleCandidate: string;
+    let inlineRest = "";
+    if (durMatch && durMatch.index !== undefined) {
+      titleCandidate = afterNumber.slice(0, durMatch.index).trim();
+      inlineRest = afterNumber.slice(durMatch.index).trim();
+    } else {
+      titleCandidate = afterNumber;
+    }
+
+    // Clasificación. Prioridad 1: título FIJO reconocido (SMM + partes de
+    // reunión con nombre estable) → conserva EXACTAMENTE el comportamiento SMM.
+    // Prioridad 2: partes de TÍTULO VARIABLE según la sección en curso.
+    const isFixedTarget = titleCandidate.length > 0 && isTargetTitle(titleCandidate);
+    let variableType: "TREASURES_TALK" | "CHRISTIAN_LIVING" | null = null;
+    if (!isFixedTarget && titleCandidate.length > 0 && headed) {
+      if (currentSection === "TREASURES") variableType = "TREASURES_TALK";
+      else if (currentSection === "LIVING") variableType = "CHRISTIAN_LIVING";
+    }
+    if (!isFixedTarget && !variableType) continue;
 
     // El cuerpo son las líneas siguientes hasta un límite: otra parte objetivo,
     // otro encabezado numerado, un encabezado de sección en MAYÚSCULAS, o un
-    // marcador de sección/cántico/cierre/pie de página.
-    let body = "";
+    // marcador de sección/cántico/cierre/pie de página. Empieza por el resto en
+    // línea (partes de reunión) que ya trae duración/detalles.
+    let body = inlineRest;
+    let follow = "";
     let j = i + 1;
     for (; j < lines.length; j += 1) {
       const next = lines[j].trim();
       if (!next) break;
       const nextHeaded = next.match(/^\s*(\d{1,2})\.\s+(.*)$/);
       const nextTitle = nextHeaded ? nextHeaded[2].trim() : next;
-      // Sólo un ENCABEZADO objetivo (sin duración en la línea) inicia otro item.
-      if (isTargetTitle(nextTitle) && !hasDurationMarker(next)) break;
+      // Sólo un ENCABEZADO objetivo (sin duración al inicio) inicia otro item.
+      if (isTargetTitle(nextTitle) && !next.match(/^\s*\(\s*\d+\s*mins?/i)) break;
       if (nextHeaded) break;            // cualquier parte numerada inicia otro item
       if (isStopMarker(next)) break;    // sección / cántico / cierre / footer
       if (isAllCapsHeaderLine(next)) break; // encabezado de sección en MAYÚSCULAS
-      body += (body ? " " : "") + next;
+      if (detectSectionHeader(next)) break;
+      follow += (follow ? " " : "") + next;
     }
     i = j - 1;
+    if (follow) body = body ? `${body} ${follow}` : follow;
 
-    const rawItem = `${headed ? headed[0].trim() : line}\n${body}`.trim();
+    const rawItem = follow ? `${line}\n${follow}` : line;
 
     const { minutes, rest: afterDuration } = extractDuration(body);
     const { lesson, rest: afterLesson } = extractLesson(afterDuration);
@@ -243,11 +311,12 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
     const { reference, rest: afterReference } = extractReference(afterContext);
 
     const description = tidy(sanitizeDescription(afterReference));
-    const type = mapWolTitleToType(titleCandidate);
+    const type = variableType ?? mapWolTitleToType(titleCandidate);
+    const section = variableType ? deriveSection(variableType) : mapWolTitleToSection(titleCandidate);
 
     items.push({
       itemNumber,
-      section: mapWolTitleToSection(titleCandidate),
+      section,
       title: titleCandidate.replace(/\s*\.\s*$/, "").trim(),
       assignmentType: type,
       durationMinutes: minutes,
@@ -256,6 +325,8 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
       reference: tidy(reference),
       lesson: tidy(lesson),
       requiresAssistant: requiresAssistant(titleCandidate),
+      // Fase 3: sólo las canciones son informativas (no generan asignación).
+      requiresAssignee: type === "SONG" ? false : true,
       sortOrder: sortOrder++,
       rawText: rawItem,
     });

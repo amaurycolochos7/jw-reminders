@@ -10,6 +10,7 @@
  */
 
 import type { AssignmentTypeId, SectionId } from "../assignment-rules/index.js";
+import { getAssignmentTypeRule } from "../assignment-rules/index.js";
 
 // ─── Semana / año ISO ────────────────────────────────────
 
@@ -170,9 +171,14 @@ export function requiresAssistant(title: string): boolean {
 /**
  * Mapea el título de una parte de WOL al `AssignmentType` que ya usa el sistema.
  * Devuelve "OTHER" cuando no reconoce el título.
+ *
+ * IMPORTANTE: el orden preserva SMM + Lectura + Discurso exactamente como antes
+ * (esas ramas van primero y no cambian). Las partes de reunión (Fase 3) se
+ * detectan después, de modo que no alteran el comportamiento existente.
  */
 export function mapWolTitleToType(title: string): AssignmentTypeId {
   const n = normalizeTitle(title);
+  // ─── SMM + Lectura + Discurso (sin cambios) ───
   if (n.includes("lectura de la biblia")) return "BIBLE_READING";
   if (n.includes("empiece conversaciones") || n.includes("primera conversacion")) return "START_CONVERSATION";
   if (n.includes("haga revisitas") || n === "revisita" || n.includes("revisita")) return "MAKE_RETURN_VISIT";
@@ -180,10 +186,16 @@ export function mapWolTitleToType(title: string): AssignmentTypeId {
   if (n.includes("explique sus creencias")) return "EXPLAIN_BELIEFS";
   if (n.includes("haga discipulos")) return "MAKE_DISCIPLES";
   if (n.includes("discurso")) return "TALK";
+  // ─── Fase 3: resto de la reunión ───
+  if (n.includes("cancion") || n.includes("cantico")) return "SONG";
+  if (n.includes("palabras de introduccion")) return "OPENING_COMMENTS";
+  if (n.includes("palabras de conclusion")) return "CONCLUDING_COMMENTS";
+  if (n.includes("busquemos perlas escondidas") || n.includes("perlas escondidas")) return "SPIRITUAL_GEMS";
+  if (n.includes("estudio biblico de la congregacion")) return "CONGREGATION_BIBLE_STUDY_CONDUCTOR";
   return "OTHER";
 }
 
-/** Sección (BIBLE_READING / APPLY_YOURSELF) derivada del título de WOL. */
+/** Sección derivada del título de WOL (usa la regla del tipo mapeado). */
 export function mapWolTitleToSection(title: string): SectionId {
-  return mapWolTitleToType(title) === "BIBLE_READING" ? "BIBLE_READING" : "APPLY_YOURSELF";
+  return getAssignmentTypeRule(mapWolTitleToType(title)).section;
 }

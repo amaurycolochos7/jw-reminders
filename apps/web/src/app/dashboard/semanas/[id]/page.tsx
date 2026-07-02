@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Fragment } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
+import { getAssignmentTypeRule, isInformationalType } from '@/lib/assignment-rules'
 import AssignmentForm from './AssignmentForm'
 import AssignmentReminders from './AssignmentReminders'
 import WeekAutomations from './WeekAutomations'
@@ -22,6 +23,14 @@ interface Publisher {
   canBibleReading?: boolean
   canGiveTalk?: boolean
   canParticipateSMM?: boolean
+  canBeChairman?: boolean
+  canPray?: boolean
+  canTreasures?: boolean
+  canSpiritualGems?: boolean
+  canChristianLife?: boolean
+  canConductCBS?: boolean
+  canReadCBS?: boolean
+  canConcludingRemarks?: boolean
 }
 
 interface Assignment {
@@ -74,26 +83,53 @@ function formatDate(iso: string): string {
   return `${d} ${months[m - 1]} ${y}`
 }
 
+// Orden fijo de secciones para agrupar la vista de la semana.
+const SECTION_ORDER = [
+  'OPENING',
+  'TREASURES',
+  'BIBLE_READING',
+  'APPLY_YOURSELF',
+  'LIVING_AS_CHRISTIANS',
+  'CONCLUSION',
+] as const
+
 function sectionLabel(section: string): string {
   const map: Record<string, string> = {
+    OPENING: 'Inicio',
+    TREASURES: 'Tesoros de la Biblia',
     BIBLE_READING: 'Lectura de la Biblia',
-    APPLY_YOURSELF: 'Seamos mejores maestros',
+    APPLY_YOURSELF: 'Seamos Mejores Maestros',
+    LIVING_AS_CHRISTIANS: 'Nuestra Vida Cristiana',
+    CONCLUSION: 'Conclusión',
   }
   return map[section] || section
 }
 
+// Fuente única de verdad para el nombre del tipo (assignment-rules).
 function typeLabel(type: string): string {
-  const map: Record<string, string> = {
-    BIBLE_READING: 'Lectura de la Biblia',
-    START_CONVERSATION: 'Empiece conversaciones',
-    MAKE_RETURN_VISIT: 'Haga revisitas',
-    BIBLE_STUDY: 'Haga discipulos',
-    EXPLAIN_BELIEFS: 'Explique sus creencias',
-    MAKE_DISCIPLES: 'Haga discipulos',
-    TALK: 'Discurso',
-    OTHER: 'Otro',
+  return getAssignmentTypeRule(type).label
+}
+
+// Agrupa las asignaciones por sección respetando SECTION_ORDER y ordena por
+// assignmentNumber dentro de cada sección. Las secciones desconocidas se
+// muestran al final sin romper la vista.
+function groupAssignmentsBySection(assignments: Assignment[]): { section: string; items: Assignment[] }[] {
+  const bySection = new Map<string, Assignment[]>()
+  for (const a of assignments) {
+    const key = a.section || 'OTHER'
+    if (!bySection.has(key)) bySection.set(key, [])
+    bySection.get(key)!.push(a)
   }
-  return map[type] || type
+  const orderIndex = (s: string) => {
+    const i = (SECTION_ORDER as readonly string[]).indexOf(s)
+    return i === -1 ? SECTION_ORDER.length : i
+  }
+  return Array.from(bySection.entries())
+    .sort(([a], [b]) => orderIndex(a) - orderIndex(b) || a.localeCompare(b))
+    .map(([section, items]) => ({
+      section,
+      items: items.slice().sort((x, y) => x.assignmentNumber - y.assignmentNumber),
+    }))
 }
 
 function roomLabel(room: string): string {
@@ -487,9 +523,26 @@ export default function SemanaDetallePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {week.assignments.map((a) => {
-                    const sv = statusVariant(a.status)
-                    return (
+                  {groupAssignmentsBySection(week.assignments).map((group) => (
+                    <Fragment key={`section-${group.section}`}>
+                      <tr className="bg-fog/60">
+                        <td colSpan={9} className="py-2 px-2 text-xs font-semibold text-ink uppercase tracking-wide">
+                          {sectionLabel(group.section)}
+                        </td>
+                      </tr>
+                      {group.items.map((a) => {
+                        if (isInformationalType(a.assignmentType)) {
+                          return (
+                            <tr key={a.id} className="border-b border-silver-mist/50 last:border-0">
+                              <td className="py-3 px-2 font-medium text-ink">{a.assignmentNumber}</td>
+                              <td className="py-3 px-2 text-graphite">{sectionLabel(a.section)}</td>
+                              <td className="py-3 px-2 text-graphite">{typeLabel(a.assignmentType)}</td>
+                              <td className="py-3 px-2 text-ink font-medium" colSpan={6}>{a.title}</td>
+                            </tr>
+                          )
+                        }
+                        const sv = statusVariant(a.status)
+                        return (
                       <tr key={a.id} className="border-b border-silver-mist/50 last:border-0">
                         <td className="py-3 px-2 font-medium text-ink">{a.assignmentNumber}</td>
                         <td className="py-3 px-2 text-graphite">{sectionLabel(a.section)}</td>
@@ -548,17 +601,30 @@ export default function SemanaDetallePage() {
                           </div>
                         </td>
                       </tr>
-                    )
-                  })}
+                        )
+                      })}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile cards */}
-            <div className="lg:hidden space-y-3">
-              {week.assignments.map((a) => {
-                const sv = statusVariant(a.status)
-                return (
+            <div className="lg:hidden space-y-5">
+              {groupAssignmentsBySection(week.assignments).map((group) => (
+                <div key={`m-section-${group.section}`} className="space-y-3">
+                  <p className="text-xs font-semibold text-ink uppercase tracking-wide px-1">{sectionLabel(group.section)}</p>
+                  {group.items.map((a) => {
+                    if (isInformationalType(a.assignmentType)) {
+                      return (
+                        <div key={a.id} className="border border-silver-mist rounded-card px-4 py-3 bg-fog/40">
+                          <p className="text-sm font-medium text-ink">{a.assignmentNumber}. {a.title}</p>
+                          <p className="text-xs text-graphite mt-0.5">{typeLabel(a.assignmentType)}</p>
+                        </div>
+                      )
+                    }
+                    const sv = statusVariant(a.status)
+                    return (
                   <div key={a.id} className="border border-silver-mist rounded-card p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -603,8 +669,10 @@ export default function SemanaDetallePage() {
                       )}
                     </div>
                   </div>
-                )
-              })}
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           </>
         )}

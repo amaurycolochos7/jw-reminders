@@ -13,7 +13,14 @@
  */
 
 export type GenderValue = "MALE" | "FEMALE";
-export type SectionId = "BIBLE_READING" | "APPLY_YOURSELF";
+export type SectionId =
+  | "BIBLE_READING"
+  | "APPLY_YOURSELF"
+  // Fase 3: resto de la reunión.
+  | "OPENING"
+  | "TREASURES"
+  | "LIVING_AS_CHRISTIANS"
+  | "CONCLUSION";
 export type RoomId = "MAIN" | "AUXILIARY";
 export type AssignmentTypeId =
   | "BIBLE_READING"
@@ -23,7 +30,19 @@ export type AssignmentTypeId =
   | "EXPLAIN_BELIEFS"
   | "MAKE_DISCIPLES"
   | "TALK"
-  | "OTHER";
+  | "OTHER"
+  // Fase 3: resto de la reunión (aditivo, no altera SMM).
+  | "CHAIRMAN"
+  | "OPENING_COMMENTS"
+  | "OPENING_PRAYER"
+  | "TREASURES_TALK"
+  | "SPIRITUAL_GEMS"
+  | "CHRISTIAN_LIVING"
+  | "CONGREGATION_BIBLE_STUDY_CONDUCTOR"
+  | "CONGREGATION_BIBLE_STUDY_READER"
+  | "CONCLUDING_COMMENTS"
+  | "CLOSING_PRAYER"
+  | "SONG";
 
 export interface AssignmentTypeRule {
   type: AssignmentTypeId;
@@ -128,6 +147,118 @@ export const ASSIGNMENT_TYPE_RULES: Record<AssignmentTypeId, AssignmentTypeRule>
     allowedAssigneeGenders: [],
     companionSameGender: false,
   },
+  // ─── Fase 3: resto de la reunión. Todas sin acompañante y solo hombres
+  // (coherente con las capacidades maleOnly). SONG es informativa (no asignable).
+  CHAIRMAN: {
+    type: "CHAIRMAN",
+    label: "Presidente",
+    section: "OPENING",
+    defaultTitle: "Presidente de la reunión",
+    defaultDurationMinutes: 0,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  OPENING_COMMENTS: {
+    type: "OPENING_COMMENTS",
+    label: "Palabras de introducción",
+    section: "OPENING",
+    defaultTitle: "Palabras de introducción",
+    defaultDurationMinutes: 1,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  OPENING_PRAYER: {
+    type: "OPENING_PRAYER",
+    label: "Oración inicial",
+    section: "OPENING",
+    defaultTitle: "Oración inicial",
+    defaultDurationMinutes: 0,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  TREASURES_TALK: {
+    type: "TREASURES_TALK",
+    label: "Tesoros de la Biblia",
+    section: "TREASURES",
+    defaultTitle: "Tesoros de la Biblia",
+    defaultDurationMinutes: 10,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  SPIRITUAL_GEMS: {
+    type: "SPIRITUAL_GEMS",
+    label: "Busquemos perlas escondidas",
+    section: "TREASURES",
+    defaultTitle: "Busquemos perlas escondidas",
+    defaultDurationMinutes: 10,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  CHRISTIAN_LIVING: {
+    type: "CHRISTIAN_LIVING",
+    label: "Nuestra Vida Cristiana",
+    section: "LIVING_AS_CHRISTIANS",
+    defaultTitle: "Nuestra Vida Cristiana",
+    defaultDurationMinutes: 15,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  CONGREGATION_BIBLE_STUDY_CONDUCTOR: {
+    type: "CONGREGATION_BIBLE_STUDY_CONDUCTOR",
+    label: "Estudio Bíblico de la Congregación (conductor)",
+    section: "LIVING_AS_CHRISTIANS",
+    defaultTitle: "Estudio bíblico de la congregación",
+    defaultDurationMinutes: 30,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  CONGREGATION_BIBLE_STUDY_READER: {
+    type: "CONGREGATION_BIBLE_STUDY_READER",
+    label: "Estudio Bíblico de la Congregación (lector)",
+    section: "LIVING_AS_CHRISTIANS",
+    defaultTitle: "Lector del estudio bíblico de la congregación",
+    defaultDurationMinutes: 0,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  CONCLUDING_COMMENTS: {
+    type: "CONCLUDING_COMMENTS",
+    label: "Palabras de conclusión",
+    section: "CONCLUSION",
+    defaultTitle: "Palabras de conclusión",
+    defaultDurationMinutes: 3,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  CLOSING_PRAYER: {
+    type: "CLOSING_PRAYER",
+    label: "Oración final",
+    section: "CONCLUSION",
+    defaultTitle: "Oración final",
+    defaultDurationMinutes: 0,
+    needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  SONG: {
+    type: "SONG",
+    label: "Canción",
+    section: "OPENING",
+    defaultTitle: "Canción",
+    defaultDurationMinutes: 0,
+    needsCompanion: false,
+    allowedAssigneeGenders: [],
+    companionSameGender: false,
+  },
 };
 
 export function getAssignmentTypeRule(type: string): AssignmentTypeRule {
@@ -192,21 +323,39 @@ export interface EligibilityPublisher {
   canBibleReading?: boolean;
   canGiveTalk?: boolean;
   canParticipateSMM?: boolean;
+  // ─── Capacidades de partes de reunión (Fase 3) ───
+  canBeChairman?: boolean;
+  canPray?: boolean;
+  canTreasures?: boolean;
+  canSpiritualGems?: boolean;
+  canChristianLife?: boolean;
+  canConductCBS?: boolean;
+  canReadCBS?: boolean;
+  canConcludingRemarks?: boolean;
 }
 
+/** Capacidad de publicador que un tipo de asignación puede requerir. */
+export type RequiredCapability =
+  | "canBibleReading"
+  | "canGiveTalk"
+  | "canParticipateSMM"
+  | "canBeChairman"
+  | "canPray"
+  | "canTreasures"
+  | "canSpiritualGems"
+  | "canChristianLife"
+  | "canConductCBS"
+  | "canReadCBS"
+  | "canConcludingRemarks";
+
 /**
- * Capacidad requerida por tipo de asignación (Fase 2). Solo cubre los tipos que
- * el sistema modela como asignables. `null` = sin capacidad específica.
- *
- * Nota: las partes de reunión (Tesoros, Perlas, Nuestra Vida Cristiana,
- * presidente, oración, conductor/lector del Estudio, palabras de conclusión) no
- * son tipos asignables en el modelo actual; sus reglas de capacidad se aplican a
- * nivel de publicador (validación estricta del backend) y se integrarán al
- * generador cuando esas partes se modelen como asignaciones.
+ * Capacidad requerida por tipo de asignación. `null` = sin capacidad específica
+ * (o parte informativa como SONG, que no se asigna). El backend bloquea asignar
+ * a quien tenga la capacidad requerida explícitamente en `false`.
  */
 export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   AssignmentTypeId,
-  "canBibleReading" | "canGiveTalk" | "canParticipateSMM" | null
+  RequiredCapability | null
 > = {
   BIBLE_READING: "canBibleReading",
   START_CONVERSATION: "canParticipateSMM",
@@ -216,14 +365,61 @@ export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   MAKE_DISCIPLES: "canParticipateSMM",
   TALK: "canGiveTalk",
   OTHER: null,
+  // ─── Fase 3 ───
+  CHAIRMAN: "canBeChairman",
+  OPENING_COMMENTS: "canBeChairman",
+  OPENING_PRAYER: "canPray",
+  TREASURES_TALK: "canTreasures",
+  SPIRITUAL_GEMS: "canSpiritualGems",
+  CHRISTIAN_LIVING: "canChristianLife",
+  CONGREGATION_BIBLE_STUDY_CONDUCTOR: "canConductCBS",
+  CONGREGATION_BIBLE_STUDY_READER: "canReadCBS",
+  CONCLUDING_COMMENTS: "canConcludingRemarks",
+  CLOSING_PRAYER: "canPray",
+  SONG: null,
 };
 
 /** Capacidad requerida por el tipo, o null si no aplica. */
-export function requiredCapabilityForType(
-  type: string,
-): "canBibleReading" | "canGiveTalk" | "canParticipateSMM" | null {
+export function requiredCapabilityForType(type: string): RequiredCapability | null {
   return ASSIGNMENT_TYPE_REQUIRED_CAPABILITY[type as AssignmentTypeId] ?? null;
 }
+
+/** ¿Es una parte informativa (no asignable), como una canción? */
+export function isInformationalType(type: string): boolean {
+  return type === "SONG";
+}
+
+export interface AssignmentTypeOption {
+  value: AssignmentTypeId;
+  label: string;
+}
+
+/**
+ * Opciones de tipo de asignación para formularios/selects. Excluye SONG (no es
+ * asignable; es informativa). El orden refleja el flujo de la reunión.
+ */
+export const ASSIGNMENT_TYPE_OPTIONS: AssignmentTypeOption[] = (
+  [
+    "CHAIRMAN",
+    "OPENING_COMMENTS",
+    "OPENING_PRAYER",
+    "TREASURES_TALK",
+    "SPIRITUAL_GEMS",
+    "BIBLE_READING",
+    "START_CONVERSATION",
+    "MAKE_RETURN_VISIT",
+    "BIBLE_STUDY",
+    "EXPLAIN_BELIEFS",
+    "MAKE_DISCIPLES",
+    "TALK",
+    "CHRISTIAN_LIVING",
+    "CONGREGATION_BIBLE_STUDY_CONDUCTOR",
+    "CONGREGATION_BIBLE_STUDY_READER",
+    "CONCLUDING_COMMENTS",
+    "CLOSING_PRAYER",
+    "OTHER",
+  ] as AssignmentTypeId[]
+).map((type) => ({ value: type, label: ASSIGNMENT_TYPE_RULES[type].label }));
 
 /**
  * Función central de elegibilidad. ÚNICA fuente de verdad para decidir si un

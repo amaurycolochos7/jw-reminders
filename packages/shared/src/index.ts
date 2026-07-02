@@ -7,3 +7,4 @@ export * from "./publisher-capabilities/index.js";
 export * from "./delivery-actions/index.js";
 export * from "./wol/index.js";
 export * from "./notifications/index.js";
+export * from "./grouped-message/index.js";

@@ -12,6 +12,18 @@ export const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
   MAKE_DISCIPLES: "Haga discípulos",
   TALK: "Discurso",
   OTHER: "Otra asignación",
+  // Fase 3: resto de la reunión.
+  CHAIRMAN: "Presidente",
+  OPENING_COMMENTS: "Palabras de introducción",
+  OPENING_PRAYER: "Oración inicial",
+  TREASURES_TALK: "Tesoros de la Biblia",
+  SPIRITUAL_GEMS: "Busquemos perlas escondidas",
+  CHRISTIAN_LIVING: "Nuestra Vida Cristiana",
+  CONGREGATION_BIBLE_STUDY_CONDUCTOR: "Estudio Bíblico de la Congregación (conductor)",
+  CONGREGATION_BIBLE_STUDY_READER: "Estudio Bíblico de la Congregación (lector)",
+  CONCLUDING_COMMENTS: "Palabras de conclusión",
+  CLOSING_PRAYER: "Oración final",
+  SONG: "Canción",
 };
 
 export const ROOM_LABELS: Record<string, string> = {

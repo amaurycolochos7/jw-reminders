@@ -26,6 +26,11 @@ enum AppointmentType {
 enum AssignmentSection {
   BIBLE_READING
   APPLY_YOURSELF
+  // ─── Fase 3: resto de la reunión (aditivo) ───
+  OPENING // Inicio: presidente, oración inicial, palabras de introducción.
+  TREASURES // Tesoros de la Biblia: punto 1, perlas, lectura.
+  LIVING_AS_CHRISTIANS // Nuestra Vida Cristiana (dinámica) + Estudio Bíblico de la Congregación.
+  CONCLUSION // Cierre: palabras de conclusión, oración final.
 }
 
 enum AssignmentType {
@@ -37,6 +42,18 @@ enum AssignmentType {
   MAKE_DISCIPLES
   TALK
   OTHER
+  // ─── Fase 3: resto de la reunión (aditivo, no altera SMM) ───
+  CHAIRMAN // Presidente de la reunión.
+  OPENING_COMMENTS // Palabras de introducción.
+  OPENING_PRAYER // Oración inicial.
+  TREASURES_TALK // Tesoros de la Biblia, punto 1 (título variable).
+  SPIRITUAL_GEMS // Busquemos perlas escondidas.
+  CHRISTIAN_LIVING // Parte(s) de Nuestra Vida Cristiana.
+  CONGREGATION_BIBLE_STUDY_CONDUCTOR // Conductor del Estudio Bíblico de la Congregación.
+  CONGREGATION_BIBLE_STUDY_READER // Lector del Estudio Bíblico de la Congregación.
+  CONCLUDING_COMMENTS // Palabras de conclusión.
+  CLOSING_PRAYER // Oración final.
+  SONG // Canción (informativa, no asignable).
 }
 
 enum Room {
@@ -469,6 +486,9 @@ model MeetingProgramItem {
   reference       String? // "lmd lección 1 punto 4".
   lesson          String? // "th lección 2".
   requiresAssistant Boolean @default(false)
+  // Fase 3: distingue partes asignables de las informativas (p. ej. canciones).
+  // false = se muestra en el programa pero NO genera slot/asignación/recordatorio.
+  requiresAssignee Boolean @default(true)
   sourceUrl       String? // URL de WOL de origen.
   sortOrder       Int      @default(0)
   rawText         String? // Texto original extraído (auditoría).

@@ -1,5 +1,5 @@
 import { prisma, ReminderStatus } from "@jw-reminders/database";
-import { validateAssignmentGenders } from "@jw-reminders/shared";
+import { validateAssignmentGenders, typeNeedsCompanion } from "@jw-reminders/shared";
 import {
   applyAssignmentSnapshots,
   createAutomationEvent,
@@ -20,13 +20,30 @@ export const WEEK_NOT_IMPORTED_MESSAGE =
  * desde WOL (MeetingProgramItem). NUNCA usa plantillas genéricas.
  */
 function buildSlotsFromProgramItems(programItems: any[]) {
+  const SECTIONS = new Set([
+    "BIBLE_READING",
+    "APPLY_YOURSELF",
+    "OPENING",
+    "TREASURES",
+    "LIVING_AS_CHRISTIANS",
+    "CONCLUSION",
+  ]);
   return [...programItems]
     .sort((a, b) => a.sortOrder - b.sortOrder)
+    // Fase 3: las partes informativas (canciones, requiresAssignee=false) se
+    // muestran en el programa pero NO generan slot/asignación/recordatorio.
+    .filter((item) => item.requiresAssignee !== false)
     .map((item, index) => ({
       assignmentNumber: item.itemNumber ?? index + 1,
-      section: (item.section === "BIBLE_READING" ? "BIBLE_READING" : "APPLY_YOURSELF") as
+      // Conserva la sección real del item; si viniera una desconocida, cae a
+      // APPLY_YOURSELF por seguridad (nunca rompe el enum).
+      section: (SECTIONS.has(String(item.section)) ? String(item.section) : "APPLY_YOURSELF") as
         | "BIBLE_READING"
-        | "APPLY_YOURSELF",
+        | "APPLY_YOURSELF"
+        | "OPENING"
+        | "TREASURES"
+        | "LIVING_AS_CHRISTIANS"
+        | "CONCLUSION",
       assignmentType: String(item.assignmentType ?? "OTHER"),
       title: item.title,
       durationMinutes: item.durationMinutes ?? undefined,
@@ -463,7 +480,10 @@ export async function deleteMonthlySchedule(id: string, mode: "delete" | "archiv
 const PROPOSAL_HISTORY_STATUSES = ["DRAFT", "SCHEDULED", "COMPLETED"] as const;
 
 function needsCompanionFor(assignmentType: string): boolean {
-  return assignmentType !== "BIBLE_READING" && assignmentType !== "TALK";
+  // Delega en la regla central de shared. Corrige el default anterior
+  // (`!== BIBLE_READING && !== TALK`) que marcaba acompañante para las partes de
+  // reunión nuevas (presidente, oración, Tesoros, etc.), que NO llevan acompañante.
+  return typeNeedsCompanion(assignmentType);
 }
 
 function pairKey(a: string, b: string): string {
@@ -520,6 +540,8 @@ export async function generateProposal(id: string, options: ProposalOptions = {}
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
           isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
           canBibleReading: true, canGiveTalk: true, canParticipateSMM: true,
+          canBeChairman: true, canPray: true, canTreasures: true, canSpiritualGems: true,
+          canChristianLife: true, canConductCBS: true, canReadCBS: true, canConcludingRemarks: true,
         },
       });
 
@@ -607,6 +629,8 @@ export async function generateAssignmentsDirect(id: string) {
           id: true, fullName: true, displayName: true, phone: true, whatsappPhone: true,
           isActive: true, deletedAt: true, canReceiveAssignments: true, canBeCompanion: true, gender: true,
           canBibleReading: true, canGiveTalk: true, canParticipateSMM: true,
+          canBeChairman: true, canPray: true, canTreasures: true, canSpiritualGems: true,
+          canChristianLife: true, canConductCBS: true, canReadCBS: true, canConcludingRemarks: true,
         },
       });
 
@@ -768,7 +792,9 @@ export async function getProposal(id: string) {
     where: { deletedAt: null, isActive: true, canReceiveAssignments: true },
     orderBy: { fullName: "asc" },
     select: { id: true, fullName: true, displayName: true, canBeCompanion: true, gender: true,
-      canBibleReading: true, canGiveTalk: true, canParticipateSMM: true, isActive: true, canReceiveAssignments: true },
+      canBibleReading: true, canGiveTalk: true, canParticipateSMM: true, isActive: true, canReceiveAssignments: true,
+      canBeChairman: true, canPray: true, canTreasures: true, canSpiritualGems: true,
+      canChristianLife: true, canConductCBS: true, canReadCBS: true, canConcludingRemarks: true },
   });
 
   let proposedCount = 0;

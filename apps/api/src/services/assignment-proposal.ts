@@ -24,6 +24,7 @@
 import {
   isCompanionGenderAllowed,
   isPublisherEligibleForAssignment,
+  type SectionId,
 } from "@jw-reminders/shared";
 
 export interface ProposalPublisher {
@@ -39,11 +40,21 @@ export interface ProposalPublisher {
   canBibleReading?: boolean;
   canGiveTalk?: boolean;
   canParticipateSMM?: boolean;
+  // Capacidades de partes de reunión (Fase 3). Necesarias para que la
+  // elegibilidad bloquee correctamente presidente/oración/Tesoros/etc.
+  canBeChairman?: boolean;
+  canPray?: boolean;
+  canTreasures?: boolean;
+  canSpiritualGems?: boolean;
+  canChristianLife?: boolean;
+  canConductCBS?: boolean;
+  canReadCBS?: boolean;
+  canConcludingRemarks?: boolean;
 }
 
 export interface ProposalSlot {
   assignmentNumber: number;
-  section: "BIBLE_READING" | "APPLY_YOURSELF";
+  section: SectionId;
   assignmentType: string;
   title: string;
   durationMinutes?: number;
@@ -83,7 +94,7 @@ export interface ProposalOptions {
 export interface ProposedAssignment {
   weekId: string;
   assignmentNumber: number;
-  section: "BIBLE_READING" | "APPLY_YOURSELF";
+  section: SectionId;
   assignmentType: string;
   title: string;
   durationMinutes?: number;
