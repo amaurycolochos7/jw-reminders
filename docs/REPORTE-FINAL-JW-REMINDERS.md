@@ -1551,3 +1551,78 @@ No se borraron datos de producción. El re-import de una semana de julio fue
 aditivo (creó el ítem del lector) y benigno; el administrador regenerará julio
 para validar el flujo completo. Las semanas ya importadas antes de este cambio
 necesitan re-importarse para obtener la parte del lector.
+
+
+
+---
+
+# Automatizaciones: aviso inicial mensual, recordatorios 7/3/1 y bendición (p17)
+
+## Fecha
+
+2026-07-02
+
+## Cambios
+
+1. **Aviso inicial MENSUAL.** Antes se enviaba un aviso inicial por semana. Ahora
+   cada persona recibe **un solo mensaje** con **todas sus asignaciones del mes**,
+   agrupadas por fecha de reunión, marcando las partes en las que va como
+   **acompañante**. Sin la línea de "más adelante te enviaremos recordatorios".
+   - Worker: `groupKey` agrupa `INITIAL_NOTICE` por `persona + programa mensual`
+     (antes por semana) y enruta a `performMonthlyInitialSend`.
+   - Shared: nuevo `buildMonthlyInitialMessage`.
+2. **Recordatorios: solo 7 / 3 / 1 día.** Se elimina el de "mismo día"
+   (`SAME_DAY` fuera de `ASSIGNED_RULES` y `COMPANION_RULES`). Asignado: 7/3/1;
+   acompañante: 3/1.
+3. **Frase de bendición** de cierre en todos los mensajes:
+   *"Que Jehová bendiga su esfuerzo y preparación al presentar esta participación."*
+   Se elimina "llegar puntual/temprano" de todas las plantillas.
+   - Plantillas `SEVEN_DAYS_BEFORE`, `THREE_DAYS_BEFORE`, `ONE_DAY_BEFORE`
+     actualizadas directamente en la BD de producción.
+   - `buildGroupedPersonMessage` añade la bendición.
+
+## Archivos
+
+| Archivo | Cambios |
+|---------|---------|
+| `packages/shared/src/grouped-message/index.ts` | `BLESSING_LINE`, `buildMonthlyInitialMessage`, bendición en agrupados |
+| `apps/worker/src/services/grouping.ts` | `INITIAL_NOTICE` agrupa por persona+mes |
+| `apps/worker/src/jobs/process-reminders.ts` | `performMonthlyInitialSend` + ruteo + include `monthlySchedule` |
+| `apps/api/src/services/automation.service.ts` | quita `SAME_DAY` de las reglas |
+| Plantillas en BD (`JwMessageTemplate`) | sin puntualidad + bendición |
+
+## Commit y deploy
+
+| Hash | Mensaje |
+|------|---------|
+| `9406d9a` | feat(automations): aviso inicial mensual, recordatorios 7/3/1 y frase de bendición |
+
+Desplegado en Dokploy (`compose.deploy`, `composeStatus=done`). Verificado en
+producción: `GET /api/version` → `p17-monthly-initial-blessing`.
+
+## Verificación funcional (prod)
+
+Se regeneraron las automatizaciones de julio: 180 entregas — `INITIAL_NOTICE` (47,
+inmediatas), `SEVEN_DAYS_BEFORE` (39), `THREE_DAYS_BEFORE` (47), `ONE_DAY_BEFORE`
+(47), **sin `SAME_DAY`**. El worker envió el aviso inicial **mensual agrupado** al
+número de prueba `525649733944`. Ejemplo real enviado (Gabriel, 5 partes en una
+sola semana → un solo mensaje):
+
+```
+Hola Gabriel de la Tórre.
+
+Estas son sus asignaciones para las reuniones de Julio 2026:
+
+📅 viernes, 10 de julio de 2026
+   • Presidente de la reunión
+   • Oración inicial
+   • Palabras de introducción
+   • Estudio bíblico de la congregación
+   • Palabras de conclusión
+
+Le invitamos a prepararse con anticipación para cada una.
+Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.
+```
+
+Nota: sigue en `TEST_MODE=true` → todo va a `525649733944`. Para envío real a los
+publicadores, poner `TEST_MODE=false`.
