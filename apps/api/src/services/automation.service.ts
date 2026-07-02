@@ -25,15 +25,25 @@ type AssignmentWithRelations = Prisma.JwAssignmentGetPayload<{
 
 // Solo se generan dos recordatorios para evitar el envío masivo que dispara los
 // baneos de WhatsApp: el aviso inicial (al generar) y un recordatorio 1 día antes.
-// Se eliminaron los de 7 días, 3 días y mismo día a propósito.
+// Plan de envíos escalonado (según la visión del producto):
+//  - Asignado: aviso inicial, 7 días antes, 3 días antes, 1 día antes, mismo día.
+//  - Acompañante: aviso inicial, 3 días antes, 1 día antes, mismo día (el de 7
+//    días es solo para el asignado).
+// Las ventanas ya pasadas al generar se OMITEN (no se crean como "vencidas");
+// ver buildDeliveryRows.
 const ASSIGNED_RULES: ReminderType[] = [
   "INITIAL_NOTICE",
+  "SEVEN_DAYS_BEFORE",
+  "THREE_DAYS_BEFORE",
   "ONE_DAY_BEFORE",
+  "SAME_DAY",
 ];
 
 const COMPANION_RULES: ReminderType[] = [
   "INITIAL_NOTICE",
+  "THREE_DAYS_BEFORE",
   "ONE_DAY_BEFORE",
+  "SAME_DAY",
 ];
 
 const CANCELLABLE_STATUSES: ReminderStatus[] = ["PENDING", "QUEUED", "FAILED"];
@@ -217,6 +227,12 @@ function buildDeliveryRows(
         sendHour: config.sendHour,
         now,
       });
+      // Omitir ventanas ya pasadas al generar (p. ej. "7 días antes" para una
+      // reunión que es en 2 días): NO se crean como recordatorios "vencidos".
+      // El aviso inicial (INITIAL_NOTICE) siempre se crea: es inmediato.
+      if (reminderType !== "INITIAL_NOTICE" && scheduledAt.getTime() < now.getTime()) {
+        return;
+      }
       rows.push({ automationPlanId, assignmentId: assignment.id, publisherId, recipientRole, reminderType, scheduledAt });
     } catch (err) {
       // A single invalid rule (e.g. SAME_DAY when send hour >= meeting hour) must not
