@@ -50,9 +50,11 @@ router.post("/", async (req: Request, res: Response) => {
     res.status(201).json(await service.createPublisher(data));
   } catch (err: any) {
     const msg = err.message || "";
-    // Prisma unique constraint error
+    // Nota: el teléfono YA NO es único (varios publicadores pueden compartir
+    // número, p. ej. parejas). Se conserva un manejo genérico de P2002 por si
+    // en el futuro se agrega otra restricción única.
     if (msg.includes("Unique constraint") || err.code === "P2002") {
-      return res.status(400).json({ error: "Ya existe un publicador con ese telefono" });
+      return res.status(400).json({ error: "No se pudo guardar el publicador por un dato duplicado." });
     }
     res.status(400).json({ error: msg });
   }
@@ -65,7 +67,7 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   } catch (err: any) {
     const msg = err.message || "";
     if (msg.includes("Unique constraint") || err.code === "P2002") {
-      return res.status(400).json({ error: "Ya existe un publicador con ese telefono" });
+      return res.status(400).json({ error: "No se pudo guardar el publicador por un dato duplicado." });
     }
     res.status(400).json({ error: msg });
   }

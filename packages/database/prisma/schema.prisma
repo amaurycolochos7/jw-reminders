@@ -165,7 +165,7 @@ model JwPublisher {
   id                    String    @id @default(cuid())
   fullName              String
   displayName           String?
-  phone                 String    @unique
+  phone                 String
   whatsappPhone         String?
   gender                Gender?
   isActive              Boolean   @default(true)
