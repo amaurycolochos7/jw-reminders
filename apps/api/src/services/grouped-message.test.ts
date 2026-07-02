@@ -287,3 +287,16 @@ test("formatMeetingTime convierte 24h a am/pm y respeta valores no reconocidos",
   assert.equal(formatMeetingTime(null), null);
   assert.equal(formatMeetingTime("7 pm"), "7 pm");
 });
+
+test("normaliza fecha es-MX (quita coma tras el día) y recorta el nombre", () => {
+  const msg = buildGroupedPersonMessage({
+    personName: "Yesica Vazquez ",
+    meetingDateText: "viernes, 24 de julio de 2026",
+    meetingTimeText: "15:00",
+    parts: [LECTURA],
+  });
+  assert.ok(msg.startsWith("Hola Yesica Vazquez.\n"), "el nombre no debe tener espacio antes del punto");
+  assert.ok(msg.includes("*Viernes 24 de julio de 2026*"), "la fecha no debe llevar coma tras el día");
+  assert.ok(!msg.includes(","), "no debe quedar ninguna coma en el encabezado");
+  assert.ok(msg.includes("3:00 p.m."));
+});

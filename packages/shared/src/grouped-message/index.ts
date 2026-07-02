@@ -47,6 +47,14 @@ function capitalize(s: string): string {
   return s.length ? s[0].toLocaleUpperCase("es") + s.slice(1) : s;
 }
 
+/**
+ * Encabezado de fecha para el mensaje: quita la coma que es-MX inserta tras el
+ * día de la semana ("viernes, 24 de julio" -> "Viernes 24 de julio") y capitaliza.
+ */
+function dateHeader(text: string): string {
+  return capitalize(text.trim().replace(/^(\p{L}+),\s+/u, "$1 "));
+}
+
 /** Normaliza para comparar título vs. sección (evita duplicar la misma línea). */
 function normalizeLabel(s: string): string {
   return s.trim().toLocaleLowerCase("es");
@@ -181,13 +189,13 @@ export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
   const dates = [...byDate.values()].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
 
   const lines: string[] = [];
-  lines.push(`Hola ${input.personName}.`);
+  lines.push(`Hola ${input.personName.trim()}.`);
   lines.push("");
   lines.push(`Le compartimos sus asignaciones para las reuniones del mes de ${input.monthName}.`);
 
   for (const d of dates) {
     lines.push("");
-    lines.push(`*${capitalize(d.text)}*`); // fecha en negrita, SIN hora
+    lines.push(`*${dateHeader(d.text)}*`); // fecha en negrita, SIN hora
     appendParts(lines, d.items);
   }
 
@@ -215,7 +223,7 @@ export interface GroupedPersonMessageInput {
 export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): string {
   const parts = [...input.parts].sort((a, b) => a.sortOrder - b.sortOrder);
   const lines: string[] = [];
-  lines.push(`Hola ${input.personName}.`);
+  lines.push(`Hola ${input.personName.trim()}.`);
   lines.push("");
   lines.push(
     parts.length > 1
@@ -223,7 +231,7 @@ export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): str
       : "Le recordamos su asignación para la próxima reunión:",
   );
   lines.push("");
-  lines.push(`*${capitalize(input.meetingDateText)}*`);
+  lines.push(`*${dateHeader(input.meetingDateText)}*`);
   const time = formatMeetingTime(input.meetingTimeText ?? null);
   if (time) lines.push(time);
 
