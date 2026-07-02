@@ -18,7 +18,14 @@ const MESES_UPPER = [
  * Calculate the date range text, e.g. "16-22 DE MARZO"
  */
 function buildDateRange(weekStartDate: Date, weekStartDateLocal: string | null): string {
-  const local = weekStartDateLocal || weekStartDate.toISOString().slice(0, 10);
+  let local: string;
+  if (weekStartDateLocal) {
+    local = weekStartDateLocal;
+  } else if (weekStartDate) {
+    local = weekStartDate.toISOString().slice(0, 10);
+  } else {
+    return "";
+  }
   const [y, m, d] = local.split("-").map(Number);
   const startDay = d;
   const endDay = startDay + 6;
@@ -61,7 +68,7 @@ function abbreviateName(name: string): string {
   if (name.length <= 20) return name;
   
   // Split into parts
-  const parts = name.split(/\s+/);
+  const parts = name.split(/\s+/).filter(p => p.length > 0);
   if (parts.length <= 1) return name;
   
   // Strategy: keep first word, abbreviate the rest progressively
@@ -72,6 +79,7 @@ function abbreviateName(name: string): string {
     // Don't abbreviate connecting words (de, la, del, los, las)
     const connecting = ["de", "la", "del", "los", "las", "el"];
     if (connecting.includes(abbreviated[i].toLowerCase())) continue;
+    if (abbreviated[i].length === 0) continue;
     abbreviated[i] = abbreviated[i][0].toUpperCase();
   }
   
