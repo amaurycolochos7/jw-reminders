@@ -1,6 +1,9 @@
 import { Prisma, prisma, ReminderStatus, ReminderType } from "@jw-reminders/database";
 import {
-  WHATSAPP_SEND_DELAY_MS,
+  WHATSAPP_SEND_DELAY_MIN_MS,
+  WHATSAPP_SEND_DELAY_MAX_MS,
+  WORKER_MAX_SENDS_PER_RUN,
+  randomSendDelayMs,
   resolveOutboundMessage,
   classifyNotification,
   buildGroupedPersonMessage,
@@ -17,8 +20,25 @@ const BATCH_SIZE = Number(process.env.WORKER_BATCH_SIZE || 50);
  * Send configuration. Source of truth is AppConfig (DB), set from the admin panel.
  * Falls back to environment variables when a value is missing/invalid.
  * Read on every run so changes apply on the next cron tick without a redeploy.
+ *
+ * Incluye la configuración anti-baneo (jitter de envío + tope por tick),
+ * configurable por env sin necesidad de redeploy de código.
  */
-async function getSendConfig(): Promise<{ testMode: boolean; testPhone: string }> {
+type SendConfig = {
+  testMode: boolean;
+  testPhone: string;
+  delayMinMs: number;
+  delayMaxMs: number;
+  maxSendsPerRun: number;
+};
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  const n = Number(raw);
+  return raw !== undefined && Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+async function getSendConfig(): Promise<SendConfig> {
   let testMode = process.env.TEST_MODE === "true";
   let testPhone = process.env.TEST_PHONE || "";
   try {
@@ -30,7 +50,14 @@ async function getSendConfig(): Promise<{ testMode: boolean; testPhone: string }
   } catch (err) {
     console.error("[Worker] Failed to read AppConfig, using env fallback for send config:", err);
   }
-  return { testMode, testPhone };
+
+  // Anti-baneo: rango de pausa aleatoria y tope de envíos por ejecución.
+  let delayMinMs = envInt("WHATSAPP_SEND_DELAY_MIN_MS", WHATSAPP_SEND_DELAY_MIN_MS);
+  let delayMaxMs = envInt("WHATSAPP_SEND_DELAY_MAX_MS", WHATSAPP_SEND_DELAY_MAX_MS);
+  if (delayMaxMs < delayMinMs) delayMaxMs = delayMinMs; // rango coherente
+  const maxSendsPerRun = envInt("WORKER_MAX_SENDS_PER_RUN", WORKER_MAX_SENDS_PER_RUN);
+
+  return { testMode, testPhone, delayMinMs, delayMaxMs, maxSendsPerRun };
 }
 
 function delay(ms: number) {
@@ -86,7 +113,7 @@ const DELIVERY_INCLUDE = {
 type FreshDelivery = Prisma.ReminderDeliveryGetPayload<{ include: typeof DELIVERY_INCLUDE }>;
 
 /** Teléfono de destino, respetando TEST_MODE igual que el flujo original. */
-function resolvePhone(publisher: { whatsappPhone: string | null; phone: string }, sendConfig: { testMode: boolean; testPhone: string }): string {
+function resolvePhone(publisher: { whatsappPhone: string | null; phone: string }, sendConfig: SendConfig): string {
   return sendConfig.testMode ? sendConfig.testPhone : (publisher.whatsappPhone || publisher.phone);
 }
 
@@ -271,7 +298,7 @@ async function finalizeDeliveryStatus(
  * editable renderReminderMessage + customMessage. Se usa para grupos de 1 parte,
  * avisos especiales y deliveries con customMessage. `fresh` ya está validado.
  */
-async function performSingleSend(fresh: FreshDelivery, sendConfig: { testMode: boolean; testPhone: string }) {
+async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
   const phone = resolvePhone(fresh.publisher!, sendConfig);
   if (!phone) {
     await markSkipped(fresh.id, sendConfig.testMode ? "TEST_MODE activo pero TEST_PHONE no configurado" : "Destinatario sin telefono valido");
@@ -290,7 +317,8 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: { testMode: b
 
   await recordDeliveryAudit(fresh, phone, message, result);
   await finalizeDeliveryStatus(fresh, result);
-  await delay(WHATSAPP_SEND_DELAY_MS);
+  // Anti-baneo: pausa ALEATORIA entre mensajes (jitter) en lugar de fija.
+  await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
 }
 
 /**
@@ -299,7 +327,7 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: { testMode: b
  * comparten publisher/semana/reminderType. Todos comparten el mismo
  * providerMessageId y el mismo resultado (éxito/fallo).
  */
-async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: { testMode: boolean; testPhone: string }) {
+async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendConfig) {
   const first = deliveries[0];
   const publisher = first.publisher!;
   const meetingWeek = first.assignment!.meetingWeek;
@@ -323,6 +351,8 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: { tes
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
     parts,
+    // Solo el aviso inicial agrupado lleva el ánimo a prepararse con anticipación.
+    includeEncouragement: first.reminderType === "INITIAL_NOTICE",
   });
 
   await prisma.reminderDelivery.updateMany({
@@ -345,7 +375,8 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: { tes
     await finalizeDeliveryStatus(d, result);
   }
 
-  await delay(WHATSAPP_SEND_DELAY_MS);
+  // Anti-baneo: pausa ALEATORIA entre mensajes (jitter) en lugar de fija.
+  await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
 }
 
 /**
@@ -412,7 +443,18 @@ export async function processReminders() {
   const groups = groupDeliveries(due);
   console.log(`[Worker] Grouped into ${groups.length} person/week/bucket group(s)`);
 
+  // Anti-baneo: tope de mensajes por tick. Si al generar una semana completa se
+  // programan muchos avisos a la vez, NO se envían todos de golpe: se mandan
+  // hasta `maxSendsPerRun` mensajes y el resto queda PENDING para el siguiente
+  // tick (cada 10 min). Cada mensaje enviado (individual o agrupado) suma 1.
+  let sentThisRun = 0;
+  const maxSendsPerRun = sendConfig.maxSendsPerRun;
+
   for (const group of groups) {
+    if (maxSendsPerRun > 0 && sentThisRun >= maxSendsPerRun) {
+      console.log(`[Worker] Tope de envíos por tick alcanzado (${maxSendsPerRun}); el resto se enviará en el próximo tick.`);
+      break;
+    }
     const groupId = group[0].id;
     try {
       // 2a. Claim atómico del grupo. Sólo seguimos con los deliveries reclamados.
@@ -435,13 +477,17 @@ export async function processReminders() {
       if (sendable.length === 0) continue;
 
       if (sendable.length >= 2 && isGroupCombinable(sendable)) {
-        // 2b–f. Un solo mensaje agrupado para todo el grupo.
+        // 2b–f. Un solo mensaje agrupado para todo el grupo (cuenta como 1 envío).
         await performGroupedSend(sendable, sendConfig);
+        sentThisRun += 1;
       } else {
         // Grupo de 1, aviso especial o con customMessage: envío individual
-        // (comportamiento original, plantilla editable + customMessage).
+        // (comportamiento original, plantilla editable + customMessage). Se
+        // respeta el tope: cada mensaje individual cuenta y corta al llegar.
         for (const f of sendable) {
           await performSingleSend(f, sendConfig);
+          sentThisRun += 1;
+          if (maxSendsPerRun > 0 && sentThisRun >= maxSendsPerRun) break;
         }
       }
     } catch (err) {

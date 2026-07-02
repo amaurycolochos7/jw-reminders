@@ -29,7 +29,17 @@ export interface GroupedPersonMessageInput {
   meetingTimeText?: string | null;
   /** Partes asignadas a la persona en esa semana. */
   parts: GroupedPart[];
+  /**
+   * Si es true, añade una línea animando a prepararse con anticipación (Opción A).
+   * Se usa solo para el AVISO INICIAL agrupado, no para los recordatorios, igual
+   * que en las plantillas individuales.
+   */
+  includeEncouragement?: boolean;
 }
+
+/** Texto de ánimo (Opción A) para el aviso inicial agrupado. */
+const GROUPED_ENCOURAGEMENT =
+  "Le animamos a prepararse con anticipación para hacer sus asignaciones de la mejor manera. ¡Jehová bendecirá su esfuerzo!";
 
 /**
  * Formatea una hora "HH:mm" (24h) a "h:mm a.m./p.m." en español. Si el valor no
@@ -69,6 +79,11 @@ export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): str
   const time = formatMeetingTime(input.meetingTimeText ?? null);
   if (time) {
     lines.push(`Hora de reunión: ${time}.`);
+  }
+
+  // Ánimo a prepararse con anticipación (solo aviso inicial agrupado).
+  if (input.includeEncouragement) {
+    lines.push(GROUPED_ENCOURAGEMENT);
   }
 
   return lines.join("\n");

@@ -1,7 +1,31 @@
 export const DEFAULT_TIMEZONE = "America/Mexico_City";
 export const DEFAULT_REMINDER_SEND_HOUR = 9;
 export const WORKER_POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-export const WHATSAPP_SEND_DELAY_MS = 3000; // 3 seconds between messages
+export const WHATSAPP_SEND_DELAY_MS = 3000; // 3 seconds between messages (legacy fallback)
+
+// ── Anti-baneo (inspirado en el sistema cedgym) ──────────────────────────────
+// En lugar de una pausa fija, se espera un tiempo ALEATORIO entre cada envío
+// (jitter) para que el patrón no parezca robótico. Además, cada ejecución del
+// worker (tick) tiene un TOPE de mensajes: si al generar una semana completa se
+// programan muchos avisos iniciales a la vez, no se mandan todos de golpe; el
+// resto queda pendiente y se envía en los siguientes ticks (cada 10 min).
+export const WHATSAPP_SEND_DELAY_MIN_MS = 6000; // mínimo entre mensajes (6 s)
+export const WHATSAPP_SEND_DELAY_MAX_MS = 15000; // máximo entre mensajes (15 s)
+export const WORKER_MAX_SENDS_PER_RUN = 8; // tope de mensajes enviados por tick
+
+/**
+ * Devuelve una pausa aleatoria (ms) dentro del rango [min, max]. Si el rango es
+ * inválido se cae al valor fijo legacy (WHATSAPP_SEND_DELAY_MS).
+ */
+export function randomSendDelayMs(
+  minMs: number = WHATSAPP_SEND_DELAY_MIN_MS,
+  maxMs: number = WHATSAPP_SEND_DELAY_MAX_MS,
+): number {
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs) || maxMs < minMs || minMs < 0) {
+    return WHATSAPP_SEND_DELAY_MS;
+  }
+  return Math.round(minMs + Math.random() * (maxMs - minMs));
+}
 
 export const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
   BIBLE_READING: "Lectura de la Biblia",

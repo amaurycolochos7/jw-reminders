@@ -25,6 +25,9 @@ Hora: {{meetingTime}}
 Sala: {{room}}
 Acompañante: {{companionName}}
 
+Le animamos a prepararse con anticipación para disfrutar de su participación
+y hacerla de la mejor manera. ¡Jehová bendecirá su esfuerzo!
+
 Por favor confirme que recibió este aviso.
 Cualquier duda o inconveniente, comuníquese con anticipación.`,
   },
@@ -41,6 +44,9 @@ Fecha: {{meetingDate}}
 Hora: {{meetingTime}}
 Sala: {{room}}
 Contexto: {{context}}
+
+Le animamos a coordinarse y prepararse con anticipación junto a {{assignedName}}
+para que todo salga muy bien.
 
 Por favor coordínense para la presentación.`,
   },

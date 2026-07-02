@@ -23,19 +23,17 @@ type AssignmentWithRelations = Prisma.JwAssignmentGetPayload<{
   };
 }>;
 
+// Solo se generan dos recordatorios para evitar el envío masivo que dispara los
+// baneos de WhatsApp: el aviso inicial (al generar) y un recordatorio 1 día antes.
+// Se eliminaron los de 7 días, 3 días y mismo día a propósito.
 const ASSIGNED_RULES: ReminderType[] = [
   "INITIAL_NOTICE",
-  "SEVEN_DAYS_BEFORE",
-  "THREE_DAYS_BEFORE",
   "ONE_DAY_BEFORE",
-  "SAME_DAY",
 ];
 
 const COMPANION_RULES: ReminderType[] = [
   "INITIAL_NOTICE",
-  "THREE_DAYS_BEFORE",
   "ONE_DAY_BEFORE",
-  "SAME_DAY",
 ];
 
 const CANCELLABLE_STATUSES: ReminderStatus[] = ["PENDING", "QUEUED", "FAILED"];
