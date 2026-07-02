@@ -1158,3 +1158,78 @@ page.tsx`, `programas/[id]/propuesta/page.tsx`, y las pruebas de reglas.
   hombres, 0 mujeres); SMM = 20 candidatos (incluye 12 mujeres). Coincide con las
   reglas de Fase 2.
 - Sin datos QA que limpiar (no se creó nada persistente).
+
+
+
+---
+
+# Fase 3 — Reunión completa (full-meeting) — COMPLETADA
+
+## Fecha
+
+2026-07-01
+
+## Resumen
+
+Se completó la administración de la **reunión completa** de Vida y Ministerio
+(Presidente, oraciones, canciones informativas, Palabras de introducción/
+conclusión, Tesoros con título variable, Perlas, Lectura, Nuestra Vida Cristiana
+1..N dinámica, Estudio Bíblico de la Congregación) reutilizando el flujo de
+Seamos Mejores Maestros (SMM) **sin romperlo**. Todos los cambios son aditivos.
+
+## Cambios por dominio
+
+- **Parser/importador** (`apps/api/src/services/wol/`): emite todas las partes de
+  la reunión, captura títulos variables (Tesoros, NVC), marca canciones como
+  informativas (`requiresAssignee=false`) y crea partes estándar no presentes en
+  WOL (Presidente, oraciones) vía `ensureStandardMeetingParts` (idempotente).
+  SMM intacto (regresión verde).
+- **Dominio** (`packages/shared`, `packages/database`): +11 `AssignmentType`,
+  +4 `AssignmentSection`, mapeo tipo→capacidad, elegibilidad por capacidad,
+  `ASSIGNMENT_TYPE_OPTIONS`, helper puro `buildGroupedPersonMessage` +
+  `formatMeetingTime`. Migración **aditiva no destructiva**
+  (`ALTER TYPE ... ADD VALUE IF NOT EXISTS` ×15, `ADD COLUMN requiresAssignee
+  BOOLEAN NOT NULL DEFAULT true`).
+- **Frontend** (`apps/web`): espejo de reglas/capacidades, formularios y vista de
+  semana por sección.
+- **Worker** (`apps/worker`): envío **agrupado por persona/semana/bucket** (un
+  solo mensaje por persona) con claim atómico por fila; helper puro
+  `groupDeliveries`.
+
+## Verificación integral (local)
+
+| Paso | Resultado |
+|---|---|
+| Typecheck shared/api/web/worker (`tsc --noEmit`) | 0 errores (todos) |
+| Build prisma generate / shared / api / worker | EXIT 0 |
+| Build web (`next build`) | Compila + type-check + 14/14 páginas estáticas OK. El único fallo local es `symlink EPERM` de Windows en el output `standalone` (no afecta Docker/Linux; verificado limpio con `NEXT_OUTPUT=default` EXIT 0) |
+| Tests API | 106/106 |
+| Tests parser WOL | 18/18 |
+| Tests worker (grouping) | 8/8 (nuevo) |
+
+## Deploy
+
+- Commits: `ce6216f` (fase 3) + `83abf5b` (bump BUILD_TAG a `p9-full-meeting`).
+- Push a `main` → deploy vía Dokploy API (`POST /api/compose.deploy`).
+- `composeStatus`: running → **done**.
+- Verificación no destructiva: `GET /api/version` → `{"version":"1.0.0","build":"p9-full-meeting"}` (código nuevo vivo). El contenedor API ejecuta `prisma migrate deploy` al arrancar.
+
+## Validación en producción
+
+- Smoke tests (autenticados, solo lectura): login 200, meeting-weeks 200,
+  publishers 200, dashboard 200, monthly-schedules 200.
+- **QA de importación (semana real 2026/27, TEST_MODE)**: se creó una semana QA
+  temporal y se importó el programa REAL desde WOL. Resultado: **16 partes**
+  (13 parseadas + 3 estándar) cubriendo Presidente, Oración inicial/final,
+  canciones informativas, Palabras de introducción/conclusión, Tesoros (título
+  variable capturado), Perlas, Lectura, Empiece/Revisitas/Discurso (SMM),
+  Necesidades (NVC), Estudio bíblico de la congregación. La inserción exitosa de
+  los 11 nuevos `AssignmentType` y 4 `AssignmentSection` **confirma que la
+  migración se aplicó en producción**.
+- **Limpieza QA**: la semana temporal se eliminó (`DELETE ?mode=delete` → 200);
+  el conteo de semanas volvió a 4. Sin datos residuales.
+
+Nota: la lógica de asignaciones/capacidades/elegibilidad/agrupación de mensajes
+se validó con la suite de pruebas (132 pruebas en verde). No se crearon
+asignaciones ni envíos reales en producción para evitar mutaciones de datos y
+envíos innecesarios; el envío agrupado va a `TEST_PHONE` bajo `TEST_MODE`.
