@@ -116,9 +116,18 @@ export function findVidaYMinisterioLink(html: string, baseUrl: string): string |
 
 // ─── Validación de completitud ───────────────────────────
 
-/** Un item está completo si tiene título, duración y (si aplica) descripción. */
-function itemLooksComplete(item: ParsedProgramItem): boolean {
+/**
+ * Un item está completo si tiene título y, cuando corresponde, duración.
+ *
+ * Las canciones (assignmentType "SONG") y demás partes NO asignables
+ * (`requiresAssignee === false`) no traen duración en WOL. Exigirles duración
+ * las marcaba como "incompletas" y forzaba la semana entera a NEEDS_REVIEW sin
+ * motivo real, bloqueando la generación de participantes. Sólo validamos la
+ * duración en partes asignables (discursos, lectura, SMM, etc.).
+ */
+export function itemLooksComplete(item: ParsedProgramItem): boolean {
   if (!item.title) return false;
+  if (item.assignmentType === "SONG" || item.requiresAssignee === false) return true;
   if (item.durationMinutes == null) return false;
   return true;
 }
