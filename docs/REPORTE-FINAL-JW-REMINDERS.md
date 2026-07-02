@@ -1626,3 +1626,115 @@ Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.
 
 Nota: sigue en `TEST_MODE=true` → todo va a `525649733944`. Para envío real a los
 publicadores, poner `TEST_MODE=false`.
+
+
+
+---
+
+# Corrección integral del generador de mensajes (P20)
+
+**Fecha:** 2026-07-02 · **Commits:** `06cc77a`, `5bbb0d8` · **Deploy Dokploy:** `composeStatus=done`
+
+## Objetivo
+
+Auditar y unificar la calidad, claridad y consistencia de los **cuatro mensajes
+activos** del sistema, sin tocar la lógica de automatización, las fechas de envío
+ni reintroducir el recordatorio del "mismo día":
+
+1. Aviso inicial mensual (al generar las asignaciones del mes).
+2. Recordatorio de 7 días.
+3. Recordatorio de 3 días.
+4. Recordatorio de 1 día.
+
+## Problemas corregidos
+
+- **Markdown de negritas roto:** asteriscos pegados a `:` u otros caracteres y
+  espacios antes del asterisco de cierre. Ahora la sección va en su propia línea
+  `*Sección*`, sin `:*` y sin ` *` de cierre.
+- **Hora en el aviso inicial:** se eliminó por completo del aviso mensual (antes
+  aparecía `— 7:00 p.m.`). Los recordatorios 7/3/1 **sí** conservan la hora.
+- **Información incompleta ("Punto 1"):** ahora cada parte muestra número de
+  punto, sección, título real y duración.
+- **Seamos Mejores Maestros sin acompañante:** ahora indica el rol (`Como
+  estudiante` / `Como ayudante`) y el bloque `Acompañante:` / `Estudiante:` con
+  el nombre de la contraparte, según quién recibe el mensaje.
+- **Falta de uniformidad:** los cuatro mensajes comparten la MISMA estructura de
+  parte (`renderPartLines`). La única diferencia es que el aviso inicial no lleva
+  hora y agrupa por fecha del mes, mientras que los recordatorios sí llevan hora.
+- **Bloques vacíos:** los bloques opcionales (título, acompañante, estudiante) solo
+  se imprimen si existen; nunca se generan líneas vacías dobles.
+- **Recordatorio de una sola parte:** antes usaba la plantilla de BD (formato
+  distinto). Ahora usa el mismo generador rico → uniformidad total.
+- **Encabezado de fecha:** se quita la coma que `es-MX` inserta tras el día
+  (`viernes, 24…` → `Viernes 24…`) y se recorta el nombre del destinatario.
+
+## Diseño
+
+Un **único generador** en `packages/shared/src/grouped-message/index.ts` es la
+fuente de verdad del texto de los 4 mensajes:
+
+- `renderPartLines(part)` — bloque de UNA parte, común a todos los mensajes.
+- `buildMonthlyInitialMessage(...)` — aviso inicial mensual (sin hora).
+- `buildGroupedPersonMessage(...)` — recordatorios 7/3/1 (con hora).
+
+El worker (`process-reminders.ts`) mapea cada entrega a una `MessagePart`
+(`deliveryToMessagePart`) y enruta **todos** los recordatorios normales al
+generador rico (`isRichReminderGroup`); solo los avisos especiales
+(cambio/cancelación) y los `customMessage` conservan la plantilla editable. El
+preview del panel (`reminder-renderer.ts`) usa los mismos generadores.
+
+**No se modificó** la programación de envíos, la deduplicación ni las reglas de
+automatización (`ASSIGNED_RULES` = inicial+7+3+1, `COMPANION_RULES` =
+inicial+3+1; sin `SAME_DAY`).
+
+## Archivos
+
+| Archivo | Cambios |
+|---------|---------|
+| `packages/shared/src/grouped-message/index.ts` | Generador único: `MessagePart`, `renderPartLines`, `buildMonthlyInitialMessage` (sin hora), `buildGroupedPersonMessage` (con hora), `dateHeader` (sin coma) |
+| `apps/worker/src/jobs/process-reminders.ts` | `deliveryToMessagePart`, `personDisplayName`, `monthNameFor`, ruteo `isRichReminderGroup`/`hasCustom` |
+| `apps/api/src/services/reminder-renderer.ts` | Preview con los generadores ricos |
+| `apps/api/src/modules/automation-center/automation-center.routes.ts` | Preview incluye `programItem` |
+| `apps/api/src/services/grouped-message.test.ts` | QA: 20 pruebas (todos los tipos de parte + acompañantes) |
+
+## Verificación
+
+- **Typecheck/build:** `shared`, `worker`, `api`, `whatsapp` compilan; `web`
+  compila (el único fallo local es un symlink de `standalone` propio de Windows,
+  irrelevante en el build Linux de Dokploy).
+- **Pruebas:** API **143** + worker **9** + 20 nuevas del generador → todo verde.
+- **Deploy:** `POST /api/compose.deploy` → `composeStatus=done`, último
+  deployment = commit `5bbb0d8`. `GET /api/health` → `200 {"status":"ok"}`.
+- **Producción (TEST_MODE=true, TEST_PHONE=525…):** preview real de una entrega
+  pendiente confirma el nuevo formato:
+
+```
+Hola Yesica Vazquez.
+
+Le recordamos su asignación para la próxima reunión:
+
+*Viernes 24 de julio de 2026*
+3:00 p.m.
+
+• Punto 6
+*Explique sus creencias*
+4 minutos
+Como estudiante
+Acompañante:
+Marissa de la Torre
+
+Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.
+```
+
+## Simulación de julio 2026
+
+La simulación completa (aviso inicial + recordatorios de las 3 reuniones de julio,
+por persona) generada con los generadores reales está en
+[`docs/SIMULACION-MENSAJES-JULIO-2026.md`](SIMULACION-MENSAJES-JULIO-2026.md).
+
+## Datos QA
+
+No se crearon datos QA nuevos en esta corrección (la verificación se hizo con el
+preview, que no envía ni crea registros). El programa **Julio 2026** existente en
+producción es el dato real del usuario y se conserva; con `TEST_MODE=true` todos
+los envíos van al número de prueba.
