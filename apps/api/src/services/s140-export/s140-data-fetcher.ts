@@ -7,6 +7,53 @@
 import { prisma } from "@jw-reminders/database";
 import type { S140WeekData, S140ExportInput } from "./s140-export.service.js";
 
+// ─── WOL Bible Reading Extraction ────────────────────────
+
+/**
+ * Fetch the weekly bible reading range from WOL program page.
+ * Returns something like "JEREMÍAS 13-15" or empty string.
+ */
+async function fetchBibleReadingFromWol(wolProgramUrl: string | null): Promise<string> {
+  if (!wolProgramUrl) return "";
+  try {
+    const res = await fetch(wolProgramUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept-Language": "es",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return "";
+    const html = await res.text();
+    
+    // The weekly Bible reading appears in WOL inside an element that contains
+    // the book name + chapters, typically in a header or the page title.
+    // Pattern: look for text like "JEREMÍAS 13-15" or "ISAÍAS 45-47" in upper sections.
+    
+    // Strategy 1: Extract from <title> or <h1>/<h2> that typically contains the reading range
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) {
+      // Title often is like "6-12 de julio | Jeremías 13-15" or similar
+      const title = titleMatch[1];
+      const bibleMatch = title.match(/\|\s*(.+?)(?:\s*\||$)/);
+      if (bibleMatch) return bibleMatch[1].trim().toUpperCase();
+    }
+    
+    // Strategy 2: Look for a specific pattern in first header elements
+    const headerMatch = html.match(/<h[12][^>]*>[^<]*?([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+\d+[–\-,\s\d]*)+)[^<]*<\/h[12]>/i);
+    if (headerMatch) return headerMatch[1].trim().toUpperCase();
+    
+    // Strategy 3: Look for text with Bible book pattern near top
+    const textBlock = html.slice(0, 5000);
+    const bookPattern = textBlock.match(/(?:Génesis|Éxodo|Levítico|Números|Deuteronomio|Josué|Jueces|Rut|Samuel|Reyes|Crónicas|Esdras|Nehemías|Ester|Job|Salmo|Proverbios|Eclesiastés|Cantares|Isaías|Jeremías|Lamentaciones|Ezequiel|Daniel|Oseas|Joel|Amós|Abdías|Jonás|Miqueas|Nahúm|Habacuc|Sofonías|Ageo|Zacarías|Malaquías|Mateo|Marcos|Lucas|Juan|Hechos|Romanos|Corintios|Gálatas|Efesios|Filipenses|Colosenses|Tesalonicenses|Timoteo|Tito|Filemón|Hebreos|Santiago|Pedro|Judas|Apocalipsis|Revelación)\s+\d+[\d\s,–\-;]*/i);
+    if (bookPattern) return bookPattern[0].trim().toUpperCase();
+    
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 // ─── Date Formatting ─────────────────────────────────────
 
 const MESES_UPPER = [
@@ -53,39 +100,38 @@ function personName(person: { displayName: string | null; fullName: string; id?:
 }
 
 /**
- * Abbreviate a name to fit in the S-140 column (~20 chars max).
- * Strategy: Keep first name + abbreviate last name to initial + period.
+ * Abbreviate a name to fit in the S-140 column (~18 chars max).
+ * Strategy: Keep first name + abbreviate last name to initial.
  * Examples:
  *   "Gabriel de la Tórre" → "Gabriel de la T"
- *   "Dorian Gabriel de la Tórre Gomez" → "Dorian G de la T"
- *   "Julio Enrique Diaz Hernandez" → "Julio E Diaz"
+ *   "Dorian Gabriel de la Tórre Gomez" → "Gabriel de la T"
+ *   "Gady de Gordillo" → "Gady de G"
  *   "Ninive V" → "Ninive V" (already short)
- *   "Emili Espinoza" → "Emili Espinoza" (fits)
  */
 function abbreviateName(name: string): string {
   if (!name || name === "—") return "—";
   // If already short enough, use as-is
-  if (name.length <= 20) return name;
+  if (name.length <= 18) return name;
   
   // Split into parts
   const parts = name.split(/\s+/).filter(p => p.length > 0);
   if (parts.length <= 1) return name;
   
-  // Strategy: keep first word, abbreviate the rest progressively
-  // First try: abbreviate last word only
+  // Strategy: keep first word + connecting words + abbreviate last meaningful word
+  const connecting = ["de", "la", "del", "los", "las", "el"];
   const abbreviated = [...parts];
+  
+  // Abbreviate from the end, skipping connecting words
   for (let i = abbreviated.length - 1; i >= 1; i--) {
-    if (abbreviated.join(" ").length <= 20) break;
-    // Don't abbreviate connecting words (de, la, del, los, las)
-    const connecting = ["de", "la", "del", "los", "las", "el"];
+    if (abbreviated.join(" ").length <= 18) break;
     if (connecting.includes(abbreviated[i].toLowerCase())) continue;
     if (abbreviated[i].length === 0) continue;
+    if (abbreviated[i].length <= 1) continue; // already abbreviated
     abbreviated[i] = abbreviated[i][0].toUpperCase();
   }
   
   const result = abbreviated.join(" ");
-  // If still too long, truncate
-  if (result.length > 25) return result.slice(0, 22) + "...";
+  if (result.length > 22) return result.slice(0, 19) + "...";
   return result;
 }
 
@@ -202,7 +248,7 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
   }
   if (!congregationName) congregationName = "CONGREGACIÓN";
 
-  const weeks: S140WeekData[] = (schedule.weeks as any[]).map((week: any) => {
+  const weeks: S140WeekData[] = await Promise.all((schedule.weeks as any[]).map(async (week: any) => {
     const assignments: any[] = week.assignments;
     const programItems: any[] = week.programItems;
 
@@ -242,22 +288,17 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
     );
 
     // The weekly bible reading range from the program
-    // Try multiple sources: OPENING items with requiresAssignee=false, or
-    // fall back to an empty string (this data may not be stored yet)
+    // Fetch from WOL if available (the data is not stored in DB currently)
     let bibleReadingRange = "";
     const rangeItem = programItems.find((p: any) =>
       p.section === "OPENING" && p.requiresAssignee === false && p.title && !p.title.toLowerCase().includes("canción")
     );
     if (rangeItem) {
       bibleReadingRange = rangeItem.title;
-    } else {
-      // Try to find from a SONG item that has the weekly reading in rawText
-      const firstSong = programItems.find((p: any) => p.assignmentType === "SONG" && p.rawText);
-      if (firstSong?.rawText) {
-        // WOL sometimes includes the reading range near songs
-        const match = firstSong.rawText.match(/([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+\d+[–\-,\s\d]*)?)/);
-        if (match) bibleReadingRange = match[1];
-      }
+    }
+    // If not found from items, will be fetched from WOL later
+    if (!bibleReadingRange && week.wolProgramUrl) {
+      bibleReadingRange = await fetchBibleReadingFromWol(week.wolProgramUrl);
     }
 
     // Chairman
@@ -344,7 +385,7 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
 
       closingPrayer: personName(closingPrayer?.assigned),
     };
-  });
+  }));
 
   return { congregationName, weeks };
 }
