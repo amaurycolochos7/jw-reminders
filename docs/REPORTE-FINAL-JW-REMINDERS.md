@@ -1442,3 +1442,41 @@ automáticamente al arrancar el contenedor API (`prisma migrate deploy`) — col
 No se crearon datos QA en producción durante este cambio (solo migración de esquema,
 aditiva). El programa de julio 2026 usado en pruebas queda a cargo del administrador
 para borrar/regenerar y validar el nuevo comportamiento.
+
+
+
+---
+
+# Ajuste: teléfono compartido entre publicadores (p13)
+
+## Fecha
+
+2026-07-01
+
+## Cambio
+
+Antes el teléfono era único por publicador (`JwPublisher.phone @unique`), lo que
+impedía guardar dos publicadores con el mismo número. Como en la práctica hay
+personas que comparten número (parejas, familiares), se eliminó esa restricción.
+El número se sigue usando normalmente para las automatizaciones/envíos; cada
+publicador conserva sus propias asignaciones y recordatorios (si dos comparten
+número, cada uno recibe el mensaje de sus propias partes en ese número).
+
+## Archivos
+
+| Archivo | Cambios |
+|---------|---------|
+| `packages/database/prisma/schema.prisma` | `phone` deja de ser `@unique` |
+| `migrations/20260702040000_p13_publisher_phone_not_unique` | `DROP INDEX IF EXISTS "JwPublisher_phone_key"` (aditiva, no destructiva) |
+| `apps/api/src/modules/publishers/publishers.routes.ts` | El manejo de P2002 ya no asume “teléfono duplicado” (mensaje genérico) |
+
+## Commit y deploy
+
+| Hash | Mensaje |
+|------|---------|
+| `fd42b57` | feat(publishers): permitir teléfono compartido entre publicadores (parejas) |
+
+Desplegado en Dokploy (`compose.deploy`, `composeStatus=done`). Verificado en
+producción: `GET /api/version` → `build=p13-shared-phone-allowed`; `GET /api/health`
+→ ok; migración `20260702040000_p13_publisher_phone_not_unique` aplicada y el índice
+único `JwPublisher_phone_key` ya no existe en la BD (confirmado en `pg_indexes`).
