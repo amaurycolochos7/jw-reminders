@@ -1233,3 +1233,70 @@ Nota: la lógica de asignaciones/capacidades/elegibilidad/agrupación de mensaje
 se validó con la suite de pruebas (132 pruebas en verde). No se crearon
 asignaciones ni envíos reales en producción para evitar mutaciones de datos y
 envíos innecesarios; el envío agrupado va a `TEST_PHONE` bajo `TEST_MODE`.
+
+
+
+---
+
+# Mejora — "Ser presidente" implica oración y palabras de conclusión — COMPLETADA
+
+## Fecha
+
+2026-07-01
+
+## Regla
+
+Cuando un publicador tiene la capacidad **Ser presidente** (`canBeChairman`),
+automáticamente está capacitado para la **oración inicial**, la **oración final**
+y las **palabras de conclusión**. Esas funciones dejan de ser capacidades
+independientes.
+
+## Cambios
+
+- **Capacidades editables**: se eliminan `canPray` ("Hacer oración") y
+  `canConcludingRemarks` ("Hacer palabras de conclusión") del catálogo editable
+  (shared + espejo web). La única capacidad editable para esas partes es
+  "Ser presidente".
+- **Motor de elegibilidad**: `ASSIGNMENT_TYPE_REQUIRED_CAPABILITY` repunta
+  `OPENING_PRAYER`, `CLOSING_PRAYER` y `CONCLUDING_COMMENTS` → `canBeChairman`
+  (antes `canPray`/`canConcludingRemarks`). El generador y `createAssignment`
+  usan `requiredCapabilityForType`, por lo que ambos quedan alineados sin cambios
+  adicionales.
+- **Backend**: se quitan `canPray`/`canConcludingRemarks` del esquema Zod de
+  publicadores (Zod ignora claves desconocidas → compatibilidad con payloads
+  antiguos).
+- **Frontend**: la pantalla de Capacidades ya no muestra los switches "Hacer
+  oración" ni "Hacer palabras de conclusión" (el catálogo los rige). Se añadió el
+  texto informativo: *"El presidente también puede realizar la oración inicial, la
+  oración final y las palabras de conclusión."*
+- **Compatibilidad / datos**: las columnas `canPray` y `canConcludingRemarks`
+  **se conservan** en la base de datos. **No hay migración** (cambio no
+  destructivo, sin pérdida de información). Quien ya era presidente conserva su
+  elegibilidad automáticamente, porque esas partes ahora se deciden con
+  `canBeChairman`.
+
+## Verificación (local)
+
+- Typecheck shared/api/web/worker: 0 errores.
+- Builds api/worker/web: EXIT 0 (web compila + 14/14 páginas; el `symlink` de
+  `standalone` es una limitación local de Windows, no afecta Docker/Linux).
+- Pruebas: **API 109/109** (incluye nuevos casos:
+  `requiredCapabilityForType` de oración/conclusión === `canBeChairman`; un
+  presidente es elegible para las 5 partes; un no-presidente no lo es para
+  ninguna), worker 8/8.
+- Nota de build: `@jw-reminders/shared` debe recompilarse antes de correr las
+  pruebas de API (importan de `dist/`).
+
+## Deploy y validación en producción
+
+- Commit `9fa9ab1`, push a `main`, deploy vía Dokploy API → `composeStatus` done.
+- `GET /api/version` → `{"build":"p9-chairman-implies-prayer"}` (código nuevo vivo).
+- **QA en producción (no destructiva)**: al intentar asignar a un publicador
+  **sin** capacidad de presidente a `OPENING_PRAYER`, `CLOSING_PRAYER` y
+  `CONCLUDING_COMMENTS`, el backend **rechaza** con
+  *"El publicador no tiene la capacidad requerida para …"* (HTTP 400, sin
+  persistir nada). Esto confirma que un no-presidente **nunca** puede aparecer en
+  esas partes. El caso positivo (un presidente sí es elegible) está cubierto por
+  las pruebas unitarias desplegadas; no se creó ninguna asignación real en
+  producción para no dejar datos residuales (no existe borrado físico de
+  asignaciones). No se generaron datos QA que limpiar.
