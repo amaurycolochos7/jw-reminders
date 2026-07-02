@@ -216,3 +216,28 @@ test("mujer no elegible para partes de inicio (male-only) aunque tuviera capacid
     assert.equal(isPublisherEligibleForAssignment(woman, type), false, `mujer no elegible (${type})`);
   }
 });
+
+
+// ─── Lector del Estudio Bíblico de la Congregación (EBC) ─────────────────────
+
+test("lector EBC requiere canReadCBS (capacidad distinta de Lectura de la Biblia)", () => {
+  assert.equal(requiredCapabilityForType("CONGREGATION_BIBLE_STUDY_READER"), "canReadCBS");
+  assert.equal(requiredCapabilityForType("CONGREGATION_BIBLE_STUDY_CONDUCTOR"), "canConductCBS");
+
+  const base = { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeCompanion: true, gender: "MALE" as const };
+
+  // Solo lectura de la Biblia NO habilita lector EBC.
+  const soloBibleReading = { ...base, canBibleReading: true, canReadCBS: false };
+  assert.equal(isPublisherEligibleForAssignment(soloBibleReading, "CONGREGATION_BIBLE_STUDY_READER"), false);
+
+  // Con canReadCBS sí es elegible.
+  const reader = { ...base, canReadCBS: true };
+  assert.equal(isPublisherEligibleForAssignment(reader, "CONGREGATION_BIBLE_STUDY_READER"), true);
+});
+
+test("lector EBC: mujer, inactivo o sin permiso de recibir NO es elegible", () => {
+  const base = { canReceiveAssignments: true, canBeCompanion: true, canReadCBS: true };
+  assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: true, deletedAt: null, gender: "FEMALE" }, "CONGREGATION_BIBLE_STUDY_READER"), false, "mujer");
+  assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: false, deletedAt: null, gender: "MALE" }, "CONGREGATION_BIBLE_STUDY_READER"), false, "inactivo");
+  assert.equal(isPublisherEligibleForAssignment({ ...base, isActive: true, deletedAt: null, gender: "MALE", canReceiveAssignments: false }, "CONGREGATION_BIBLE_STUDY_READER"), false, "sin permiso");
+});

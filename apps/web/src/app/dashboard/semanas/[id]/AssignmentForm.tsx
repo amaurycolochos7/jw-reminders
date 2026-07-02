@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { api } from '@/lib/api'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import {
@@ -80,6 +80,8 @@ interface Props {
   /** Partes reales de la semana (para el selector). Si falta, se usa flujo manual. */
   parts?: WeekPart[]
   existingNumbers?: number[]
+  /** Si se pasa, el modal salta directo a asignar/editar esa parte (p. ej. "Asignar lector"). */
+  initialPartId?: string
   onClose: () => void
   onSuccess: () => void
 }
@@ -120,7 +122,7 @@ const emptyForm = {
   notes: '',
 }
 
-export default function AssignmentForm({ weekId, publishers, assignment, parts, existingNumbers = [], onClose, onSuccess }: Props) {
+export default function AssignmentForm({ weekId, publishers, assignment, parts, existingNumbers = [], initialPartId, onClose, onSuccess }: Props) {
   // Modo del modal: 'pick' = elegir parte real de la semana; 'form' = asignar/editar.
   const editingFromTable = !!assignment
   const hasParts = Array.isArray(parts) && parts.length > 0
@@ -291,6 +293,17 @@ export default function AssignmentForm({ weekId, publishers, assignment, parts, 
     setForm({ ...emptyForm, assignmentNumber: String(nextNumber(existingNumbers)), title: deriveTitle('START_CONVERSATION'), durationMinutes: String(deriveDurationMinutes('START_CONVERSATION')) })
     setStep('form')
   }
+
+  // Salto directo a una parte concreta (p. ej. "Asignar lector" del EBC).
+  useEffect(() => {
+    if (!initialPartId || editingFromTable) return
+    const part = (parts || []).find((p) => p.id === initialPartId)
+    if (!part) return
+    if (part.assignment) editAssignedPart(part)
+    else pickUnassignedPart(part)
+    // Solo al montar / cambiar el target.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPartId])
 
   function handleTypeChange(type: string) {
     setForm((prev) => {
@@ -501,6 +514,12 @@ export default function AssignmentForm({ weekId, publishers, assignment, parts, 
           )}
           {form.assignmentType === 'CLOSING_PRAYER' && (
             <p className="text-xs text-graphite -mt-2">No necesariamente la hace el presidente; puede asignarse a cualquier persona capacitada.</p>
+          )}
+          {form.assignmentType === 'CONGREGATION_BIBLE_STUDY_READER' && (
+            <p className="text-xs text-graphite -mt-2">Solo personas con la capacidad de <strong>lector del Estudio Bíblico de la Congregación</strong> (distinta de la Lectura de la Biblia).</p>
+          )}
+          {form.assignmentType === 'CONGREGATION_BIBLE_STUDY_CONDUCTOR' && (
+            <p className="text-xs text-graphite -mt-2">Solo personas con la capacidad de <strong>conducir el Estudio Bíblico de la Congregación</strong>.</p>
           )}
 
           {/* Persona */}

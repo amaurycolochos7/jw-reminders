@@ -229,6 +229,43 @@ export async function ensureStandardMeetingParts(weekId: string): Promise<void> 
   }
 }
 
+// El Estudio Bíblico de la Congregación se importa de WOL como una sola parte
+// (el CONDUCTOR). En la reunión real también tiene un LECTOR. Como WOL no lo
+// lista por separado, lo creamos localmente cuando la semana tiene conductor de
+// EBC. sortOrder reservado 8000: único, después de los ítems de WOL (0..~30) y
+// antes del cierre (9000), así aparece junto al conductor dentro de "Nuestra
+// Vida Cristiana".
+const CBS_READER_SORT_ORDER = 8000;
+
+/**
+ * Garantiza la parte de LECTOR del Estudio Bíblico de la Congregación cuando la
+ * semana tiene un conductor de EBC. Idempotente (upsert por weekId+sortOrder).
+ * No crea nada si la semana no tiene EBC (p. ej. semanas de asamblea).
+ */
+export async function ensureCbsReaderPart(weekId: string): Promise<void> {
+  const conductor = await prisma.meetingProgramItem.findFirst({
+    where: { meetingWeekId: weekId, assignmentType: "CONGREGATION_BIBLE_STUDY_CONDUCTOR" as any },
+    select: { id: true, section: true },
+  });
+  if (!conductor) return;
+
+  await prisma.meetingProgramItem.upsert({
+    where: { meetingWeekId_sortOrder: { meetingWeekId: weekId, sortOrder: CBS_READER_SORT_ORDER } },
+    create: {
+      meetingWeekId: weekId,
+      itemNumber: undefined,
+      section: conductor.section ?? "LIVING_AS_CHRISTIANS",
+      title: "Lector del estudio bíblico de la congregación",
+      assignmentType: "CONGREGATION_BIBLE_STUDY_READER" as any,
+      requiresAssistant: false,
+      requiresAssignee: true,
+      sortOrder: CBS_READER_SORT_ORDER,
+    },
+    // Solo garantiza la existencia; no pisa ajustes manuales.
+    update: {},
+  });
+}
+
 /**
  * Importa desde un texto ya obtenido (captura manual o pruebas). No toca la red.
  */
@@ -258,6 +295,8 @@ async function finalizeImport(
   await persistItems(weekId, items, urls.programUrl ?? "");
   // Fase 3: crear partes estándar que no vienen de WOL (presidente, oraciones).
   await ensureStandardMeetingParts(weekId);
+  // Lector del Estudio Bíblico de la Congregación (si la semana tiene EBC).
+  await ensureCbsReaderPart(weekId);
 
   const incomplete = items.filter((i) => !itemLooksComplete(i));
   const status: "READY" | "NEEDS_REVIEW" = incomplete.length > 0 || warnings.length > 0 ? "NEEDS_REVIEW" : "READY";

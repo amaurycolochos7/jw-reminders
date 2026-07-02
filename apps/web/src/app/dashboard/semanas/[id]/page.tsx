@@ -182,6 +182,8 @@ export default function SemanaDetallePage() {
   // Form state
   const [showForm, setShowForm] = useState(false)
   const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null)
+  // Cuando se abre el modal para asignar una parte concreta (p. ej. el lector del EBC).
+  const [formInitialPartId, setFormInitialPartId] = useState<string | undefined>(undefined)
 
   // Reminders view
   const [viewingReminders, setViewingReminders] = useState<Assignment | null>(null)
@@ -412,6 +414,17 @@ export default function SemanaDetallePage() {
   const WEEK_STATUS_LABEL: Record<string, string> = { DRAFT: 'Borrador', READY: 'Lista', ACTIVE: 'Activa', COMPLETED: 'Completada', ARCHIVED: 'Archivada', CANCELLED: 'Cancelada' }
   const WEEK_STATUS_CLASS: Record<string, string> = { DRAFT: 'bg-amber-50 text-amber-700', READY: 'bg-fog text-azure', ACTIVE: 'bg-emerald-50 text-emerald-700', COMPLETED: 'bg-fog text-graphite', ARCHIVED: 'bg-fog text-graphite', CANCELLED: 'bg-red-50 text-red-700' }
 
+  // Estudio Bíblico de la Congregación: detectar si falta el lector para
+  // mostrar "Sin lector asignado" + acción "Asignar lector".
+  const cbsReaderPart = parts.find((p) => p.assignmentType === 'CONGREGATION_BIBLE_STUDY_READER')
+  const hasCbsConductor =
+    week.assignments.some((a) => a.assignmentType === 'CONGREGATION_BIBLE_STUDY_CONDUCTOR' && a.status !== 'CANCELLED') ||
+    parts.some((p) => p.assignmentType === 'CONGREGATION_BIBLE_STUDY_CONDUCTOR')
+  const hasCbsReaderAssignment = week.assignments.some(
+    (a) => a.assignmentType === 'CONGREGATION_BIBLE_STUDY_READER' && a.status !== 'CANCELLED',
+  )
+  const cbsReaderMissing = hasCbsConductor && !hasCbsReaderAssignment && !!cbsReaderPart
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -468,7 +481,7 @@ export default function SemanaDetallePage() {
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <button
-          onClick={() => { setEditingAssignment(null); setShowForm(true) }}
+          onClick={() => { setEditingAssignment(null); setFormInitialPartId(undefined); setShowForm(true) }}
           className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity"
         >
           Agregar asignacion
@@ -506,6 +519,21 @@ export default function SemanaDetallePage() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-ink tracking-tight">Asignaciones</h2>
         </div>
+
+        {cbsReaderMissing && (
+          <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-card border border-amber-200 bg-amber-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-amber-800">Estudio Bíblico de la Congregación: sin lector asignado</p>
+              <p className="text-xs text-amber-700 mt-0.5">Esta parte necesita conductor y lector. Falta asignar el lector.</p>
+            </div>
+            <button
+              onClick={() => { setEditingAssignment(null); setFormInitialPartId(cbsReaderPart!.id); setShowForm(true) }}
+              className="shrink-0 bg-azure text-white text-sm font-medium px-4 py-2 rounded-pill hover:opacity-90 transition-opacity"
+            >
+              Asignar lector
+            </button>
+          </div>
+        )}
 
         {week.assignments.length === 0 ? (
           <div className="text-center py-12">
@@ -568,7 +596,7 @@ export default function SemanaDetallePage() {
                         <td className="py-3 px-2">
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => { setEditingAssignment(a); setShowForm(true) }}
+                              onClick={() => { setEditingAssignment(a); setFormInitialPartId(undefined); setShowForm(true) }}
                               className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5 transition-colors"
                               title="Editar"
                             >
@@ -665,7 +693,7 @@ export default function SemanaDetallePage() {
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-silver-mist/50">
-                      <button onClick={() => { setEditingAssignment(a); setShowForm(true) }} className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5 transition-colors">Editar</button>
+                      <button onClick={() => { setEditingAssignment(a); setFormInitialPartId(undefined); setShowForm(true) }} className="text-azure text-xs font-medium px-2 py-1 rounded-lg hover:bg-azure/5 transition-colors">Editar</button>
                       <button onClick={() => setViewingReminders(a)} className="text-graphite text-xs font-medium px-2 py-1 rounded-lg hover:bg-fog transition-colors">Recordatorios</button>
                       {canGenerate(a.status) && (
                         <>
@@ -699,7 +727,8 @@ export default function SemanaDetallePage() {
           assignment={editingAssignment}
           parts={parts}
           existingNumbers={(week?.assignments || []).map((a) => a.assignmentNumber)}
-          onClose={() => { setShowForm(false); setEditingAssignment(null) }}
+          initialPartId={formInitialPartId}
+          onClose={() => { setShowForm(false); setEditingAssignment(null); setFormInitialPartId(undefined) }}
           onSuccess={handleFormSuccess}
         />
       )}

@@ -344,3 +344,44 @@ test("autofillOpeningPartsFromChairman alinea solo inicio, respeta oración fina
   assert.equal(assignments[2].assignedPublisherId, "chair");
   assert.equal(assignments[3].assignedPublisherId, "otro3", "la oración final no se toca");
 });
+
+
+// ─── Estudio Bíblico de la Congregación: lector ──────────────────────────────
+
+const cbsSlots = [
+  { assignmentNumber: 1, section: "LIVING_AS_CHRISTIANS" as const, assignmentType: "CONGREGATION_BIBLE_STUDY_CONDUCTOR", title: "Estudio bíblico de la congregación", room: "MAIN" as const, needsCompanion: false },
+  { assignmentNumber: 2, section: "LIVING_AS_CHRISTIANS" as const, assignmentType: "CONGREGATION_BIBLE_STUDY_READER", title: "Lector del estudio bíblico", room: "MAIN" as const, needsCompanion: false },
+];
+
+test("el lector del EBC solo se elige entre publicadores con canReadCBS", () => {
+  const publishers = [
+    pub("cond", "Conductor", { gender: "MALE", canConductCBS: true, canReadCBS: false }),
+    pub("r1", "Lector1", { gender: "MALE", canConductCBS: false, canReadCBS: true }),
+    pub("r2", "Lector2", { gender: "MALE", canConductCBS: false, canReadCBS: true }),
+    pub("x", "SinCap", { gender: "MALE", canConductCBS: false, canReadCBS: false }),
+    pub("f", "Fem", { gender: "FEMALE", canReadCBS: false }),
+  ];
+  const { assignments } = buildAssignmentProposal({
+    weeks: [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [], slots: cbsSlots }],
+    publishers,
+    history: emptyHistory,
+  });
+  const reader = assignments.find((a) => a.assignmentType === "CONGREGATION_BIBLE_STUDY_READER")!;
+  assert.ok(reader, "debe existir asignación de lector");
+  assert.ok(["r1", "r2"].includes(reader.assignedPublisherId), "el lector debe tener canReadCBS");
+});
+
+test("si no hay lector elegible, el EBC queda sin lector y se avisa", () => {
+  const publishers = [
+    pub("cond", "Conductor", { gender: "MALE", canConductCBS: true, canReadCBS: false }),
+    pub("x", "SinCap", { gender: "MALE", canReadCBS: false }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({
+    weeks: [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [], slots: cbsSlots }],
+    publishers,
+    history: emptyHistory,
+  });
+  const reader = assignments.find((a) => a.assignmentType === "CONGREGATION_BIBLE_STUDY_READER");
+  assert.equal(reader, undefined, "sin candidatos no se asigna lector");
+  assert.ok(warnings.some((w) => w.toLowerCase().includes("lector") || w.includes("Lector")), "debe advertir sobre el lector");
+});
