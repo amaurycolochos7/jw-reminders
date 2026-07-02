@@ -1480,3 +1480,74 @@ Desplegado en Dokploy (`compose.deploy`, `composeStatus=done`). Verificado en
 producción: `GET /api/version` → `build=p13-shared-phone-allowed`; `GET /api/health`
 → ok; migración `20260702040000_p13_publisher_phone_not_unique` aplicada y el índice
 único `JwPublisher_phone_key` ya no existe en la BD (confirmado en `pg_indexes`).
+
+
+
+---
+
+# Corrección: Lector del Estudio Bíblico de la Congregación (p14)
+
+## Fecha
+
+2026-07-01
+
+## Problema
+
+El Estudio Bíblico de la Congregación (EBC) se importaba de WOL como una sola
+parte (el **conductor**). El **lector** no estaba integrado: no existía como
+parte asignable, por lo que no se podía asignar ni aparecía en la semana.
+
+## Solución
+
+El EBC ahora tiene **dos asignaciones separadas**: conductor y lector.
+
+- **Creación del lector**: al importar la semana, si existe conductor de EBC se
+  crea automáticamente el `MeetingProgramItem` del lector
+  (`CONGREGATION_BIBLE_STUDY_READER`, `sortOrder` reservado 8000, sección
+  "Nuestra Vida Cristiana"). Idempotente; no se crea en semanas sin EBC.
+- **Capacidad**: el lector solo puede ser alguien con `canReadCBS` (capacidad
+  editable en el perfil, distinta de "Lectura de la Biblia"). Es solo para
+  hombres, activos y con permiso de recibir asignaciones. El backend lo valida
+  (400 si es inválido) — reutiliza `isPublisherEligibleForAssignment` +
+  `validateAssignedStatus`.
+- **Generador**: asigna conductor y lector por separado; el lector se elige solo
+  entre `canReadCBS`, de forma distribuida; si no hay candidatos, queda sin
+  asignar y se emite una advertencia.
+- **UI de la semana**: conductor y lector aparecen como filas claras; si falta
+  el lector se muestra "Estudio Bíblico de la Congregación: sin lector asignado"
+  con la acción **"Asignar lector"** (abre el modal directo en esa parte).
+- **Modal**: selectores independientes por tipo (conductor → `canConductCBS`;
+  lector → `canReadCBS`), con textos de ayuda.
+- **Automatizaciones**: el lector genera sus propios recordatorios; si una
+  persona tiene varias partes, se agrupan en un solo mensaje (ya soportado).
+- **Formulario de publicador**: el switch "Ser lector del Estudio Bíblico de la
+  Congregación" ya existía y sigue activable/desactivable.
+
+## Archivos
+
+| Archivo | Cambios |
+|---------|---------|
+| `apps/api/src/services/wol/wol-importer.service.ts` | `ensureCbsReaderPart` (crea el ítem del lector al importar) |
+| `apps/web/src/app/dashboard/semanas/[id]/AssignmentForm.tsx` | Prop `initialPartId` (salto directo a asignar el lector) + textos de ayuda EBC |
+| `apps/web/src/app/dashboard/semanas/[id]/page.tsx` | Aviso "sin lector asignado" + acción "Asignar lector" |
+| `apps/api/src/services/assignment-rules.test.ts`, `assignment-proposal.test.ts` | Pruebas de elegibilidad del lector y del generador |
+
+## Commit y deploy
+
+| Hash | Mensaje |
+|------|---------|
+| `710afb8` | feat(ebc): integrar lector del Estudio Bíblico de la Congregación |
+
+Desplegado en Dokploy (`compose.deploy`, `composeStatus=done`). Verificado en
+producción: `GET /api/version` → `build=p14-cbs-reader`; `GET /api/health` → ok.
+Evidencia funcional: al re-importar una semana de julio 2026, la BD de producción
+quedó con **dos** ítems del EBC — `CONGREGATION_BIBLE_STUDY_CONDUCTOR` (sortOrder
+10) y `CONGREGATION_BIBLE_STUDY_READER` (sortOrder 8000, "Lector del estudio
+bíblico de la congregación").
+
+## Nota sobre datos QA
+
+No se borraron datos de producción. El re-import de una semana de julio fue
+aditivo (creó el ítem del lector) y benigno; el administrador regenerará julio
+para validar el flujo completo. Las semanas ya importadas antes de este cambio
+necesitan re-importarse para obtener la parte del lector.
