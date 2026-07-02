@@ -407,9 +407,12 @@ async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig
     const w = d.assignment!.meetingWeek;
     return {
       meetingDateText: formatDateSpanish(w.meetingDate),
+      meetingTimeText: w.meetingTime,
       sortDate: w.meetingDateLocal || w.meetingDate.toISOString().slice(0, 10),
       sortOrder: d.assignment!.programItem?.sortOrder ?? d.assignment!.assignmentNumber,
+      assignmentNumber: d.assignment!.assignmentNumber,
       title: d.assignment!.title,
+      durationMinutes: d.assignment!.durationMinutes,
       isCompanion: d.recipientRole === "COMPANION",
     };
   });

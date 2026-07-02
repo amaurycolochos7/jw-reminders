@@ -63,21 +63,25 @@ test("aviso inicial mensual: agrupa por fecha, marca acompañante, incluye bendi
     personName: "Javier",
     monthLabel: "Julio 2026",
     items: [
-      { meetingDateText: "viernes 10 de julio", sortDate: "2026-07-10", sortOrder: 1, title: "Presidente de la reunión" },
-      { meetingDateText: "viernes 10 de julio", sortDate: "2026-07-10", sortOrder: 2, title: "Oración inicial" },
-      { meetingDateText: "viernes 3 de julio", sortDate: "2026-07-03", sortOrder: 5, title: "Empiece conversaciones", isCompanion: true },
+      { meetingDateText: "viernes 10 de julio", meetingTimeText: "19:00", sortDate: "2026-07-10", sortOrder: 1, assignmentNumber: 1, title: "Presidente de la reunión" },
+      { meetingDateText: "viernes 10 de julio", meetingTimeText: "19:00", sortDate: "2026-07-10", sortOrder: 2, assignmentNumber: 2, title: "Oración inicial" },
+      { meetingDateText: "viernes 3 de julio", meetingTimeText: "19:00", sortDate: "2026-07-03", sortOrder: 5, assignmentNumber: 4, title: "Empiece conversaciones", durationMinutes: 3, isCompanion: true },
     ],
   });
-  // Ordena por fecha: 3 de julio antes que 10 de julio.
-  assert.ok(msg.indexOf("viernes 3 de julio") < msg.indexOf("viernes 10 de julio"));
-  // Marca acompañante.
-  assert.ok(msg.includes("Empiece conversaciones (como acompañante)"));
-  // Agrupa las dos partes del 10 de julio bajo la misma fecha.
-  assert.ok(msg.includes("Presidente de la reunión") && msg.includes("Oración inicial"));
+  // Ordena por fecha: 3 de julio antes que 10 de julio (encabezado capitalizado).
+  assert.ok(msg.indexOf("Viernes 3 de julio") < msg.indexOf("Viernes 10 de julio"));
+  // Marca acompañante y muestra duración/número.
+  assert.ok(msg.includes("como acompañante"));
+  assert.ok(msg.includes("4. Empiece conversaciones") && msg.includes("3 min"));
+  // Fecha en negrita y hora en 12h.
+  assert.ok(msg.includes("*Viernes 3 de julio* — 7:00 p.m."));
+  // Mes en negrita.
+  assert.ok(msg.includes("*Julio 2026*"));
+  // Sin emoji de calendario.
+  assert.ok(!msg.includes("📅"));
   // Bendición y sin puntualidad.
   assert.ok(msg.includes("Que Jehová bendiga su esfuerzo y preparación"));
   assert.ok(!/puntual|temprano/i.test(msg));
-  assert.ok(msg.includes("Julio 2026"));
 });
 
 test("recordatorio agrupado incluye bendición y no menciona puntualidad", () => {

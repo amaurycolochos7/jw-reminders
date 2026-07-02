@@ -1,5 +1,5 @@
 import { prisma } from "@jw-reminders/database";
-import { renderTemplate, ASSIGNMENT_TYPE_LABELS, ROOM_LABELS, formatDateSpanish } from "@jw-reminders/shared";
+import { renderTemplate, ASSIGNMENT_TYPE_LABELS, ROOM_LABELS, formatDateSpanish, formatMeetingTime } from "@jw-reminders/shared";
 
 export async function renderReminderMessage(reminder: any): Promise<string> {
   const { assignment, publisher } = reminder;
@@ -27,7 +27,7 @@ export async function renderReminderMessage(reminder: any): Promise<string> {
     assignmentNumber: String(assignment.assignmentNumber),
     assignmentType: ASSIGNMENT_TYPE_LABELS[assignment.assignmentType] || assignment.assignmentType,
     meetingDate: formatDateSpanish(assignment.meetingWeek.meetingDate),
-    meetingTime: assignment.meetingWeek.meetingTime,
+    meetingTime: formatMeetingTime(assignment.meetingWeek.meetingTime) || assignment.meetingWeek.meetingTime,
     room: ROOM_LABELS[assignment.room] || assignment.room,
     context: assignment.context || "",
     reference: assignment.reference || "",

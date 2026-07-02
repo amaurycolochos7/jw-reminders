@@ -103,12 +103,18 @@ export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): str
 export interface MonthlyInitialItem {
   /** Fecha de la reunión ya formateada en español (p. ej. "viernes 10 de julio"). */
   meetingDateText: string;
+  /** Hora de reunión "HH:mm" (24h) o ya formateada; se muestra en 12h. */
+  meetingTimeText?: string | null;
   /** Clave para ordenar por fecha (p. ej. "2026-07-10"). */
   sortDate: string;
   /** Orden de la parte dentro del programa de esa semana. */
   sortOrder: number;
+  /** Número de la parte en el programa (p. ej. 3). */
+  assignmentNumber?: number | null;
   /** Título de la parte. */
   title: string;
+  /** Duración en minutos, si aplica. */
+  durationMinutes?: number | null;
   /** True si participa como acompañante. */
   isCompanion?: boolean;
 }
@@ -122,13 +128,20 @@ export interface MonthlyInitialInput {
 
 /**
  * Construye el aviso inicial MENSUAL. Determinista y sin efectos.
- * Agrupa las asignaciones por fecha de reunión y las ordena por fecha y por el
- * orden del programa. No incluye recordatorios de puntualidad.
+ * - Agrupa las asignaciones por fecha de reunión (ordenadas por fecha y programa).
+ * - Fecha y mes en *negrita* (formato WhatsApp), sin emojis.
+ * - Cada parte muestra número, título y duración (si aplica); marca acompañante.
+ * - Hora en formato 12 horas. No incluye recordatorios de puntualidad.
  */
 export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
-  const byDate = new Map<string, { text: string; sortDate: string; items: MonthlyInitialItem[] }>();
+  const byDate = new Map<string, { text: string; sortDate: string; time: string | null; items: MonthlyInitialItem[] }>();
   for (const it of input.items) {
-    const g = byDate.get(it.meetingDateText) ?? { text: it.meetingDateText, sortDate: it.sortDate, items: [] };
+    const g = byDate.get(it.meetingDateText) ?? {
+      text: it.meetingDateText,
+      sortDate: it.sortDate,
+      time: formatMeetingTime(it.meetingTimeText ?? null),
+      items: [],
+    };
     g.items.push(it);
     byDate.set(it.meetingDateText, g);
   }
@@ -137,13 +150,16 @@ export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
   const lines: string[] = [];
   lines.push(`Hola ${input.personName}.`);
   lines.push("");
-  lines.push(`Estas son sus asignaciones para las reuniones de ${input.monthLabel}:`);
+  lines.push(`Le compartimos sus asignaciones para las reuniones de *${input.monthLabel}*:`);
   for (const d of dates) {
     lines.push("");
-    lines.push(`📅 ${d.text}`);
+    lines.push(d.time ? `*${capitalize(d.text)}* — ${d.time}` : `*${capitalize(d.text)}*`);
     const parts = [...d.items].sort((a, b) => a.sortOrder - b.sortOrder);
     for (const p of parts) {
-      lines.push(`   • ${p.title}${p.isCompanion ? " (como acompañante)" : ""}`);
+      const num = p.assignmentNumber != null ? `${p.assignmentNumber}. ` : "";
+      const dur = p.durationMinutes != null && p.durationMinutes > 0 ? ` · ${p.durationMinutes} min` : "";
+      const comp = p.isCompanion ? " · como acompañante" : "";
+      lines.push(`• ${num}${p.title}${dur}${comp}`);
     }
   }
   lines.push("");
@@ -151,4 +167,9 @@ export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
   lines.push(BLESSING_LINE);
 
   return lines.join("\n");
+}
+
+/** Pone en mayúscula la primera letra (p. ej. "viernes 10..." -> "Viernes 10..."). */
+function capitalize(s: string): string {
+  return s.length ? s[0].toLocaleUpperCase("es") + s.slice(1) : s;
 }

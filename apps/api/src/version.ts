@@ -6,4 +6,4 @@
  * que el código nuevo está vivo en producción sin mutar datos.
  */
 export const APP_VERSION = "1.0.0";
-export const BUILD_TAG = "p18-seed-templates-fix";
+export const BUILD_TAG = "p19-message-format";
