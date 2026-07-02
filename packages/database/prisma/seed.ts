@@ -62,7 +62,8 @@ Fecha: {{meetingDate}}
 Sala: {{room}}
 Referencia: {{reference}}
 
-Le animamos a prepararse con tiempo.`,
+Le animamos a prepararse con tiempo.
+Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.`,
   },
   {
     type: "THREE_DAYS_BEFORE",
@@ -77,7 +78,8 @@ Sala: {{room}}
 Duración: {{duration}}
 Acompañante: {{companionName}}
 
-Si tiene algún inconveniente, avísenos con la mayor brevedad posible.`,
+Si tiene algún inconveniente, avísenos con la mayor brevedad posible.
+Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.`,
   },
   {
     type: "ONE_DAY_BEFORE",
@@ -91,20 +93,7 @@ Hora: {{meetingTime}}
 Sala: {{room}}
 Duración: {{duration}}
 
-Le deseamos éxito. Recuerde llegar puntual.`,
-  },
-  {
-    type: "SAME_DAY",
-    title: "Recordatorio mismo día",
-    body: `Saludos, {{assignedName}}.
-
-Hoy es su participación en la reunión:
-
-Asignación {{assignmentNumber}}: {{assignmentTitle}}
-Hora: {{meetingTime}}
-Sala: {{room}}
-
-Éxito en su presentación.`,
+Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.`,
   },
   {
     type: "CHANGE_NOTICE",
