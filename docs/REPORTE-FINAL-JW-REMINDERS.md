@@ -1372,3 +1372,73 @@ duración y estado (asignada / sin asignar).
 - La regla mensual del siervo ministerial se valida con las pruebas unitarias
   desplegadas (en producción no hay publicadores nombrados actualmente, por lo que
   no se generó una propuesta real para no crear datos).
+
+
+
+---
+
+# Corrección: Inicio de reunión — presidente, oración inicial, palabras de introducción y oración final (p12)
+
+## Fecha
+
+2026-07-01
+
+## Problema
+
+Las partes del inicio de la reunión (Presidente, Oración inicial, Palabras de
+introducción) se trataban como asignaciones totalmente independientes, generando
+inconsistencias: la oración inicial y las palabras de introducción se asignaban a
+personas distintas del presidente, y las oraciones/presidente mostraban duración
+"0 min".
+
+## Regla implementada
+
+- **Presidente**: rol, sin duración; solo personas capaces de presidir (`canBeChairman`).
+- **Oración inicial** y **Palabras de introducción**: por defecto las realiza el
+  presidente y se **autocompletan** con él. Editables solo a personas capaces de
+  presidir. Al cambiar el presidente se resincronizan, salvo que se hayan editado
+  a mano (marca `autoFilledFromChairman`).
+- **Oración final**: independiente; persona capaz (no necesariamente el presidente).
+- **Duración**: presidente y oraciones **sin duración** (no se muestra ni se guarda
+  "0 min"); palabras de introducción **1 min** (informativa).
+- **Automatizaciones**: si una persona tiene varias partes (p. ej. presidente +
+  oración inicial + palabras de introducción) recibe **un solo mensaje agrupado**
+  (ya soportado por `groupDeliveries` + `buildGroupedPersonMessage`).
+
+## Archivos modificados
+
+| Archivo | Cambios |
+|---------|---------|
+| `packages/shared/src/assignment-rules/index.ts` (+ espejo `apps/web/src/lib/assignment-rules.ts`) | `typeHasNoDuration` (CHAIRMAN/OPENING_PRAYER/CLOSING_PRAYER) e `isChairmanAutofillType` (OPENING_PRAYER/OPENING_COMMENTS) |
+| `apps/api/src/services/assignment-proposal.ts` | `autofillOpeningPartsFromChairman`: oración inicial + palabras de introducción = presidente de la semana |
+| `apps/api/src/modules/assignments/assignments.service.ts` | `validateAssignedStatus` (rechaza inactivo/eliminado/sin permiso); marca de edición manual; `propagateChairmanToOpeningParts` al cambiar presidente |
+| `apps/api/src/modules/monthly-schedules/monthly-schedules.service.ts` | Marca `autoFilledFromChairman` al generar propuesta/borrador |
+| `packages/database/prisma/schema.prisma` + `migrations/20260702030000_p11_chairman_autofill_flag` | Columna `JwAssignment.autoFilledFromChairman` (aditiva) |
+| `apps/web/src/app/dashboard/semanas/[id]/AssignmentForm.tsx` | Oculta duración (Sin duración / 1 min informativa) y textos de ayuda por tipo |
+
+## Pruebas
+
+- `assignment-proposal.test.ts`: autocompletado del inicio; oración final independiente.
+- `assignment-rules.test.ts`: duración por tipo, autofill por tipo, no-elegibles
+  (inactivo/eliminado/sin permiso/mujer) para partes de inicio.
+- `grouping.test.ts`: 3 partes de la misma persona → un solo grupo/mensaje.
+- Verificado: `tsc --noEmit` API+web OK; `next build` compiló y generó tipos y 14/14
+  páginas; suite API completa (12 archivos) y worker verdes.
+
+## Commit y deploy
+
+| Hash | Mensaje |
+|------|---------|
+| `63886a3` | feat(inicio-reunion): oración inicial y palabras de introducción siguen al presidente |
+
+Desplegado en Dokploy (`compose.deploy`, `composeStatus=done`). Verificación en
+producción: `GET /api/version` → `build=p12-chairman-opening-parts`; `GET /api/health`
+→ `{"status":"ok"}`; migración `20260702030000_p11_chairman_autofill_flag` aplicada
+automáticamente al arrancar el contenedor API (`prisma migrate deploy`) — columna
+`JwAssignment.autoFilledFromChairman` confirmada en la BD de producción.
+
+## Nota sobre datos QA
+
+No se crearon datos QA en producción durante este cambio (solo migración de esquema,
+aditiva). El programa de julio 2026 usado en pruebas queda a cargo del administrador
+para borrar/regenerar y validar el nuevo comportamiento.
