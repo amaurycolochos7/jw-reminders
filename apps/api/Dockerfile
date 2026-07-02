@@ -12,6 +12,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
+COPY templates/ ./templates/
 
 RUN pnpm --filter @jw-reminders/shared build
 RUN pnpm --filter @jw-reminders/database generate
