@@ -86,6 +86,7 @@ export async function renderReminderMessage(reminder: any): Promise<string> {
     return buildMonthlyInitialMessage({
       personName,
       monthName: MESES_ES_LOWER[monthIndex] ?? MESES_ES_LOWER[meetingDate.getUTCMonth()],
+      showDuration: false,
       items: [
         {
           ...part,
@@ -96,14 +97,13 @@ export async function renderReminderMessage(reminder: any): Promise<string> {
     });
   }
 
-  // Recordatorios 7/3/1 días. El de 7 días omite hora y duración.
-  const isSevenDay = reminderType === "SEVEN_DAYS_BEFORE";
+  // Recordatorios 7/3/1 días: todos sin hora ni duración.
   return buildGroupedPersonMessage({
     personName,
     meetingDateText: formatDateSpanish(meetingDate),
     meetingTimeText: assignment.meetingWeek.meetingTime,
     parts: [part],
-    showTime: !isSevenDay,
-    showDuration: !isSevenDay,
+    showTime: false,
+    showDuration: false,
   });
 }

@@ -299,6 +299,23 @@ test("Recordatorio de 7 días: SIN hora y SIN duración, sin repetir sección/t�
   assertNoEmptyGaps(msg);
 });
 
+test("Aviso inicial con showDuration=false: no imprime la duración de ninguna parte", () => {
+  const msg = buildMonthlyInitialMessage({
+    personName: "Julio Díaz",
+    monthName: "julio",
+    showDuration: false,
+    items: [
+      { ...TESOROS, meetingDateText: "viernes 10 de julio de 2026", sortDate: "2026-07-10" },
+      { ...NVC, meetingDateText: "viernes 10 de julio de 2026", sortDate: "2026-07-10" },
+    ],
+  });
+  assert.ok(!/\bminutos?\b/.test(msg), "el aviso inicial no debe incluir duración");
+  assert.ok(msg.includes("*Tesoros de la Biblia*") && msg.includes("Predique con valor"));
+  assert.ok(msg.includes("*Nuestra Vida Cristiana*") && msg.includes("Logremos la unidad"));
+  assertMarkdownOk(msg);
+  assertNoEmptyGaps(msg);
+});
+
 test("formatMeetingTime convierte 24h a am/pm y respeta valores no reconocidos", () => {
   assert.equal(formatMeetingTime("19:00"), "7:00 p.m.");
   assert.equal(formatMeetingTime("09:30"), "9:30 a.m.");

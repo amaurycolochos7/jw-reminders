@@ -198,6 +198,8 @@ export interface MonthlyInitialInput {
   /** Nombre del mes en minúscula, p. ej. "julio". */
   monthName: string;
   items: MonthlyInitialItem[];
+  /** Mostrar la duración de cada parte. Por defecto true. */
+  showDuration?: boolean;
 }
 
 /**
@@ -221,7 +223,7 @@ export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
   for (const d of dates) {
     lines.push("");
     lines.push(`*${dateHeader(d.text)}*`); // fecha en negrita, SIN hora
-    appendParts(lines, d.items);
+    appendParts(lines, d.items, { showDuration: input.showDuration !== false });
   }
 
   lines.push("");
