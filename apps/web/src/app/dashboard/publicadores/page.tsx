@@ -30,13 +30,11 @@ interface Publisher {
   canBibleReading: boolean
   canGiveTalk: boolean
   canBeChairman: boolean
-  canPray: boolean
   canTreasures: boolean
   canSpiritualGems: boolean
   canChristianLife: boolean
   canConductCBS: boolean
   canReadCBS: boolean
-  canConcludingRemarks: boolean
   notes: string | null
   deletedAt: string | null
 }
@@ -78,13 +76,11 @@ const emptyForm: FormState = {
   canBibleReading: false,
   canGiveTalk: false,
   canBeChairman: false,
-  canPray: false,
   canTreasures: false,
   canSpiritualGems: false,
   canChristianLife: false,
   canConductCBS: false,
   canReadCBS: false,
-  canConcludingRemarks: false,
 }
 
 const APPOINTMENT_LABEL: Record<AppointmentValue, string> = {
@@ -180,13 +176,11 @@ export default function PublicadoresPage() {
       canBibleReading: p.canBibleReading,
       canGiveTalk: p.canGiveTalk,
       canBeChairman: p.canBeChairman,
-      canPray: p.canPray,
       canTreasures: p.canTreasures,
       canSpiritualGems: p.canSpiritualGems,
       canChristianLife: p.canChristianLife,
       canConductCBS: p.canConductCBS,
       canReadCBS: p.canReadCBS,
-      canConcludingRemarks: p.canConcludingRemarks,
     })
     setError('')
     setShowForm(true)
@@ -244,13 +238,11 @@ export default function PublicadoresPage() {
       canBibleReading: form.canBibleReading,
       canGiveTalk: form.canGiveTalk,
       canBeChairman: form.canBeChairman,
-      canPray: form.canPray,
       canTreasures: form.canTreasures,
       canSpiritualGems: form.canSpiritualGems,
       canChristianLife: form.canChristianLife,
       canConductCBS: form.canConductCBS,
       canReadCBS: form.canReadCBS,
-      canConcludingRemarks: form.canConcludingRemarks,
     })
     if (capErrors.length > 0) {
       setError(capErrors.join(' '))
@@ -272,13 +264,11 @@ export default function PublicadoresPage() {
         canBibleReading: form.canBibleReading,
         canGiveTalk: form.canGiveTalk,
         canBeChairman: form.canBeChairman,
-        canPray: form.canPray,
         canTreasures: form.canTreasures,
         canSpiritualGems: form.canSpiritualGems,
         canChristianLife: form.canChristianLife,
         canConductCBS: form.canConductCBS,
         canReadCBS: form.canReadCBS,
-        canConcludingRemarks: form.canConcludingRemarks,
       }
       if (form.displayName) body.displayName = form.displayName
       if (form.gender) body.gender = form.gender
@@ -488,6 +478,9 @@ export default function PublicadoresPage() {
                   <div className="divide-y divide-silver-mist/60">
                     {MEETING_CAPS.map(renderCapToggle)}
                   </div>
+                  <p className="text-xs text-graphite mt-2 p-2.5 bg-fog rounded-xl">
+                    El presidente también puede realizar la oración inicial, la oración final y las palabras de conclusión.
+                  </p>
                 </div>
               </section>
 

@@ -124,3 +124,44 @@ test("mujer con canParticipateSMM sí es elegible para partes de estudiante", ()
   assert.equal(isPublisherEligibleForAssignment(woman, "START_CONVERSATION", "ASSIGNEE"), true);
   assert.equal(isPublisherEligibleForAssignment(woman, "START_CONVERSATION", "COMPANION"), true);
 });
+
+
+
+// ─── Simplificación: "Ser presidente" implica oración inicial/final y conclusión ───
+
+test("oración inicial, oración final y palabras de conclusión requieren canBeChairman", () => {
+  assert.equal(requiredCapabilityForType("OPENING_PRAYER"), "canBeChairman");
+  assert.equal(requiredCapabilityForType("CLOSING_PRAYER"), "canBeChairman");
+  assert.equal(requiredCapabilityForType("CONCLUDING_COMMENTS"), "canBeChairman");
+  // El presidente y las palabras de introducción también.
+  assert.equal(requiredCapabilityForType("CHAIRMAN"), "canBeChairman");
+  assert.equal(requiredCapabilityForType("OPENING_COMMENTS"), "canBeChairman");
+});
+
+test("un presidente es elegible para presidente, oraciones y conclusión", () => {
+  const chairman = {
+    isActive: true,
+    deletedAt: null,
+    canReceiveAssignments: true,
+    canBeCompanion: true,
+    gender: "MALE" as const,
+    canBeChairman: true,
+  };
+  for (const type of ["CHAIRMAN", "OPENING_PRAYER", "CLOSING_PRAYER", "CONCLUDING_COMMENTS", "OPENING_COMMENTS"]) {
+    assert.equal(isPublisherEligibleForAssignment(chairman, type), true, `presidente debe poder ${type}`);
+  }
+});
+
+test("un publicador SIN capacidad de presidente NUNCA es elegible para esas partes", () => {
+  const nonChairman = {
+    isActive: true,
+    deletedAt: null,
+    canReceiveAssignments: true,
+    canBeCompanion: true,
+    gender: "MALE" as const,
+    canBeChairman: false,
+  };
+  for (const type of ["CHAIRMAN", "OPENING_PRAYER", "CLOSING_PRAYER", "CONCLUDING_COMMENTS", "OPENING_COMMENTS"]) {
+    assert.equal(isPublisherEligibleForAssignment(nonChairman, type), false, `no-presidente no debe poder ${type}`);
+  }
+});

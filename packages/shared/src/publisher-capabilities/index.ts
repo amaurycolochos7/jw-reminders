@@ -27,13 +27,11 @@ export type CapabilityKey =
   | "canBibleReading"
   | "canGiveTalk"
   | "canBeChairman"
-  | "canPray"
   | "canTreasures"
   | "canSpiritualGems"
   | "canChristianLife"
   | "canConductCBS"
-  | "canReadCBS"
-  | "canConcludingRemarks";
+  | "canReadCBS";
 
 export interface CapabilityMeta {
   key: CapabilityKey;
@@ -65,14 +63,20 @@ export const CAPABILITIES: CapabilityMeta[] = [
   { key: "canGiveTalk", label: "Hacer discurso", group: "basic", maleOnly: true },
   // Partes de la reunión
   { key: "canBeChairman", label: "Ser presidente", group: "meeting", maleOnly: true },
-  { key: "canPray", label: "Hacer oración", group: "meeting", maleOnly: true },
   { key: "canTreasures", label: "Hacer Tesoros de la Biblia", group: "meeting", maleOnly: true },
   { key: "canSpiritualGems", label: "Hacer Perlas Escondidas", group: "meeting", maleOnly: true },
   { key: "canChristianLife", label: "Hacer Nuestra Vida Cristiana", group: "meeting", maleOnly: true },
   { key: "canConductCBS", label: "Conducir Estudio Bíblico de la Congregación", group: "meeting", maleOnly: true },
   { key: "canReadCBS", label: "Ser lector del Estudio Bíblico de la Congregación", group: "meeting", maleOnly: true },
-  { key: "canConcludingRemarks", label: "Hacer palabras de conclusión", group: "meeting", maleOnly: true },
 ];
+
+// NOTA (simplificación): "Ser presidente" (canBeChairman) implica automáticamente
+// poder hacer la oración inicial, la oración final y las palabras de conclusión.
+// Por eso "Hacer oración" (canPray) y "Hacer palabras de conclusión"
+// (canConcludingRemarks) YA NO son capacidades editables: la elegibilidad de esas
+// partes se decide únicamente con canBeChairman (ver assignment-rules). Las
+// columnas siguen existiendo en la base de datos por compatibilidad, pero no se
+// exponen ni se validan como capacidades independientes.
 
 /** Subconjunto de capacidades estrictamente reservadas a hombres. */
 export const MALE_ONLY_CAPABILITIES: CapabilityKey[] = CAPABILITIES.filter((c) => c.maleOnly).map((c) => c.key);
@@ -181,13 +185,11 @@ export function suggestCapabilities(input: {
     canBibleReading: false,
     canGiveTalk: false,
     canBeChairman: false,
-    canPray: false,
     canTreasures: false,
     canSpiritualGems: false,
     canChristianLife: false,
     canConductCBS: false,
     canReadCBS: false,
-    canConcludingRemarks: false,
   };
 
   // Común a todos: puede recibir asignaciones, ser acompañante y participar en SMM.
@@ -219,13 +221,11 @@ export function suggestCapabilities(input: {
   if (appointment === "ELDER" || appointment === "MINISTERIAL_SERVANT") {
     caps.canGiveTalk = true;
     caps.canBeChairman = true;
-    caps.canPray = true;
     caps.canTreasures = true;
     caps.canSpiritualGems = true;
     caps.canChristianLife = true;
     caps.canConductCBS = true;
     caps.canReadCBS = true;
-    caps.canConcludingRemarks = true;
   }
 
   return caps;

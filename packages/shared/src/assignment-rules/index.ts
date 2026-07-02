@@ -325,13 +325,11 @@ export interface EligibilityPublisher {
   canParticipateSMM?: boolean;
   // ─── Capacidades de partes de reunión (Fase 3) ───
   canBeChairman?: boolean;
-  canPray?: boolean;
   canTreasures?: boolean;
   canSpiritualGems?: boolean;
   canChristianLife?: boolean;
   canConductCBS?: boolean;
   canReadCBS?: boolean;
-  canConcludingRemarks?: boolean;
 }
 
 /** Capacidad de publicador que un tipo de asignación puede requerir. */
@@ -340,13 +338,11 @@ export type RequiredCapability =
   | "canGiveTalk"
   | "canParticipateSMM"
   | "canBeChairman"
-  | "canPray"
   | "canTreasures"
   | "canSpiritualGems"
   | "canChristianLife"
   | "canConductCBS"
-  | "canReadCBS"
-  | "canConcludingRemarks";
+  | "canReadCBS";
 
 /**
  * Capacidad requerida por tipo de asignación. `null` = sin capacidad específica
@@ -366,16 +362,18 @@ export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   TALK: "canGiveTalk",
   OTHER: null,
   // ─── Fase 3 ───
+  // "Ser presidente" implica automáticamente oración inicial, oración final y
+  // palabras de conclusión: esas tres partes se deciden con canBeChairman.
   CHAIRMAN: "canBeChairman",
   OPENING_COMMENTS: "canBeChairman",
-  OPENING_PRAYER: "canPray",
+  OPENING_PRAYER: "canBeChairman",
   TREASURES_TALK: "canTreasures",
   SPIRITUAL_GEMS: "canSpiritualGems",
   CHRISTIAN_LIVING: "canChristianLife",
   CONGREGATION_BIBLE_STUDY_CONDUCTOR: "canConductCBS",
   CONGREGATION_BIBLE_STUDY_READER: "canReadCBS",
-  CONCLUDING_COMMENTS: "canConcludingRemarks",
-  CLOSING_PRAYER: "canPray",
+  CONCLUDING_COMMENTS: "canBeChairman",
+  CLOSING_PRAYER: "canBeChairman",
   SONG: null,
 };
 

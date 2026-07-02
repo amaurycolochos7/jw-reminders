@@ -41,13 +41,11 @@ interface Publisher {
   canGiveTalk?: boolean
   canParticipateSMM?: boolean
   canBeChairman?: boolean
-  canPray?: boolean
   canTreasures?: boolean
   canSpiritualGems?: boolean
   canChristianLife?: boolean
   canConductCBS?: boolean
   canReadCBS?: boolean
-  canConcludingRemarks?: boolean
 }
 interface Proposal {
   programId: string

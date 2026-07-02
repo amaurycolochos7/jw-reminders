@@ -22,13 +22,11 @@ const createSchema = z.object({
   canBibleReading: z.boolean().optional(),
   canGiveTalk: z.boolean().optional(),
   canBeChairman: z.boolean().optional(),
-  canPray: z.boolean().optional(),
   canTreasures: z.boolean().optional(),
   canSpiritualGems: z.boolean().optional(),
   canChristianLife: z.boolean().optional(),
   canConductCBS: z.boolean().optional(),
   canReadCBS: z.boolean().optional(),
-  canConcludingRemarks: z.boolean().optional(),
   notes: z.string().optional(),
 });
 

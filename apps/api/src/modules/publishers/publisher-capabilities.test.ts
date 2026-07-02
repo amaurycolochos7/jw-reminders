@@ -26,9 +26,9 @@ test("mujer con capacidades masculinas en false es válida", () => {
   assert.equal(errors.length, 0);
 });
 
-test("mujer no puede Perlas Escondidas ni Palabras de conclusión (ahora estrictas)", () => {
+test("mujer no puede Perlas Escondidas ni ser presidente (estrictas)", () => {
   assert.ok(validatePublisherCapabilities({ gender: "FEMALE", canSpiritualGems: true }).length > 0);
-  assert.ok(validatePublisherCapabilities({ gender: "FEMALE", canConcludingRemarks: true }).length > 0);
+  assert.ok(validatePublisherCapabilities({ gender: "FEMALE", canBeChairman: true }).length > 0);
 });
 
 test("mujer no puede ser nombrada (anciano/siervo)", () => {
@@ -49,7 +49,6 @@ test("hombre puede tener todas las capacidades", () => {
     canBibleReading: true,
     canGiveTalk: true,
     canBeChairman: true,
-    canPray: true,
     canTreasures: true,
     canChristianLife: true,
     canConductCBS: true,
@@ -98,7 +97,6 @@ test("suggestCapabilities: hombre no bautizado tiene lectura pero no discurso ni
   assert.equal(caps.canBibleReading, true);
   assert.equal(caps.canGiveTalk, false);
   assert.equal(caps.canBeChairman, false);
-  assert.equal(caps.canPray, false);
 });
 
 test("suggestCapabilities: hombre bautizado sin nombramiento añade discurso", () => {
@@ -113,12 +111,10 @@ test("suggestCapabilities: anciano/siervo tiene todas las capacidades", () => {
   for (const appointment of ["ELDER", "MINISTERIAL_SERVANT"] as const) {
     const caps = suggestCapabilities({ gender: "MALE", isBaptized: true, appointment });
     assert.equal(caps.canBeChairman, true);
-    assert.equal(caps.canPray, true);
     assert.equal(caps.canTreasures, true);
     assert.equal(caps.canChristianLife, true);
     assert.equal(caps.canConductCBS, true);
     assert.equal(caps.canReadCBS, true);
-    assert.equal(caps.canConcludingRemarks, true);
     assert.ok(isValidPublisherCapabilities({ gender: "MALE", appointment, ...caps }));
   }
 });
