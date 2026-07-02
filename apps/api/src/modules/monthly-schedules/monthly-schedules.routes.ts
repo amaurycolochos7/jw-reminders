@@ -5,6 +5,7 @@ import { addDaysToLocalDate } from "../../services/date-utils.js";
 import { createAutomationEvent, monthlyScheduleParts } from "../../services/automation.service.js";
 import { getWolWeekCoordinates } from "@jw-reminders/shared";
 import { importWeeksConcurrently } from "../../services/wol/wol-importer.service.js";
+import { generateS140, fetchS140Data, validateExportData } from "../../services/s140-export/index.js";
 import * as service from "./monthly-schedules.service.js";
 
 const router = Router();
@@ -276,6 +277,64 @@ router.post("/:id/discard-proposal", async (req: Request<{ id: string }>, res: R
 router.post("/:id/approve-proposal", async (req: Request<{ id: string }>, res: Response) => {
   try {
     res.json(await service.approveProposal(req.params.id));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── S-140 Export ────────────────────────────────────────
+
+router.get("/:id/export/s140", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    // Fetch data
+    const data = await fetchS140Data(req.params.id);
+
+    if (data.weeks.length === 0) {
+      res.status(400).json({ error: "No hay semanas disponibles para exportar." });
+      return;
+    }
+
+    // Generate DOCX
+    const buffer = await generateS140(data);
+
+    // Build filename
+    const schedule = await prisma.monthlySchedule.findUniqueOrThrow({
+      where: { id: req.params.id },
+      select: { year: true, month: true, name: true },
+    });
+    const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const filename = `S-140_${monthNames[schedule.month - 1]}_${schedule.year}.docx`;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", buffer.length.toString());
+    res.send(buffer);
+  } catch (err: any) {
+    console.error("[S140 Export Error]", err);
+    res.status(500).json({ error: err.message || "Error generando el documento S-140." });
+  }
+});
+
+router.get("/:id/export/s140/validate", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const schedule = await prisma.monthlySchedule.findUniqueOrThrow({
+      where: { id: req.params.id },
+      include: {
+        weeks: {
+          where: { status: { notIn: ["ARCHIVED", "CANCELLED"] } },
+          orderBy: { weekStartDate: "asc" },
+          include: {
+            assignments: {
+              where: { status: { notIn: ["CANCELLED", "PROPOSED"] } },
+              select: { assignmentType: true, section: true },
+            },
+          },
+        },
+      },
+    });
+
+    const validation = validateExportData(schedule.weeks);
+    res.json(validation);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }

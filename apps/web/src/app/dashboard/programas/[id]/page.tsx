@@ -147,6 +147,37 @@ export default function ProgramDetailPage() {
   }
 
   // ─── Program-level actions ─────────────────────────────
+  async function downloadS140() {
+    setBusy('s140')
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      const res = await fetch(`/api/monthly-schedules/${id}/export/s140`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Error desconocido' }))
+        notify('error', data.error || 'No se pudo generar el documento S-140')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const disposition = res.headers.get('content-disposition')
+      const filenameMatch = disposition?.match(/filename="([^"]+)"/)
+      a.download = filenameMatch ? filenameMatch[1] : 'S-140.docx'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      notify('success', 'Documento S-140 descargado')
+    } catch {
+      notify('error', 'Error de conexion al generar S-140')
+    } finally {
+      setBusy('')
+    }
+  }
+
   function askGenerateWeeks() {
     setShowWeekGen(true)
   }
@@ -367,6 +398,21 @@ export default function ProgramDetailPage() {
         <Link href={`/dashboard/programas/${program.id}/propuesta`} className="bg-azure text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity text-center flex-shrink-0">
           Abrir propuesta
         </Link>
+      </div>
+
+      {/* S-140 Export */}
+      <div className="bg-white rounded-card p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-ink">Exportar programa S-140</h2>
+          <p className="text-sm text-graphite mt-1">Descarga el programa oficial de la reunion de entre semana en formato Word (.docx) listo para imprimir.</p>
+        </div>
+        <button
+          onClick={downloadS140}
+          disabled={busy === 's140' || m.totalAssignments === 0}
+          className="bg-emerald-600 text-white text-sm font-medium px-5 py-2.5 rounded-pill hover:opacity-90 transition-opacity disabled:opacity-50 flex-shrink-0"
+        >
+          {busy === 's140' ? 'Generando...' : 'Descargar S-140'}
+        </button>
       </div>
 
       {/* Bulk actions */}
