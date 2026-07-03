@@ -5,13 +5,18 @@
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./whatsapp": {
+      "types": "./dist/whatsapp-idempotency/index.d.ts",
+      "default": "./dist/whatsapp-idempotency/index.js"
+    }
   },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "@types/node": "^22.0.0"
   }
 }

@@ -24,6 +24,29 @@ let manualStop = false;
 let reconnecting = false;
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// H4: tope de reintentos automáticos antes de exigir intervención (QR / manual).
+const MAX_RECONNECT_ATTEMPTS = 10;
+// H4: cuando la desconexión es irrecuperable sin re-escanear (LOGOUT/conflicto),
+// se detiene el bucle y se espera un QR nuevo en lugar de reconectar en loop.
+let awaitingQr = false;
+
+/**
+ * H4 — ¿El motivo de desconexión es irrecuperable sin re-vincular (QR)?
+ * whatsapp-web.js emite en `disconnected` un WAState/Reason. LOGOUT, CONFLICT
+ * (sesión abierta en otro lado), UNPAIRED (dispositivo desvinculado), BANNED o
+ * DEPRECATED_VERSION NO se arreglan reconectando: hay que escanear QR de nuevo.
+ * Reconectar en bucle en esos casos causa el "QR constante" y churn de Chromium.
+ */
+function isUnrecoverableReason(reason: unknown): boolean {
+  const r = String(reason ?? "").toUpperCase();
+  return (
+    r.includes("LOGOUT") ||
+    r.includes("CONFLICT") ||
+    r.includes("UNPAIRED") ||
+    r.includes("BANNED") ||
+    r.includes("DEPRECATED")
+  );
+}
 
 /**
  * Remove Chromium SingletonLock files that prevent launch after unclean shutdown.
@@ -77,10 +100,15 @@ function createClient(): InstanceType<typeof Client> {
         "--disable-extensions",
         "--disable-software-rasterizer",
         "--no-first-run",
-        "--no-zygote",
-        "--single-process",
         "--disable-accelerated-2d-canvas",
         "--disable-features=LockProfileCookieDatabase",
+        // H3: mantener vivo el render en headless (evita "congelar" la pestaña).
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        // NOTA (H3): se ELIMINARON "--single-process" y "--no-zygote" porque son
+        // la causa principal de crashes de Chromium ("Target closed") que el
+        // sistema interpretaba como desconexiones de WhatsApp. Ver auditoría §3.1.
       ],
       timeout: 60000,
     },
@@ -93,6 +121,7 @@ function setupListeners(c: InstanceType<typeof Client>) {
   c.on("qr", (qr: string) => {
     lastQR = qr;
     lastError = null;
+    awaitingQr = false; // ya llegó el QR que esperábamos
     qrcode.generate(qr, { small: true });
     logStatus("QR_REQUIRED");
   });
@@ -110,6 +139,7 @@ function setupListeners(c: InstanceType<typeof Client>) {
     reconnectAttempts = 0;
     reconnecting = false;
     manualStop = false;
+    awaitingQr = false;
     try { connectedNumber = c.info?.wid?.user || null; } catch {}
     logStatus("READY");
   });
@@ -117,8 +147,15 @@ function setupListeners(c: InstanceType<typeof Client>) {
   c.on("disconnected", (reason: string) => {
     lastDisconnected = new Date().toISOString();
     connectedNumber = null;
+    // H4: distinguir el motivo. Un logout/conflicto NO se resuelve reconectando.
+    if (isUnrecoverableReason(reason)) {
+      awaitingQr = true;
+      lastError = `Sesión finalizada (${reason}). Se requiere escanear QR nuevamente.`;
+      logStatus("QR_REQUIRED", `disconnected irrecuperable: ${reason}`);
+      return; // NO entrar en bucle de reconexión.
+    }
     logStatus("DISCONNECTED", reason);
-    // Recuperación automática (salvo desconexión manual).
+    // Recuperación automática solo ante blips transitorios (salvo parada manual).
     if (!manualStop) scheduleReconnect(`evento disconnected: ${reason}`);
   });
 
@@ -185,11 +222,19 @@ function reconnectDelayMs(): number {
  * una desconexión manual. Idempotente ante llamadas solapadas.
  */
 async function scheduleReconnect(reason: string) {
-  if (manualStop || reconnecting) return;
+  if (manualStop || reconnecting || awaitingQr) return;
+  // H4: tope de reintentos. Al superarlo, se deja de reconectar en bucle y se
+  // pide intervención (QR). Evita el churn infinito de Chromium.
+  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    awaitingQr = true;
+    lastError = `Reconexión agotada tras ${MAX_RECONNECT_ATTEMPTS} intentos. Se requiere QR.`;
+    await logStatus("QR_REQUIRED", lastError);
+    return;
+  }
   reconnecting = true;
   reconnectAttempts += 1;
   const delay = reconnectDelayMs();
-  console.log(`[WhatsApp] Reconexión automática en ${Math.round(delay / 1000)}s (intento ${reconnectAttempts}) — ${reason}`);
+  console.log(`[WhatsApp] Reconexión automática en ${Math.round(delay / 1000)}s (intento ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}) — ${reason}`);
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(async () => {
     try {
@@ -202,7 +247,7 @@ async function scheduleReconnect(reason: string) {
       // Si el intento no dejó una sesión utilizable, reprogramar otro intento.
       // (status lo mutan los eventos async de wwebjs; leemos el valor actual.)
       const s = status as string;
-      if (!manualStop && s !== "READY" && s !== "AUTHENTICATED" && s !== "QR_REQUIRED") {
+      if (!manualStop && !awaitingQr && s !== "READY" && s !== "AUTHENTICATED" && s !== "QR_REQUIRED") {
         scheduleReconnect("estado no utilizable tras intento");
       }
     } catch (err: any) {
@@ -215,6 +260,8 @@ async function scheduleReconnect(reason: string) {
 
 export async function initWhatsApp() {
   manualStop = false;
+  awaitingQr = false;
+  reconnectAttempts = 0;
   cleanChromiumLocks(); // Clean any stale locks from previous container
   await logStatus("STARTING");
   try {
@@ -229,6 +276,24 @@ export async function initWhatsApp() {
     }
     // Recuperación automática tras un fallo transitorio de arranque.
     scheduleReconnect(`init failed: ${msg}`);
+  }
+}
+
+/**
+ * H3 — Apagado limpio. Ante SIGTERM/SIGINT (redeploy, reinicio del contenedor)
+ * cerramos Chromium de forma ordenada para NO corromper la sesión de LocalAuth
+ * (evita el "hay que escanear el QR de nuevo" tras cada reinicio) y para no dejar
+ * procesos Chromium zombis. No hace logout (conserva la sesión).
+ */
+export async function gracefulShutdown() {
+  manualStop = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  reconnecting = false;
+  try {
+    await currentClient.destroy();
+    console.log("[WhatsApp] Cliente cerrado limpiamente (graceful shutdown).");
+  } catch (e) {
+    console.error("[WhatsApp] Error en graceful shutdown:", e);
   }
 }
 
@@ -277,6 +342,8 @@ export async function disconnectSession() {
 
 export async function generateQR() {
   manualStop = false;
+  awaitingQr = false;
+  reconnectAttempts = 0;
   // If already connected, disconnect first to generate a new QR
   if (status === "READY" || status === "AUTHENTICATED") {
     try { await currentClient.logout(); } catch {}

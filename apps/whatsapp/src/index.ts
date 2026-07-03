@@ -1,5 +1,5 @@
 import express from "express";
-import { initWhatsApp, status, lastQR, connectedNumber, lastConnected, lastDisconnected, lastError, restartSession, disconnectSession, generateQR, getClient } from "./client/whatsapp.js";
+import { initWhatsApp, status, lastQR, connectedNumber, lastConnected, lastDisconnected, lastError, restartSession, disconnectSession, generateQR, getClient, gracefulShutdown } from "./client/whatsapp.js";
 import { sendMessage } from "./services/message-sender.js";
 
 const app = express();
@@ -26,10 +26,19 @@ app.get("/status", (_req, res) => {
 });
 
 app.post("/send", async (req, res) => {
-  const { phone, message } = req.body;
+  const { phone, message, idempotencyKey } = req.body;
   if (!phone || !message) return res.status(400).json({ error: "phone and message required" });
-  const result = await sendMessage(phone, message);
-  res.status(result.success ? 200 : 400).json(result);
+  const result = await sendMessage(phone, message, idempotencyKey);
+  // Mapear outcome → código HTTP. El worker lee `outcome` del cuerpo en todos los casos.
+  //  SENT/DEDUPED → 200 | NOT_READY → 503 | REJECTED → 422 | UNCERTAIN → 202
+  const code = result.success
+    ? 200
+    : result.outcome === "NOT_READY"
+      ? 503
+      : result.outcome === "REJECTED"
+        ? 422
+        : 202; // UNCERTAIN
+  res.status(code).json(result);
 });
 
 app.post("/restart", async (_req, res) => {
@@ -66,3 +75,19 @@ app.listen(PORT, () => console.log(`[WhatsApp] Server listening on port ${PORT}`
 initWhatsApp().catch((err) => {
   console.error("[WhatsApp] Init failed:", err);
 });
+
+// H3 — Apagado limpio ante redeploy/reinicio del contenedor: cierra Chromium de
+// forma ordenada para no corromper la sesión ni dejar procesos zombis.
+let shuttingDown = false;
+const onSignal = (signal: string) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[WhatsApp] Recibido ${signal}, cerrando…`);
+  gracefulShutdown()
+    .catch((e) => console.error("[WhatsApp] Error al cerrar:", e))
+    .finally(() => process.exit(0));
+  // Salvaguarda: si destroy() se cuelga, forzar salida.
+  setTimeout(() => process.exit(0), 10_000).unref();
+};
+process.on("SIGTERM", () => onSignal("SIGTERM"));
+process.on("SIGINT", () => onSignal("SIGINT"));

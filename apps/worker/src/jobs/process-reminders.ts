@@ -15,6 +15,13 @@ import {
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
 import { groupDeliveries } from "../services/grouping.js";
+import { planFinalState, planReaperTarget } from "../services/delivery-outcome.js";
+import {
+  buildIdempotencyKey,
+  REAPER_STALE_QUEUED_MS,
+  REAPER_STALE_SENDING_MS,
+  type SendResult,
+} from "@jw-reminders/shared/whatsapp";
 
 const BATCH_SIZE = Number(process.env.WORKER_BATCH_SIZE || 50);
 
@@ -183,24 +190,25 @@ async function validateFresh(fresh: FreshDelivery): Promise<boolean> {
     return false;
   }
 
-  // ── Deduplicación con NotificationLog ──
-  // El primer aviso (FIRST_ASSIGNMENT) se envía UNA sola vez por
-  // (asignación, persona). Los recordatorios tienen clave propia y no se bloquean.
+  // ── Deduplicación con NotificationLog (H1) ──
+  // Barrera a nivel de DB contra duplicados: si YA existe una notificación SENT
+  // para esta (asignación, persona, claveDeNotificación), NO se reenvía. Antes
+  // esto solo aplicaba al primer aviso (FIRST_ASSIGNMENT); ahora cubre TAMBIÉN
+  // los recordatorios (7/3/1 días), que eran el principal vector de duplicados
+  // cuando un envío real se reportaba como fallo y se reintentaba.
   const notif = classifyNotification(fresh.reminderType);
-  if (notif.type === "FIRST_ASSIGNMENT") {
-    const already = await prisma.notificationLog.findUnique({
-      where: {
-        assignmentId_recipientPersonId_notificationKey: {
-          assignmentId: assignment.id,
-          recipientPersonId: publisher.id,
-          notificationKey: notif.key,
-        },
+  const already = await prisma.notificationLog.findUnique({
+    where: {
+      assignmentId_recipientPersonId_notificationKey: {
+        assignmentId: assignment.id,
+        recipientPersonId: publisher.id,
+        notificationKey: notif.key,
       },
-    });
-    if (already && already.status === "SENT") {
-      await markSkipped(fresh.id, "Primer aviso ya enviado (NotificationLog)");
-      return false;
-    }
+    },
+  });
+  if (already && already.status === "SENT") {
+    await markSkipped(fresh.id, `Notificación ya enviada (NotificationLog: ${notif.key})`);
+    return false;
   }
 
   return true;
@@ -211,10 +219,13 @@ async function recordDeliveryAudit(
   fresh: FreshDelivery,
   phone: string,
   message: string,
-  result: { success: boolean; messageId?: string; error?: string },
+  result: SendResult,
 ) {
   const { assignment, publisher, automationPlan } = fresh;
   const notif = classifyNotification(fresh.reminderType);
+  const sent = result.success; // SENT o DEDUPED
+  const uncertain = result.outcome === "UNCERTAIN";
+  const errText = uncertain ? `UNCERTAIN: ${result.error || "resultado ambiguo"}` : (result.error || undefined);
 
   await prisma.jwMessageLog.create({
     data: {
@@ -226,16 +237,23 @@ async function recordDeliveryAudit(
       messageType: fresh.reminderType,
       messageBody: message,
       providerMessageId: result.messageId || undefined,
-      status: result.success ? "SENT" : "FAILED",
-      errorMessage: result.error || undefined,
-      sentAt: result.success ? new Date() : undefined,
+      status: sent ? "SENT" : "FAILED",
+      errorMessage: errText,
+      sentAt: sent ? new Date() : undefined,
     },
   });
   await event("MESSAGE_ATTEMPT_CREATED", "ReminderDelivery", fresh.id, {
-    success: result.success,
+    success: sent,
+    outcome: result.outcome,
+    deduped: !!result.deduped,
+    messageId: result.messageId ?? null,
+    phone,
+    idempotencyKey: fresh.idempotencyKey ?? null,
     attemptCount: fresh.attemptCount + 1,
   });
 
+  // NotificationLog: SENT solo si realmente se envió/dedupeó. UNCERTAIN NO marca
+  // SENT (no bloquea una eventual reconciliación/reenvío consciente).
   await prisma.notificationLog.upsert({
     where: {
       assignmentId_recipientPersonId_notificationKey: {
@@ -249,54 +267,88 @@ async function recordDeliveryAudit(
       recipientPersonId: publisher!.id,
       notificationType: notif.type,
       notificationKey: notif.key,
-      status: result.success ? "SENT" : "FAILED",
-      sentAt: result.success ? new Date() : null,
+      status: sent ? "SENT" : "FAILED",
+      sentAt: sent ? new Date() : null,
       whatsappMessageId: result.messageId || null,
       errorMessage: result.error || null,
     },
     update: {
       notificationType: notif.type,
-      status: result.success ? "SENT" : "FAILED",
-      sentAt: result.success ? new Date() : null,
+      status: sent ? "SENT" : "FAILED",
+      sentAt: sent ? new Date() : null,
       whatsappMessageId: result.messageId || null,
       errorMessage: result.error || null,
     },
   });
 }
 
-/** Actualiza el estado final (SENT / FAILED / DEAD) de un delivery + eventos. */
-async function finalizeDeliveryStatus(
-  fresh: FreshDelivery,
-  result: { success: boolean; error?: string },
-) {
-  const attemptCount = fresh.attemptCount + 1;
-  const terminalFailure = !result.success && attemptCount >= fresh.maxAttempts;
-  const failedStatus: ReminderStatus = terminalFailure ? "DEAD" : "FAILED";
+/**
+ * Actualiza el estado final del delivery según el OUTCOME del envío (H1/H3/H5):
+ *  - SENT/DEDUPED → SENT.
+ *  - NOT_READY   → vuelve a PENDING (nada enviado; reintento pronto, sin contar intento).
+ *  - UNCERTAIN   → UNCERTAIN (ambiguo; NO auto-retry para no duplicar).
+ *  - REJECTED    → FAILED (o DEAD si agota intentos).
+ * Emite eventos enriquecidos con prevStatus/newStatus/reason/outcome/idempotencyKey.
+ */
+async function finalizeDeliveryStatus(fresh: FreshDelivery, result: SendResult) {
+  const idempotencyKey = fresh.idempotencyKey ?? null;
+  const plan = planFinalState({ attemptCount: fresh.attemptCount, maxAttempts: fresh.maxAttempts }, result);
+  const attemptCount = fresh.attemptCount + plan.attemptCountDelta;
 
-  if (result.success) {
+  if (plan.status === "SENT") {
     await prisma.reminderDelivery.update({
       where: { id: fresh.id },
-      data: { status: "SENT", attemptCount, sentAt: new Date(), errorMessage: null, nextRetryAt: null },
+      data: { status: "SENT", attemptCount, sentAt: new Date(), errorMessage: null, nextRetryAt: null, uncertainAt: null },
     });
-    await event("REMINDER_SENT", "ReminderDelivery", fresh.id, { attemptCount });
+    await event("REMINDER_SENT", "ReminderDelivery", fresh.id, {
+      prevStatus: "SENDING", newStatus: "SENT", outcome: result.outcome,
+      deduped: !!result.deduped, messageId: result.messageId ?? null, attemptCount, idempotencyKey,
+    });
+    return;
+  }
+
+  if (plan.status === "PENDING") { // NOT_READY: nada enviado, reintento pronto.
+    await prisma.reminderDelivery.update({
+      where: { id: fresh.id },
+      data: { status: "PENDING", nextRetryAt: null, errorMessage: result.error || "Cliente WhatsApp no listo" },
+    });
+    await event("REMINDER_DEFERRED", "ReminderDelivery", fresh.id, {
+      prevStatus: "SENDING", newStatus: "PENDING", reason: "client_not_ready", error: result.error ?? null, idempotencyKey,
+    });
+    return;
+  }
+
+  if (plan.status === "UNCERTAIN") { // Ambiguo: no reintentar automáticamente.
+    await prisma.reminderDelivery.update({
+      where: { id: fresh.id },
+      data: { status: "UNCERTAIN", uncertainAt: new Date(), errorMessage: result.error || "Resultado de envío ambiguo" },
+    });
+    await event("REMINDER_UNCERTAIN", "ReminderDelivery", fresh.id, {
+      prevStatus: "SENDING", newStatus: "UNCERTAIN", reason: "ambiguous_send", error: result.error ?? null, idempotencyKey,
+    });
+    return;
+  }
+
+  // FAILED o DEAD (REJECTED).
+  const nextRetryAt = plan.scheduleRetry ? new Date(Date.now() + retryDelayMs(attemptCount + 1)) : null;
+  await prisma.reminderDelivery.update({
+    where: { id: fresh.id },
+    data: {
+      status: plan.status,
+      attemptCount,
+      errorMessage: result.error || "Unknown WhatsApp error",
+      nextRetryAt,
+      deadAt: plan.terminal ? new Date() : null,
+    },
+  });
+  await event("REMINDER_FAILED", "ReminderDelivery", fresh.id, {
+    prevStatus: "SENDING", newStatus: plan.status,
+    outcome: result.outcome, attemptCount, terminal: plan.terminal, error: result.error ?? null, idempotencyKey,
+  });
+  if (plan.terminal) {
+    await event("REMINDER_DEAD", "ReminderDelivery", fresh.id, { attemptCount, idempotencyKey });
   } else {
-    const nextRetryAt = terminalFailure ? null : new Date(Date.now() + retryDelayMs(attemptCount + 1));
-    await prisma.reminderDelivery.update({
-      where: { id: fresh.id },
-      data: {
-        status: failedStatus,
-        attemptCount,
-        errorMessage: result.error || "Unknown WhatsApp error",
-        nextRetryAt,
-        deadAt: terminalFailure ? new Date() : null,
-      },
-    });
-    await event("REMINDER_FAILED", "ReminderDelivery", fresh.id, { attemptCount, terminal: terminalFailure, error: result.error });
-    if (terminalFailure) {
-      await event("REMINDER_DEAD", "ReminderDelivery", fresh.id, { attemptCount });
-    } else {
-      await event("REMINDER_RETRY_SCHEDULED", "ReminderDelivery", fresh.id, { attemptCount, nextRetryAt });
-    }
+    await event("REMINDER_RETRY_SCHEDULED", "ReminderDelivery", fresh.id, { attemptCount, nextRetryAt, idempotencyKey });
   }
 }
 
@@ -312,20 +364,28 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
     return;
   }
 
-  await prisma.reminderDelivery.update({
-    where: { id: fresh.id },
-    data: { status: "SENDING", lastAttemptAt: new Date() },
-  });
-  await event("REMINDER_SENDING", "ReminderDelivery", fresh.id, { reminderType: fresh.reminderType });
-
   const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
   const message = resolveOutboundMessage(fresh.customMessage, templateMessage);
-  const result = await sendWhatsappMessage(phone, message);
+  // H1: clave idempotente estable por (entrega + teléfono + contenido).
+  const idempotencyKey = buildIdempotencyKey({ deliveryIds: [fresh.id], phone, message });
+  fresh.idempotencyKey = idempotencyKey;
 
-  await recordDeliveryAudit(fresh, phone, message, result);
+  await prisma.reminderDelivery.update({
+    where: { id: fresh.id },
+    data: { status: "SENDING", lastAttemptAt: new Date(), idempotencyKey },
+  });
+  await event("REMINDER_SENDING", "ReminderDelivery", fresh.id, { prevStatus: "QUEUED", newStatus: "SENDING", reminderType: fresh.reminderType, phone, idempotencyKey });
+
+  const result = await sendWhatsappMessage(phone, message, idempotencyKey);
+
+  if (result.outcome !== "NOT_READY") {
+    await recordDeliveryAudit(fresh, phone, message, result);
+  }
   await finalizeDeliveryStatus(fresh, result);
-  // Anti-baneo: pausa ALEATORIA entre mensajes (jitter) en lugar de fija.
-  await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+  // Anti-baneo: jitter solo si hubo intento físico (NOT_READY no consume envío).
+  if (result.outcome !== "NOT_READY") {
+    await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+  }
 }
 
 /** Nombre visible de un publicador (displayName con respaldo en fullName). */
@@ -386,28 +446,38 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
     showDuration: false,
   });
 
+  // H1: UNA sola clave idempotente para el grupo (un único mensaje físico). El
+  // servicio WhatsApp deduplica por esta clave, así que aunque el grupo se
+  // reintente tras un falso negativo, NO se reenvía N veces.
+  const idempotencyKey = buildIdempotencyKey({ deliveryIds: deliveries.map((d) => d.id), phone, message });
+  for (const d of deliveries) d.idempotencyKey = idempotencyKey;
+
   await prisma.reminderDelivery.updateMany({
     where: { id: { in: deliveries.map((d) => d.id) } },
-    data: { status: "SENDING", lastAttemptAt: new Date() },
+    data: { status: "SENDING", lastAttemptAt: new Date(), idempotencyKey },
   });
   for (const d of deliveries) {
-    await event("REMINDER_SENDING", "ReminderDelivery", d.id, { reminderType: d.reminderType, grouped: deliveries.length });
+    await event("REMINDER_SENDING", "ReminderDelivery", d.id, { prevStatus: "QUEUED", newStatus: "SENDING", reminderType: d.reminderType, grouped: deliveries.length, phone, idempotencyKey });
   }
 
-  const result = await sendWhatsappMessage(phone, message);
+  const result = await sendWhatsappMessage(phone, message, idempotencyKey);
 
   // Un JwMessageLog por delivery apuntando al MISMO providerMessageId: conserva
   // la trazabilidad por asignación (reminderDeliveryId/assignmentId) sin perder el
   // vínculo de que fue un único mensaje físico. NotificationLog por asignación.
-  for (const d of deliveries) {
-    await recordDeliveryAudit(d, phone, message, result);
+  if (result.outcome !== "NOT_READY") {
+    for (const d of deliveries) {
+      await recordDeliveryAudit(d, phone, message, result);
+    }
   }
   for (const d of deliveries) {
     await finalizeDeliveryStatus(d, result);
   }
 
-  // Anti-baneo: pausa ALEATORIA entre mensajes (jitter) en lugar de fija.
-  await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+  // Anti-baneo: jitter solo si hubo intento físico.
+  if (result.outcome !== "NOT_READY") {
+    await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+  }
 }
 
 /** Nombre del mes en minúscula (p. ej. "julio") para el aviso inicial. */
@@ -450,19 +520,27 @@ async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig
     showDuration: false,
   });
 
+  // H1: una sola clave idempotente para el aviso mensual (un único mensaje).
+  const idempotencyKey = buildIdempotencyKey({ deliveryIds: deliveries.map((d) => d.id), phone, message });
+  for (const d of deliveries) d.idempotencyKey = idempotencyKey;
+
   await prisma.reminderDelivery.updateMany({
     where: { id: { in: deliveries.map((d) => d.id) } },
-    data: { status: "SENDING", lastAttemptAt: new Date() },
+    data: { status: "SENDING", lastAttemptAt: new Date(), idempotencyKey },
   });
   for (const d of deliveries) {
-    await event("REMINDER_SENDING", "ReminderDelivery", d.id, { reminderType: d.reminderType, monthly: deliveries.length });
+    await event("REMINDER_SENDING", "ReminderDelivery", d.id, { prevStatus: "QUEUED", newStatus: "SENDING", reminderType: d.reminderType, monthly: deliveries.length, phone, idempotencyKey });
   }
 
-  const result = await sendWhatsappMessage(phone, message);
-  for (const d of deliveries) await recordDeliveryAudit(d, phone, message, result);
+  const result = await sendWhatsappMessage(phone, message, idempotencyKey);
+  if (result.outcome !== "NOT_READY") {
+    for (const d of deliveries) await recordDeliveryAudit(d, phone, message, result);
+  }
   for (const d of deliveries) await finalizeDeliveryStatus(d, result);
 
-  await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+  if (result.outcome !== "NOT_READY") {
+    await delay(randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs));
+  }
 }
 
 /**
@@ -509,9 +587,99 @@ function isRichReminderGroup(group: FreshDelivery[]): boolean {
   return true;
 }
 
+/**
+ * H2 — Reaper / reconciliación de entregas atoradas en estados EN VUELO.
+ * El worker normal solo re-escanea PENDING/FAILED; si el proceso murió entre el
+ * claim y el estado final, quedaban filas QUEUED/SENDING atoradas para siempre.
+ * Aquí se rescatan de forma SEGURA (sin duplicar) usando el outbox como evidencia:
+ *  - QUEUED viejo  → nada se envió aún → volver a PENDING.
+ *  - SENDING viejo → consultar WhatsappOutbox por idempotencyKey:
+ *      · SENT       → marcar SENT (el mensaje sí salió).
+ *      · UNCERTAIN  → marcar UNCERTAIN (ambiguo; decisión humana).
+ *      · SENDING    → seguía en vuelo pero atorado → UNCERTAIN.
+ *      · FAILED / sin evidencia → PENDING (seguro reintentar; nada salió).
+ */
+export async function reconcileStuckDeliveries(now: Date = new Date()) {
+  const queuedCutoff = new Date(now.getTime() - REAPER_STALE_QUEUED_MS);
+  const staleQueued = await prisma.reminderDelivery.findMany({
+    where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
+    take: 500,
+    select: { id: true },
+  });
+  for (const d of staleQueued) {
+    await prisma.reminderDelivery.update({ where: { id: d.id }, data: { status: "PENDING" } });
+    await event("REMINDER_REAPED", "ReminderDelivery", d.id, { prevStatus: "QUEUED", newStatus: "PENDING", reason: "stale_queued" });
+  }
+
+  const sendingCutoff = new Date(now.getTime() - REAPER_STALE_SENDING_MS);
+  const staleSending = await prisma.reminderDelivery.findMany({
+    where: { status: "SENDING", updatedAt: { lt: sendingCutoff } },
+    take: 500,
+    select: { id: true, idempotencyKey: true },
+  });
+  for (const d of staleSending) {
+    const outbox = d.idempotencyKey
+      ? await prisma.whatsappOutbox.findUnique({ where: { idempotencyKey: d.idempotencyKey } })
+      : null;
+    const target = planReaperTarget(outbox?.status);
+
+    if (target === "SENT") {
+      await prisma.reminderDelivery.update({
+        where: { id: d.id },
+        data: { status: "SENT", sentAt: outbox?.sentAt ?? new Date(), errorMessage: null },
+      });
+      await event("REMINDER_REAPED", "ReminderDelivery", d.id, { prevStatus: "SENDING", newStatus: "SENT", reason: "outbox_sent", idempotencyKey: d.idempotencyKey });
+    } else if (target === "UNCERTAIN") {
+      await prisma.reminderDelivery.update({
+        where: { id: d.id },
+        data: { status: "UNCERTAIN", uncertainAt: new Date(), errorMessage: outbox?.error || "Reconciliación: envío ambiguo" },
+      });
+      await event("REMINDER_REAPED", "ReminderDelivery", d.id, {
+        prevStatus: "SENDING", newStatus: "UNCERTAIN",
+        reason: outbox?.status === "SENDING" ? "outbox_stuck_sending" : "outbox_uncertain", idempotencyKey: d.idempotencyKey,
+      });
+    } else {
+      // FAILED o sin outbox: no hay evidencia de envío físico → seguro reintentar.
+      await prisma.reminderDelivery.update({
+        where: { id: d.id },
+        data: { status: "PENDING", nextRetryAt: null },
+      });
+      await event("REMINDER_REAPED", "ReminderDelivery", d.id, {
+        prevStatus: "SENDING", newStatus: "PENDING",
+        reason: outbox ? "outbox_failed" : "no_outbox_evidence", idempotencyKey: d.idempotencyKey ?? null,
+      });
+    }
+  }
+
+  if (staleQueued.length || staleSending.length) {
+    console.log(`[Worker] Reaper: ${staleQueued.length} QUEUED y ${staleSending.length} SENDING reconciliados.`);
+  }
+}
+
+// H5 — Serialización del cron: si un tick anterior sigue corriendo (envíos con
+// jitter pueden superar los 10 min), NO se arranca otro en paralelo.
+let isRunning = false;
+
 export async function processReminders() {
+  if (isRunning) {
+    console.log("[Worker] Tick anterior aún en curso; se omite este tick para no solapar.");
+    return;
+  }
+  isRunning = true;
+  try {
+    await runProcessReminders();
+  } finally {
+    isRunning = false;
+  }
+}
+
+async function runProcessReminders() {
   const now = new Date();
   const sendConfig = await getSendConfig();
+
+  // H2: primero rescatar entregas atoradas en vuelo (reconciliación segura).
+  await reconcileStuckDeliveries(now);
+
   const due = await prisma.reminderDelivery.findMany({
     where: {
       OR: [

@@ -1738,3 +1738,80 @@ No se crearon datos QA nuevos en esta corrección (la verificación se hizo con 
 preview, que no envía ni crea registros). El programa **Julio 2026** existente en
 producción es el dato real del usuario y se conserva; con `TEST_MODE=true` todos
 los envíos van al número de prueba.
+
+
+
+---
+
+# Hardening del servicio de WhatsApp (H1–H5)
+
+## Fecha
+
+2026-07-03
+
+## Contexto
+
+Tras la auditoría `docs/WHATSAPP-RELIABILITY-AUDIT.md` (aprobada), se ejecutó una
+fase EXCLUSIVA de endurecimiento del servicio de WhatsApp. Sin nuevas
+funcionalidades de producto, sin tocar diseño/exportación/generador. Objetivo:
+eliminar duplicados, evitar entregas atoradas, manejar el resultado ambiguo,
+estabilizar Chromium/sesión y dejar trazabilidad persistente.
+
+## Qué se corrigió (mapeo a causas raíz de la auditoría)
+
+| Fase | Causa raíz atacada | Solución implementada |
+|------|--------------------|------------------------|
+| **H1** | `SENT` atado al HTTP, sin idempotencia (R1); dedup no cubría recordatorios (R2) | Tabla `WhatsappOutbox` (clave idempotente única, crash-safe en DB compartida). El `/send` NO reenvía si la clave ya está `SENT` (outcome `DEDUPED`); guarda secundaria por `phone+contentHash` reciente. Clave idempotente única por grupo (un solo mensaje físico). Guard `NotificationLog` extendido a TODOS los tipos (incluye recordatorios 7/3/1). |
+| **H2** | Sin reaper de `QUEUED`/`SENDING` (R3) | `reconcileStuckDeliveries()`: `QUEUED` viejo → `PENDING`; `SENDING` viejo → reconciliado con el outbox (`SENT`/`UNCERTAIN`/`PENDING`) sin reenviar lo ya enviado. Se ejecuta al arrancar el worker y en cada tick. |
+| **H3 (ACK/ambiguo)** | `fetch` sin timeout; error de red tratado como fallo → duplicado (R7) | `AbortController` con timeout en el worker. Nuevo estado `UNCERTAIN`: un error de transporte o excepción tras encolar NO se marca `FAILED` ni se reintenta a ciegas. `NOT_READY` vuelve a `PENDING` sin contar intento. |
+| **H3 (Chromium)** | `--single-process` inestable (R4); sin límite de memoria (R5); cierres no limpios (R11) | Eliminados `--single-process` y `--no-zygote`; añadidos flags de estabilidad. `mem_limit`/`init` en docker-compose + `healthcheck`. `gracefulShutdown()` en SIGTERM/SIGINT (no corrompe sesión). |
+| **H4** | Reconexión ignoraba el `reason` → loop/QR constante (R6) | `isUnrecoverableReason()`: `LOGOUT`/`CONFLICT`/`UNPAIRED`/`BANNED`/`DEPRECATED` NO reconectan en bucle (piden QR). Blip transitorio → backoff con tope `MAX_RECONNECT_ATTEMPTS=10`. |
+| **H5** | Trazabilidad insuficiente (R8, R10) | Eventos `JwAutomationEvent` enriquecidos (`prevStatus`, `newStatus`, `reason`, `outcome`, `phone`, `idempotencyKey`, `messageId`). `WhatsappOutbox` persiste cada intento físico (incluye `providerMessageId`). Nuevos eventos `REMINDER_DEFERRED`/`REMINDER_UNCERTAIN`/`REMINDER_REAPED`. |
+
+## Semántica de entrega resultante
+
+- **Duplicados**: el vector principal (envío real reportado como fallo → reintento)
+  queda cortado por la idempotencia del outbox + dedup de `NotificationLog` en
+  recordatorios. El envío agrupado usa UNA clave → no reenvía N veces.
+- **Atoradas**: el reaper reconcilia `QUEUED`/`SENDING` de forma segura; nada
+  queda bloqueado para siempre.
+- **Ambiguo**: se materializa como `UNCERTAIN` (no auto-retry para no duplicar);
+  visible y reenviable conscientemente desde el panel (`send-now`).
+
+## Cambios de datos (migración ADITIVA y segura)
+
+`20260703190000_h1_h5_whatsapp_hardening`:
+- `ReminderStatus` += `UNCERTAIN` (ADD VALUE IF NOT EXISTS).
+- `ReminderDelivery` += `idempotencyKey`, `uncertainAt` (columnas opcionales).
+- Tabla nueva `WhatsappOutbox` (+ índices).
+- No borra ni altera datos existentes. Se aplica sola vía `prisma migrate deploy`
+  al arrancar el contenedor API.
+
+## Archivos modificados / creados
+
+- `packages/database/prisma/schema.prisma` (+enum, +campos, +modelo)
+- `packages/database/prisma/migrations/20260703190000_h1_h5_whatsapp_hardening/migration.sql` (nuevo)
+- `packages/shared/src/whatsapp-idempotency/index.ts` (nuevo; subpath `@jw-reminders/shared/whatsapp`)
+- `packages/shared/package.json` (+@types/node, +exports subpath)
+- `packages/shared/src/delivery-actions/index.ts` (UNCERTAIN en SEND_NOW_STATES)
+- `apps/whatsapp/src/services/message-sender.ts` (idempotencia + outcome)
+- `apps/whatsapp/src/index.ts` (`/send` con idempotencyKey + graceful shutdown)
+- `apps/whatsapp/src/client/whatsapp.ts` (estabilidad Chromium + reconexión por reason)
+- `apps/worker/src/services/whatsapp-client.ts` (timeout + outcome)
+- `apps/worker/src/services/delivery-outcome.ts` (+ test) (helpers puros)
+- `apps/worker/src/services/idempotency.test.ts` (nuevo)
+- `apps/worker/src/jobs/process-reminders.ts` (dedup, idempotencia, reaper, cron serializado, eventos)
+- `apps/worker/src/index.ts` (reconciliación al arrancar)
+- `apps/api/src/services/delivery-actions.test.ts` (UNCERTAIN)
+- `docker-compose.yml` (mem_limit/init/healthcheck)
+
+## Validación ejecutada (antes de deploy)
+
+- `pnpm --filter @jw-reminders/shared build` → OK
+- `pnpm --filter @jw-reminders/database generate` → OK (cliente con `WhatsappOutbox` + `UNCERTAIN`)
+- Builds `whatsapp` / `worker` / `api` → OK (0 errores TS)
+- Web → `Compiled successfully` + type-check OK (el único fallo local es el paso
+  `standalone` symlink de Next en Windows: `EPERM`, ajeno al código; en Docker Linux no ocurre)
+- Tests worker: **25/25 pass** (incluye simulación de error ambiguo, retry, grupo y reaper)
+- Tests API: **146/146 pass**
+- `pnpm install --frozen-lockfile` → OK (lockfile en sync para el build de producción)

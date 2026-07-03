@@ -88,6 +88,10 @@ enum ReminderStatus {
   SKIPPED
   CANCELLED
   DEAD
+  // Envío AMBIGUO (H1/H3): el resultado del envío no pudo confirmarse (timeout de
+  // red, excepción de whatsapp-web.js tras encolar, etc.). NO se reintenta de forma
+  // automática para no duplicar; requiere reconciliación (reaper) o decisión humana.
+  UNCERTAIN
 }
 
 enum MessageLogStatus {
@@ -372,6 +376,12 @@ model ReminderDelivery {
   lastAttemptAt    DateTime?
   deadAt           DateTime?
   errorMessage     String?
+  // H1 (idempotencia): clave estable del último intento de envío (por
+  // entrega/grupo + teléfono + contenido). El servicio WhatsApp deduplica por
+  // esta clave; el reaper la usa para reconciliar filas SENDING atoradas.
+  idempotencyKey   String?
+  // H3: instante en el que la entrega pasó a UNCERTAIN (envío ambiguo).
+  uncertainAt      DateTime?
   cancelledAt      DateTime?
   cancelReason     String?
   createdAt        DateTime              @default(now())
@@ -468,6 +478,31 @@ model JwWhatsappSessionLog {
   status    WhatsappSessionStatus
   message   String?
   createdAt DateTime              @default(now())
+}
+
+// H1 — Idempotencia de envío. El servicio WhatsApp registra AQUÍ cada intento
+// físico de envío, indexado por una clave idempotente estable. Si llega una
+// solicitud con una clave ya SENT, NO se reenvía: se devuelve el messageId
+// previo. Sobrevive a reinicios del proceso (crash-safe) porque vive en la DB
+// compartida. También sirve para reconciliar entregas SENDING atoradas (reaper).
+model WhatsappOutbox {
+  id                String    @id @default(cuid())
+  idempotencyKey    String    @unique
+  phone             String
+  contentHash       String
+  // SENDING | SENT | FAILED | UNCERTAIN (string libre para no acoplar enums).
+  status            String
+  providerMessageId String?
+  error             String?
+  attempts          Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  sentAt            DateTime?
+
+  // Guarda secundaria anti-duplicado: mismo teléfono + mismo contenido reciente.
+  @@index([phone, contentHash, status])
+  // Reaper / reconciliación por antigüedad.
+  @@index([status, updatedAt])
 }
 
 model AppConfig {

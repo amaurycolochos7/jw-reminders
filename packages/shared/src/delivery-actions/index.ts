@@ -17,12 +17,16 @@ export type ReminderStatusValue =
   | "FAILED"
   | "SKIPPED"
   | "CANCELLED"
-  | "DEAD";
+  | "DEAD"
+  | "UNCERTAIN";
 
 /** Estados en los que se puede editar el mensaje personalizado. */
 export const EDITABLE_MESSAGE_STATES: ReminderStatusValue[] = ["PENDING", "FAILED"];
-/** Estados en los que se puede "enviar ahora". */
-export const SEND_NOW_STATES: ReminderStatusValue[] = ["PENDING", "FAILED"];
+/** Estados en los que se puede "enviar ahora".
+ * Incluye UNCERTAIN (H1/H3): una entrega con envío ambiguo NO se reintenta
+ * automáticamente (para no duplicar), pero el administrador puede decidir
+ * reenviarla conscientemente desde el panel. */
+export const SEND_NOW_STATES: ReminderStatusValue[] = ["PENDING", "FAILED", "UNCERTAIN"];
 /** Estados en los que se puede reprogramar. */
 export const RESCHEDULE_STATES: ReminderStatusValue[] = ["PENDING", "FAILED"];
 

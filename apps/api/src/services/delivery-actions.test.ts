@@ -35,10 +35,11 @@ test("editar mensaje bloqueado en QUEUED/SENDING/SENT/CANCELLED/DEAD", () => {
   }
 });
 
-// (10) Enviar ahora solo en estados permitidos.
-test("enviar ahora solo en PENDING/FAILED", () => {
+// (10) Enviar ahora solo en estados permitidos (incluye UNCERTAIN: reenvío consciente).
+test("enviar ahora solo en PENDING/FAILED/UNCERTAIN", () => {
   assert.equal(canSendNow("PENDING"), true);
   assert.equal(canSendNow("FAILED"), true);
+  assert.equal(canSendNow("UNCERTAIN"), true);
   for (const s of ["QUEUED", "SENDING", "SENT", "CANCELLED", "DEAD", "SKIPPED"]) {
     assert.equal(canSendNow(s), false, `no debe permitir enviar ahora en ${s}`);
   }
