@@ -1815,3 +1815,37 @@ estabilizar Chromium/sesión y dejar trazabilidad persistente.
 - Tests worker: **25/25 pass** (incluye simulación de error ambiguo, retry, grupo y reaper)
 - Tests API: **146/146 pass**
 - `pnpm install --frozen-lockfile` → OK (lockfile en sync para el build de producción)
+
+
+
+## Deploy y verificación en producción (2026-07-03)
+
+- Commits: `3742319` (H1–H5) + `64a9813` (reconcile tolerante a P2022 en carrera de arranque).
+- Deploy vía API Dokploy (`compose.deploy`, composeId `z6xyxXGM1QTnRlFs_2Lmc`) → `composeStatus=done` (2 deploys, `running → done`).
+- **Migración aplicada** (verificado en la DB de producción):
+  - Tabla `WhatsappOutbox` presente.
+  - `ReminderStatus` incluye `UNCERTAIN` (`...,DEAD,UNCERTAIN`).
+  - Columnas `ReminderDelivery.idempotencyKey` y `uncertainAt` presentes.
+- **Código nuevo activo**: `dist` sin `--single-process` (solo aparece en un comentario; args reales sin la flag), `disable-renderer-backgrounding` y `gracefulShutdown` presentes.
+- **Healthcheck**: `jw-reminders-whatsapp` reporta `(healthy)`.
+- **Contrato `/send`**: con la sesión no lista devuelve `http=503 {outcome:"NOT_READY"}` (no falso `FAILED`).
+- **Comportamiento del worker** (tick real con 4 entregas vencidas y sesión `QR_REQUIRED`):
+  eventos `REMINDER_QUEUED(4) → REMINDER_SENDING(4) → REMINDER_DEFERRED(4)`.
+  **Cero** `REMINDER_FAILED`, **cero** `REMINDER_SENT`, **cero** duplicados, `WhatsappOutbox` vacío
+  (nada se envió físicamente). Las entregas volvieron a `PENDING` (diferidas), no se perdieron.
+- **Recuperación tras reinicio**: el worker ejecuta la reconciliación al arrancar
+  (`[Worker] Reconciliación inicial completada.`) sin errores.
+
+### Acción operativa pendiente (no bloqueante, requiere intervención humana)
+
+La sesión de WhatsApp quedó en `QR_REQUIRED` tras el redeploy (el contenedor
+anterior, previo al hardening, se detuvo SIN apagado limpio y pudo invalidar la
+sesión — justo el riesgo R11). **Escanear el QR una vez** desde el panel
+(`/generate-qr`) para volver a `READY`. A partir de ahora el `gracefulShutdown`
+en SIGTERM/SIGINT preserva la sesión entre redeploys, y las entregas `PENDING`
+se enviarán solas en el siguiente tick una vez la sesión esté `READY`.
+
+### Nota de seguridad
+
+Las credenciales SSH/Dokploy/VPS compartidas para esta fase son sensibles y
+temporales: **rotarlas** ahora que el hardening quedó desplegado.
