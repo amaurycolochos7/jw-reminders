@@ -600,6 +600,22 @@ function isRichReminderGroup(group: FreshDelivery[]): boolean {
  *      · FAILED / sin evidencia → PENDING (seguro reintentar; nada salió).
  */
 export async function reconcileStuckDeliveries(now: Date = new Date()) {
+  try {
+    await runReconcile(now);
+  } catch (err: any) {
+    // Tolerancia a la carrera de arranque: el worker puede iniciar ANTES de que
+    // el contenedor API aplique `prisma migrate deploy`. Si aún falta la columna
+    // idempotencyKey (P2022), NO es un error real: el próximo tick (ya migrado)
+    // reconciliará. Evita ruido de stack traces alarmantes en el primer deploy.
+    if (err?.code === "P2022") {
+      console.warn("[Worker] Reconciliación pospuesta: el esquema aún se está migrando (se reintentará en el próximo tick).");
+      return;
+    }
+    throw err;
+  }
+}
+
+async function runReconcile(now: Date) {
   const queuedCutoff = new Date(now.getTime() - REAPER_STALE_QUEUED_MS);
   const staleQueued = await prisma.reminderDelivery.findMany({
     where: { status: "QUEUED", updatedAt: { lt: queuedCutoff } },
