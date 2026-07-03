@@ -145,11 +145,14 @@ async function main() {
   for (const t of templates) {
     await prisma.jwMessageTemplate.upsert({
       where: { type: t.type },
-      update: { body: t.body, title: t.title },
+      // Solo se crean las que falten. NO se sobrescriben las existentes para
+      // respetar las ediciones hechas desde el panel (antes se reescribían en
+      // cada arranque del contenedor).
+      update: {},
       create: t,
     });
   }
-  console.log("✓ Message templates created");
+  console.log("✓ Message templates ensured (existing edits preserved)");
 
   // Create default config
   const defaults = [
