@@ -17,6 +17,13 @@ export let lastDisconnected: string | null = null;
 export let lastError: string | null = null;
 
 let currentClient: InstanceType<typeof Client>;
+// ── Reconexión automática ──────────────────────────────────────────────────
+// El servicio debe recuperarse solo si WhatsApp se desconecta (blip de red,
+// reinicio, etc.). `manualStop` evita reconectar tras un logout manual.
+let manualStop = false;
+let reconnecting = false;
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Remove Chromium SingletonLock files that prevent launch after unclean shutdown.
@@ -100,6 +107,9 @@ function setupListeners(c: InstanceType<typeof Client>) {
     lastQR = null;
     lastError = null;
     lastConnected = new Date().toISOString();
+    reconnectAttempts = 0;
+    reconnecting = false;
+    manualStop = false;
     try { connectedNumber = c.info?.wid?.user || null; } catch {}
     logStatus("READY");
   });
@@ -108,6 +118,8 @@ function setupListeners(c: InstanceType<typeof Client>) {
     lastDisconnected = new Date().toISOString();
     connectedNumber = null;
     logStatus("DISCONNECTED", reason);
+    // Recuperación automática (salvo desconexión manual).
+    if (!manualStop) scheduleReconnect(`evento disconnected: ${reason}`);
   });
 
   c.on("auth_failure", (msg: string) => {
@@ -162,7 +174,47 @@ async function initializeWithTimeout(c: InstanceType<typeof Client>): Promise<vo
   });
 }
 
+/** Backoff exponencial acotado: 5s, 10s, 20s, 40s, 60s (máx). */
+function reconnectDelayMs(): number {
+  return Math.min(5000 * 2 ** reconnectAttempts, 60000);
+}
+
+/**
+ * Reconexión automática con backoff. Recrea el cliente (wwebjs no permite
+ * re-initialize tras destroy) y reintenta hasta reconectar. Se detiene si hubo
+ * una desconexión manual. Idempotente ante llamadas solapadas.
+ */
+async function scheduleReconnect(reason: string) {
+  if (manualStop || reconnecting) return;
+  reconnecting = true;
+  reconnectAttempts += 1;
+  const delay = reconnectDelayMs();
+  console.log(`[WhatsApp] Reconexión automática en ${Math.round(delay / 1000)}s (intento ${reconnectAttempts}) — ${reason}`);
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(async () => {
+    try {
+      try { await currentClient.destroy(); } catch { /* ignore */ }
+      currentClient = createClient();
+      status = "STARTING";
+      await logStatus("STARTING", `Auto-reconexión (intento ${reconnectAttempts})`);
+      await initializeWithTimeout(currentClient);
+      reconnecting = false;
+      // Si el intento no dejó una sesión utilizable, reprogramar otro intento.
+      // (status lo mutan los eventos async de wwebjs; leemos el valor actual.)
+      const s = status as string;
+      if (!manualStop && s !== "READY" && s !== "AUTHENTICATED" && s !== "QR_REQUIRED") {
+        scheduleReconnect("estado no utilizable tras intento");
+      }
+    } catch (err: any) {
+      reconnecting = false;
+      await logStatus("DISCONNECTED", `Auto-reconexión falló: ${err?.message || err}`);
+      scheduleReconnect("reintento tras fallo de reconexión");
+    }
+  }, delay);
+}
+
 export async function initWhatsApp() {
+  manualStop = false;
   cleanChromiumLocks(); // Clean any stale locks from previous container
   await logStatus("STARTING");
   try {
@@ -175,10 +227,13 @@ export async function initWhatsApp() {
     if (status === "STARTING") {
       await logStatus("DISCONNECTED", `Init failed: ${msg}`);
     }
+    // Recuperación automática tras un fallo transitorio de arranque.
+    scheduleReconnect(`init failed: ${msg}`);
   }
 }
 
 export async function restartSession() {
+  manualStop = false;
   try {
     await currentClient.destroy();
   } catch (e) {
@@ -202,6 +257,9 @@ export async function restartSession() {
 }
 
 export async function disconnectSession() {
+  manualStop = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  reconnecting = false;
   try {
     await currentClient.logout();
   } catch {
@@ -218,6 +276,7 @@ export async function disconnectSession() {
 }
 
 export async function generateQR() {
+  manualStop = false;
   // If already connected, disconnect first to generate a new QR
   if (status === "READY" || status === "AUTHENTICATED") {
     try { await currentClient.logout(); } catch {}
