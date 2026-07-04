@@ -28,9 +28,14 @@ export function getJwtSecret(): string {
 export function assertSecurityConfig(): void {
   if (process.env.NODE_ENV === "production") {
     const s = process.env.JWT_SECRET;
-    if (!s || s.length < 16) { console.error("[security] FATAL: JWT_SECRET no configurado o demasiado corto."); process.exit(1); }
-    if (!process.env.WHATSAPP_INTERNAL_TOKEN) {
-      console.warn("[security] WHATSAPP_INTERNAL_TOKEN no configurado: el servicio WhatsApp no exigirá auth interna.");
+    if (!s || s.length < 16) { console.error("[security] FATAL: JWT_SECRET no configurado o demasiado corto (>=16)."); process.exit(1); }
+    // Auth interna WhatsApp OBLIGATORIA en producción (no se desactiva en silencio).
+    if (!process.env.WHATSAPP_INTERNAL_TOKEN || process.env.WHATSAPP_INTERNAL_TOKEN.length < 16) {
+      console.error("[security] FATAL: WHATSAPP_INTERNAL_TOKEN obligatorio (>=16) en producción."); process.exit(1);
+    }
+    // CORS restringido OBLIGATORIO en producción (nunca abierto).
+    if (!process.env.CORS_ORIGINS || process.env.CORS_ORIGINS.trim().length === 0) {
+      console.error("[security] FATAL: CORS_ORIGINS obligatorio en producción (orígenes permitidos)."); process.exit(1);
     }
   }
 }
