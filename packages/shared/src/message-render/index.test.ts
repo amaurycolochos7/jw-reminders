@@ -7,6 +7,11 @@ import {
   sampleVariables,
   TEMPLATE_VARIABLES,
 } from "./index.js";
+import {
+  assembleMessageVariables,
+  buildReminderAssignmentsList,
+  buildInitialAssignmentsList,
+} from "../grouped-message/index.js";
 
 test("sustituye variables conservando el formato WhatsApp (negritas, saltos, emojis)", () => {
   const body = "Hola *{{nombre}}*.\n\n_Recuerda_ tu asignación 🙂\n\n{{listaAsignaciones}}";
@@ -83,4 +88,46 @@ test("paridad: el mismo body+vars produce el mismo texto (idempotente)", () => {
   const a = renderMessage(body, vars).renderedMessage;
   const b = renderMessage(body, vars).renderedMessage;
   assert.equal(a, b);
+});
+
+test("e2e recordatorio: plantilla real + {{listaAsignaciones}} => negritas y lista, idempotente (snapshot==re-render)", () => {
+  const body =
+    "Hola *{{nombre}}*.\n\nLe recordamos su asignación para la próxima reunión:\n\n{{listaAsignaciones}}\n\nQue Jehová bendiga su esfuerzo y preparación al presentar esta participación.";
+  const lista = buildReminderAssignmentsList({
+    meetingDateText: "viernes 10 de julio de 2026",
+    meetingTimeText: "19:00",
+    parts: [{ sortOrder: 1, pointNumber: 3, sectionLabel: "Lectura de la Biblia", title: "Lectura de la Biblia", isApplyYourself: false }],
+    showTime: false,
+    showDuration: false,
+  });
+  const vars = assembleMessageVariables({ personName: "Carlos", listaAsignaciones: lista });
+  const r = renderMessage(body, vars, { templateType: "SEVEN_DAYS_BEFORE" });
+  // nombre sustituido y negrita conservada
+  assert.ok(r.renderedMessage.startsWith("Hola *Carlos*."));
+  // el section label sale en negrita desde el bloque generado
+  assert.ok(r.renderedMessage.includes("*Lectura de la Biblia*"));
+  // no hay tokens/errores
+  assert.deepEqual(r.invalidVariables, []);
+  assert.deepEqual(r.missingVariables, []);
+  // PARIDAD: re-render con mismos insumos = idéntico (snapshot == preview == envío)
+  const again = renderMessage(body, vars, { templateType: "SEVEN_DAYS_BEFORE" }).renderedMessage;
+  assert.equal(r.renderedMessage, again);
+});
+
+test("e2e aviso inicial: agrupa varias asignaciones de la persona en el bloque", () => {
+  const lista = buildInitialAssignmentsList(
+    [
+      { sortOrder: 1, pointNumber: 3, sectionLabel: "Lectura de la Biblia", title: "Lectura de la Biblia", isApplyYourself: false, meetingDateText: "viernes 10 de julio de 2026", sortDate: "2026-07-10" },
+      { sortOrder: 2, pointNumber: 5, sectionLabel: "Seamos Mejores Maestros", title: "Empiece conversaciones", isApplyYourself: true, recipientRole: "ASSIGNED", companionName: "Hna. López", meetingDateText: "viernes 17 de julio de 2026", sortDate: "2026-07-17" },
+    ],
+    { showDuration: false },
+  );
+  const body = "Hola *{{nombre}}*.\n\nSus asignaciones de {{mes}}:\n\n{{listaAsignaciones}}\n\nGracias.";
+  const vars = assembleMessageVariables({ personName: "Ana", monthName: "julio", listaAsignaciones: lista });
+  const r = renderMessage(body, vars, { templateType: "INITIAL_NOTICE" });
+  // Contiene ambas fechas (dos asignaciones agrupadas en un solo mensaje)
+  assert.ok(r.renderedMessage.includes("*Viernes 10 de julio de 2026*"));
+  assert.ok(r.renderedMessage.includes("*Viernes 17 de julio de 2026*"));
+  assert.ok(r.renderedMessage.includes("Hola *Ana*."));
+  assert.ok(r.renderedMessage.includes("de julio")); // {{mes}} sustituido
 });

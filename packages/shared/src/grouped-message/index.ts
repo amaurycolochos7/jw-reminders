@@ -274,3 +274,91 @@ export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): str
   lines.push(BLESSING_LINE);
   return lines.join("\n");
 }
+
+
+
+// ─── BLOQUES DE LISTA ({{listaAsignaciones}}) ────────────────────────────────
+// Estos generan SOLO el bloque de asignaciones (sin saludo ni bendición): son el
+// valor de la variable {{listaAsignaciones}} que la PLANTILLA editable envuelve.
+// El render único (renderMessage) sustituye {{listaAsignaciones}} por esto, de
+// modo que preview, snapshot y envío usan exactamente el mismo bloque.
+
+/**
+ * Bloque del AVISO INICIAL: todas las asignaciones del mes agrupadas por fecha.
+ * Sin saludo ni bendición (los aporta la plantilla). Sin hora.
+ */
+export function buildInitialAssignmentsList(
+  items: MonthlyInitialItem[],
+  opts: { showDuration?: boolean } = {},
+): string {
+  const byDate = new Map<string, { text: string; sortDate: string; items: MonthlyInitialItem[] }>();
+  for (const it of items) {
+    const g = byDate.get(it.meetingDateText) ?? { text: it.meetingDateText, sortDate: it.sortDate, items: [] };
+    g.items.push(it);
+    byDate.set(it.meetingDateText, g);
+  }
+  const dates = [...byDate.values()].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+
+  const sections: string[] = [];
+  for (const d of dates) {
+    const secLines: string[] = [`*${dateHeader(d.text)}*`];
+    const ordered = [...d.items].sort((a, b) => a.sortOrder - b.sortOrder);
+    for (const p of ordered) {
+      secLines.push("");
+      for (const l of renderPartLines(p, { showDuration: opts.showDuration !== false })) secLines.push(l);
+    }
+    sections.push(secLines.join("\n"));
+  }
+  return sections.join("\n\n");
+}
+
+/**
+ * Bloque de RECORDATORIO (7/3/1 días): la fecha (y opcionalmente hora) + las
+ * partes de esa reunión. Sin saludo ni bendición.
+ */
+export function buildReminderAssignmentsList(input: {
+  meetingDateText: string;
+  meetingTimeText?: string | null;
+  parts: MessagePart[];
+  showTime?: boolean;
+  showDuration?: boolean;
+}): string {
+  const parts = [...input.parts].sort((a, b) => a.sortOrder - b.sortOrder);
+  const lines: string[] = [`*${dateHeader(input.meetingDateText)}*`];
+  if (input.showTime !== false) {
+    const time = formatMeetingTime(input.meetingTimeText ?? null);
+    if (time) lines.push(time);
+  }
+  for (const p of parts) {
+    lines.push("");
+    for (const l of renderPartLines(p, { showDuration: input.showDuration !== false })) lines.push(l);
+  }
+  return lines.join("\n");
+}
+
+
+
+/**
+ * Ensambla el mapa de variables para el render único a partir de datos ya
+ * resueltos. Compartido por API (congela snapshot), worker (fallback) y el
+ * preview del panel, de modo que produzcan EXACTAMENTE el mismo texto.
+ */
+export function assembleMessageVariables(input: {
+  personName: string;
+  congregationName?: string | null;
+  listaAsignaciones: string;
+  monthName?: string | null;
+  meetingDateText?: string | null;
+  meetingTimeText?: string | null;
+  phone?: string | null;
+}): Record<string, string> {
+  return {
+    nombre: (input.personName ?? "").trim(),
+    telefono: input.phone ?? "",
+    nombreCongregacion: input.congregationName ?? "",
+    listaAsignaciones: input.listaAsignaciones,
+    mes: input.monthName ?? "",
+    fecha: input.meetingDateText ?? "",
+    hora: input.meetingTimeText ? (formatMeetingTime(input.meetingTimeText) ?? input.meetingTimeText) : "",
+  };
+}

@@ -4,6 +4,13 @@ import { addDaysToLocalDate, localDateLabel, localTimeLabel, localToday, zonedLo
 import { createAutomationEvent, getAutomationConfig } from "../../services/automation.service.js";
 import { renderReminderMessage } from "../../services/reminder-renderer.js";
 import {
+  generateSnapshots,
+  previewDeliveryFrozen,
+  editFinalMessage,
+  regenerateFromTemplate,
+  approveBatch,
+} from "../../services/message-snapshot.service.js";
+import {
   canEditMessage,
   canSendNow,
   canReschedule,
@@ -516,6 +523,127 @@ router.post("/deliveries/:id/reschedule", async (req: Request<{ id: string }>, r
     res.json({ ok: true, status: updated.status, scheduledAt: updated.scheduledAt });
   } catch {
     res.status(404).json({ error: "Entrega no encontrada" });
+  }
+});
+
+// ─── Fase 4: snapshot congelado (generar / revisar / editar / regenerar / aprobar) ──
+
+// Generar y congelar snapshots de un alcance (mes o semana) en un batch DRAFT.
+router.post("/batches/generate", async (req: Request, res: Response) => {
+  try {
+    const { reminderType, monthlyScheduleId, meetingWeekId, periodLabel } = req.body || {};
+    if (!reminderType) return res.status(400).json({ error: "reminderType requerido" });
+    const result = await generateSnapshots({ reminderType, monthlyScheduleId, meetingWeekId, periodLabel, createdBy: "admin" });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Ver un batch con sus mensajes congelados (pantalla de revisión).
+router.get("/batches/:id", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const batch = await prisma.messageBatch.findUniqueOrThrow({ where: { id: req.params.id } });
+    const deliveries = await prisma.reminderDelivery.findMany({
+      where: { batchId: batch.id },
+      include: { publisher: true, assignment: { select: { assignmentNumber: true, title: true } } },
+      orderBy: { scheduledAt: "asc" },
+    });
+    // Un mensaje por grupo persona/tipo: colapsamos por renderedMessage + publisher.
+    const seen = new Set<string>();
+    const messages = deliveries
+      .filter((d) => {
+        const k = `${d.publisherId}|${d.reminderType}|${d.renderedMessage ?? ""}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .map((d) => ({
+        deliveryId: d.id,
+        publisherName: d.publisher?.displayName || d.publisher?.fullName || "Sin publicador",
+        phone: d.publisher?.whatsappPhone || d.publisher?.phone || null,
+        reminderType: d.reminderType,
+        status: d.status,
+        scheduledAt: d.scheduledAt,
+        manuallyEdited: d.manuallyEdited,
+        renderedMessage: d.renderedMessage,
+      }));
+    res.json({ batch, count: messages.length, messages });
+  } catch {
+    res.status(404).json({ error: "Batch no encontrado" });
+  }
+});
+
+// Preview FIEL del mensaje congelado que se enviaría (recalcula con render único).
+router.get("/deliveries/:id/frozen-preview", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const delivery = await prisma.reminderDelivery.findUniqueOrThrow({ where: { id: req.params.id } });
+    const preview = await previewDeliveryFrozen(req.params.id);
+    res.json({
+      id: delivery.id,
+      status: delivery.status,
+      reminderType: delivery.reminderType,
+      manuallyEdited: delivery.manuallyEdited,
+      // Lo que HAY guardado (snapshot) y lo que la plantilla actual produciría:
+      savedRenderedMessage: delivery.renderedMessage,
+      templatePreview: preview?.renderedMessage ?? null,
+      warnings: preview?.warnings ?? [],
+    });
+  } catch {
+    res.status(404).json({ error: "Entrega no encontrada" });
+  }
+});
+
+// Editar el mensaje FINAL (marca manuallyEdited; afecta a las hermanas del grupo).
+router.post("/deliveries/:id/edit-final", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const text = typeof req.body?.text === "string" ? req.body.text : "";
+    if (!text.trim()) return res.status(400).json({ error: "text requerido" });
+    const result = await editFinalMessage(req.params.id, text);
+    await createAutomationEvent(prisma, {
+      eventType: "REMINDER_FINAL_MESSAGE_EDITED",
+      entityType: "ReminderDelivery",
+      entityId: req.params.id,
+      actorType: "admin",
+      metadata: { affected: result.updated },
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+// Regenerar el mensaje final desde la plantilla ACTIVA (descarta edición manual).
+router.post("/deliveries/:id/regenerate", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const result = await regenerateFromTemplate(req.params.id);
+    await createAutomationEvent(prisma, {
+      eventType: "REMINDER_REGENERATED_FROM_TEMPLATE",
+      entityType: "ReminderDelivery",
+      entityId: req.params.id,
+      actorType: "admin",
+      metadata: { affected: result.updated },
+    });
+    res.json({ ok: true, updated: result.updated });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+// Aprobar un batch: DRAFT → READY (listo para que el worker lo envíe).
+router.post("/batches/:id/approve", async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const result = await approveBatch(req.params.id);
+    await createAutomationEvent(prisma, {
+      eventType: "MESSAGE_BATCH_APPROVED",
+      entityType: "MessageBatch",
+      entityId: req.params.id,
+      actorType: "admin",
+      metadata: { approved: result.approved },
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
   }
 });
 
