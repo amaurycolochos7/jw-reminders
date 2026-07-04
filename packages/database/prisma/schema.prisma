@@ -80,6 +80,15 @@ enum ReminderType {
 }
 
 enum ReminderStatus {
+  // ─── Reestructuración mensajería robusta (aditivo) ───
+  // DRAFT: snapshot congelado generado pero pendiente de revisión/aprobación.
+  //        El worker NO lo toma. Se aprueba (batch) → READY.
+  DRAFT
+  // READY: snapshot aprobado y listo para enviar. El worker lo toma igual que PENDING.
+  READY
+  // PAUSED: envío detenido a propósito (WhatsApp caído o pausa manual del batch).
+  //         El worker NO lo toma hasta reanudar (→ READY/PENDING).
+  PAUSED
   PENDING
   QUEUED
   SENDING
@@ -384,6 +393,20 @@ model ReminderDelivery {
   uncertainAt      DateTime?
   cancelledAt      DateTime?
   cancelReason     String?
+  // ─── Snapshot congelado (reestructuración mensajería robusta) ───
+  // El texto FINAL que se enviará, congelado al generar/aprobar. El worker envía
+  // ESTO tal cual y NO vuelve a renderizar. Si es null (legacy/transición), el
+  // worker cae al render en vivo por compatibilidad.
+  renderedMessage   String?
+  renderedVariables Json? // variables usadas para renderizar (auditoría).
+  templateId        String? // plantilla usada.
+  templateVersionId String? // versión concreta de la plantilla.
+  manuallyEdited    Boolean   @default(false) // true si se editó el texto final a mano.
+  editedAt          DateTime?
+  regeneratedAt     DateTime?
+  // TEMPLATE | MANUAL_EDIT | REGENERATED_TEMPLATE | REGENERATED_VERSION | LEGACY_RENDER.
+  sourceType        String?
+  batchId           String?
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
@@ -391,12 +414,14 @@ model ReminderDelivery {
   assignment     JwAssignment   @relation(fields: [assignmentId], references: [id])
   publisher      JwPublisher    @relation(fields: [publisherId], references: [id])
   messageLogs    JwMessageLog[]
+  batch          MessageBatch?  @relation(fields: [batchId], references: [id])
 
   @@unique([automationPlanId, publisherId, reminderType])
   @@index([status, scheduledAt])
   @@index([assignmentId, status])
   @@index([publisherId, status])
   @@index([automationPlanId, status])
+  @@index([batchId])
 }
 
 model JwAssignmentReminder {
@@ -430,8 +455,62 @@ model JwMessageTemplate {
   title     String
   body      String
   isActive  Boolean  @default(true)
+  // ─── Reestructuración mensajería robusta (aditivo) ───
+  // Descripción para el panel y número de versión activa. `body` sigue siendo el
+  // cuerpo de la versión activa (espejo) para compatibilidad; el historial vive
+  // en MessageTemplateVersion.
+  description   String?
+  activeVersion Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  versions MessageTemplateVersion[]
+}
+
+// Historial de versiones de una plantilla global. Cada edición desde el panel
+// crea una nueva versión; NO se sobrescribe. El snapshot de un mensaje generado
+// referencia la versión concreta con la que se renderizó, de modo que editar la
+// plantilla luego NO cambia mensajes ya congelados.
+model MessageTemplateVersion {
+  id              String   @id @default(cuid())
+  templateId      String
+  version         Int
+  body            String
+  variablesSchema Json? // variables detectadas/documentadas al guardar.
+  isActive        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  createdBy       String? // usuario que editó, si el sistema lo maneja.
+
+  template JwMessageTemplate @relation(fields: [templateId], references: [id])
+
+  @@unique([templateId, version])
+  @@index([templateId])
+}
+
+// Lote de generación de mensajes (revisión/aprobación/pausa). Agrupa las
+// entregas congeladas de una generación (p. ej. aviso inicial del mes) para
+// revisarlas juntas antes de enviar y para pausar/reanudar en bloque.
+model MessageBatch {
+  id                String    @id @default(cuid())
+  type              String // ReminderType al que corresponde el lote.
+  monthlyScheduleId String?
+  meetingWeekId     String?
+  periodLabel       String? // "Julio 2026", "Semana 6-12 jul", etc.
+  // DRAFT | READY | APPROVED | PAUSED | SENDING | DONE | CANCELLED (string libre).
+  status            String    @default("DRAFT")
+  createdBy         String?
+  approvedAt        DateTime?
+  pausedAt          DateTime?
+  pauseReason       String?
+  resumedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  deliveries ReminderDelivery[]
+
+  @@index([status])
+  @@index([monthlyScheduleId])
+  @@index([meetingWeekId])
 }
 
 model JwMessageLog {

@@ -14,10 +14,9 @@ interface WAStatus {
 
 export default function WhatsAppPage() {
   const [data, setData] = useState<WAStatus | null>(null);
+  const [sendState, setSendState] = useState<{ paused: boolean; manualPaused: boolean; autoPaused: boolean; pauseReason: string | null; whatsappStatus: string; canSend: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
-  const [testPhone, setTestPhone] = useState('');
-  const [testMessage, setTestMessage] = useState('Mensaje de prueba desde JW Reminders');
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const showNotification = (type: 'success' | 'error', text: string) => {
@@ -27,13 +26,21 @@ export default function WhatsAppPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await api('/api/whatsapp/status');
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
+      const [res, sres] = await Promise.all([api('/api/whatsapp/status'), api('/api/whatsapp/send-state')]);
+      if (res.ok) setData(await res.json());
+      if (sres.ok) setSendState(await sres.json());
     } catch {} finally { setLoading(false); }
   }, []);
+
+  const handlePauseToggle = async (pause: boolean) => {
+    setActionLoading('pause');
+    try {
+      const res = await api(`/api/whatsapp/${pause ? 'pause' : 'resume'}`, { method: 'POST', body: JSON.stringify({ reason: 'pausado desde el panel' }) });
+      if (res.ok) { showNotification('success', pause ? 'Envíos pausados. La cola queda protegida.' : 'Envíos reanudados.'); await fetchStatus(); }
+      else showNotification('error', 'No se pudo cambiar el estado de envíos');
+    } catch { showNotification('error', 'Error de conexión'); }
+    setActionLoading('');
+  };
 
   useEffect(() => {
     fetchStatus();
@@ -91,29 +98,6 @@ export default function WhatsAppPage() {
         setTimeout(fetchStatus, 2000);
       } else {
         showNotification('error', d.error || 'Error al generar QR');
-      }
-    } catch {
-      showNotification('error', 'Error de conexion');
-    }
-    setActionLoading('');
-  };
-
-  const handleSendTest = async () => {
-    if (!testPhone.trim()) {
-      showNotification('error', 'Ingresa un numero de telefono');
-      return;
-    }
-    setActionLoading('test');
-    try {
-      const res = await api('/api/whatsapp/send-test', {
-        method: 'POST',
-        body: JSON.stringify({ phone: testPhone.trim(), message: testMessage }),
-      });
-      const d = await res.json();
-      if (d.success || res.ok) {
-        showNotification('success', 'Mensaje enviado correctamente');
-      } else {
-        showNotification('error', d.error || 'Error al enviar mensaje');
       }
     } catch {
       showNotification('error', 'Error de conexion');
@@ -206,6 +190,34 @@ export default function WhatsAppPage() {
         )}
       </div>
 
+      {/* Estado de envíos (pausa manual / automática) */}
+      {sendState && (
+        <div className="bg-white rounded-card p-5 sm:p-7">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-ink mb-1">Envíos</h2>
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${sendState.canSend ? 'bg-emerald-500' : 'bg-orange-500'}`} />
+                <span className="text-sm font-medium text-ink">
+                  {sendState.canSend ? 'Enviando' : sendState.manualPaused ? 'Pausado (manual)' : sendState.autoPaused ? 'Pausado (automático)' : 'En pausa'}
+                </span>
+              </div>
+              {sendState.pauseReason && <p className="text-xs text-graphite mt-1">{sendState.pauseReason}</p>}
+            </div>
+            <div className="flex gap-2">
+              {sendState.manualPaused
+                ? <button onClick={() => handlePauseToggle(false)} disabled={actionLoading === 'pause'} className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-full hover:opacity-90 disabled:opacity-50">Reanudar envíos</button>
+                : <button onClick={() => handlePauseToggle(true)} disabled={actionLoading === 'pause'} className="px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-full hover:opacity-90 disabled:opacity-50">Pausar envíos</button>}
+            </div>
+          </div>
+          {sendState.autoPaused && (
+            <div className="mt-4 p-3 bg-orange-50 rounded-xl text-xs text-orange-800">
+              ⚠ WhatsApp no está listo ({sendState.whatsappStatus}). Los envíos están en <strong>pausa automática</strong> y la <strong>cola está protegida</strong>: no se pierde ni se duplica nada. Se reanudarán solos al reconectar (salvo que actives la pausa manual para revisarlos antes).
+            </div>
+          )}
+        </div>
+      )}
+
       {/* QR Code — visible when QR_REQUIRED */}
       {(st === 'QR_REQUIRED' || data?.qr) && (
         <div className="bg-white rounded-card p-5 sm:p-7">
@@ -274,46 +286,12 @@ export default function WhatsAppPage() {
         </div>
       </div>
 
-      {/* Test message — only when READY */}
-      {st === 'READY' && (
-        <div className="bg-white rounded-card p-5 sm:p-7">
-          <h2 className="text-base font-semibold text-ink mb-4">Enviar mensaje de prueba</h2>
-          <div className="space-y-3">
-            <div>
-              <label htmlFor="test-phone" className="text-xs font-medium text-graphite mb-1 block">
-                Numero de telefono (con codigo de pais)
-              </label>
-              <input
-                id="test-phone"
-                type="tel"
-                value={testPhone}
-                onChange={(e) => setTestPhone(e.target.value)}
-                placeholder="5219611234567"
-                className="w-full"
-              />
-            </div>
-            <div>
-              <label htmlFor="test-message" className="text-xs font-medium text-graphite mb-1 block">
-                Mensaje
-              </label>
-              <textarea
-                id="test-message"
-                value={testMessage}
-                onChange={(e) => setTestMessage(e.target.value)}
-                rows={3}
-                className="w-full resize-none"
-              />
-            </div>
-            <button
-              onClick={handleSendTest}
-              disabled={actionLoading === 'test'}
-              className="px-5 py-2.5 bg-azure text-white text-sm font-medium rounded-full hover:bg-azure/90 transition-colors disabled:opacity-50"
-            >
-              {actionLoading === 'test' ? 'Enviando...' : 'Enviar mensaje de prueba'}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Envíos manuales / de prueba viven en su propia pantalla (flujo unificado) */}
+      <div className="bg-white rounded-card p-5 sm:p-7">
+        <h2 className="text-base font-semibold text-ink mb-1">Mensajes manuales y de prueba</h2>
+        <p className="text-sm text-graphite mb-3">Los envíos puntuales (manual y prueba de plantilla) se hacen en la pantalla <strong>Enviar</strong>, con guardia de estado y sin crear automatizaciones.</p>
+        <a href="/dashboard/enviar" className="inline-block px-4 py-2 bg-azure text-white text-sm font-medium rounded-full hover:opacity-90">Ir a Enviar</a>
+      </div>
     </div>
   );
 }

@@ -27,6 +27,8 @@ services:
       NODE_ENV: production
       PORT: "4000"
       WHATSAPP_API_URL: http://jw-reminders-whatsapp:3010
+      WHATSAPP_INTERNAL_TOKEN: ${WHATSAPP_INTERNAL_TOKEN}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       TEST_MODE: ${TEST_MODE:-true}
       TEST_PHONE: ${TEST_PHONE:-5219611234567}
     depends_on:
@@ -58,6 +60,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@jw-reminders-db:5432/${POSTGRES_DB:-jw_reminders}
       WHATSAPP_API_URL: http://jw-reminders-whatsapp:3010
+      WHATSAPP_INTERNAL_TOKEN: ${WHATSAPP_INTERNAL_TOKEN}
       CRON_SCHEDULE: "*/10 * * * *"
       TEST_MODE: ${TEST_MODE:-true}
       TEST_PHONE: ${TEST_PHONE:-5219611234567}
@@ -81,6 +84,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@jw-reminders-db:5432/${POSTGRES_DB:-jw_reminders}
       PORT: "3010"
       WHATSAPP_SESSION_PATH: /app/apps/whatsapp/.wwebjs_auth
+      WHATSAPP_INTERNAL_TOKEN: ${WHATSAPP_INTERNAL_TOKEN}
       NODE_ENV: production
     volumes:
       - whatsapp_session:/app/apps/whatsapp/.wwebjs_auth

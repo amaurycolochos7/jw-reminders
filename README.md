@@ -52,8 +52,13 @@ docker compose -f docker-compose.local.yml up -d
 
 ### Credenciales iniciales
 
+El usuario admin se crea al sembrar la base de datos. Define la contraseña con la
+variable de entorno `ADMIN_PASSWORD` antes de `db:seed`. Si no la defines, el
+seed genera una contraseña temporal y la imprime en consola (una sola vez):
+cámbiala de inmediato. No se guardan credenciales en el repositorio.
+
 - Usuario: `admin`
-- Contraseña: `dorian123`
+- Contraseña: definida por `ADMIN_PASSWORD` (no versionada)
 
 ## Producción
 

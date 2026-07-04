@@ -3,11 +3,30 @@ import cors from "cors";
 import helmet from "helmet";
 import { apiRouter } from "./routes/index.js";
 import { APP_VERSION, BUILD_TAG } from "./version.js";
+import { assertSecurityConfig } from "./config/security.js";
+
+assertSecurityConfig();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+// CORS restringido: solo orígenes permitidos (coma-separados en CORS_ORIGINS).
+// En dev se permite localhost por defecto. Nunca "*" con credenciales.
+const allowedOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Permite herramientas sin origin (curl, same-origin) y orígenes en lista.
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.length === 0 && process.env.NODE_ENV !== "production") return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("Origen no permitido por CORS"));
+    },
+  }),
+);
 app.use(helmet());
 app.use(express.json());
 

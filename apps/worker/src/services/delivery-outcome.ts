@@ -58,3 +58,20 @@ export function planReaperTarget(outboxStatus: string | null | undefined): Reape
   // FAILED (rechazo definitivo) o sin evidencia ⇒ seguro reintentar.
   return "PENDING";
 }
+
+/**
+ * Fase 6 — Gate de envíos. Decide (lógica PURA) si el worker debe enviar en este
+ * tick. La cola SIEMPRE queda intacta cuando no se envía (no se reclama nada, no
+ * se consumen intentos).
+ *  - Pausa MANUAL (sticky): tiene prioridad; se mantiene aunque WhatsApp esté READY
+ *    (el usuario decide reanudar). → "paused_manual".
+ *  - Pausa AUTOMÁTICA: WhatsApp no está READY. Se levanta sola al reconectar. →
+ *    "whatsapp_not_ready".
+ */
+export type SendGate = { proceed: boolean; reason: "ok" | "paused_manual" | "whatsapp_not_ready" };
+
+export function evaluateSendGate(input: { manualPause: boolean; whatsappReady: boolean }): SendGate {
+  if (input.manualPause) return { proceed: false, reason: "paused_manual" };
+  if (!input.whatsappReady) return { proceed: false, reason: "whatsapp_not_ready" };
+  return { proceed: true, reason: "ok" };
+}

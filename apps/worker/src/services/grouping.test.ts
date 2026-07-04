@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupKey, groupDeliveries, type GroupableDelivery } from "./grouping.js";
+import { groupKey, groupDeliveries, type GroupableDelivery } from "@jw-reminders/shared";
 
 /** Helper para construir un delivery agrupable mínimo. */
 function d(

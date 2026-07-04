@@ -10,12 +10,12 @@ import {
   buildMonthlyInitialMessage,
   formatDateSpanish,
   ASSIGNMENT_TYPE_LABELS,
+  groupDeliveries,
   type MessagePart,
 } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
-import { groupDeliveries } from "../services/grouping.js";
-import { planFinalState, planReaperTarget } from "../services/delivery-outcome.js";
+import { planFinalState, planReaperTarget, evaluateSendGate } from "../services/delivery-outcome.js";
 import {
   buildIdempotencyKey,
   REAPER_STALE_QUEUED_MS,
@@ -44,6 +44,7 @@ type SendConfig = {
   delayMinMs: number;
   delayMaxMs: number;
   maxSendsPerRun: number;
+  sendsPaused: boolean;
 };
 
 function envInt(name: string, fallback: number): number {
@@ -55,12 +56,14 @@ function envInt(name: string, fallback: number): number {
 async function getSendConfig(): Promise<SendConfig> {
   let testMode = process.env.TEST_MODE === "true";
   let testPhone = process.env.TEST_PHONE || "";
+  let sendsPaused = false;
   try {
-    const rows = await prisma.appConfig.findMany({ where: { key: { in: ["TEST_MODE", "TEST_PHONE"] } } });
+    const rows = await prisma.appConfig.findMany({ where: { key: { in: ["TEST_MODE", "TEST_PHONE", "SENDS_PAUSED"] } } });
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     if (map.TEST_MODE === "true") testMode = true;
     else if (map.TEST_MODE === "false") testMode = false;
     if (typeof map.TEST_PHONE === "string" && map.TEST_PHONE.trim()) testPhone = map.TEST_PHONE.trim();
+    sendsPaused = map.SENDS_PAUSED === "true";
   } catch (err) {
     console.error("[Worker] Failed to read AppConfig, using env fallback for send config:", err);
   }
@@ -71,11 +74,35 @@ async function getSendConfig(): Promise<SendConfig> {
   if (delayMaxMs < delayMinMs) delayMaxMs = delayMinMs; // rango coherente
   const maxSendsPerRun = envInt("WORKER_MAX_SENDS_PER_RUN", WORKER_MAX_SENDS_PER_RUN);
 
-  return { testMode, testPhone, delayMinMs, delayMaxMs, maxSendsPerRun };
+  return { testMode, testPhone, delayMinMs, delayMaxMs, maxSendsPerRun, sendsPaused };
 }
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fase 6 — ¿El servicio WhatsApp está READY para enviar? Consulta /status con
+ * timeout. Si no responde o no está READY, devuelve false ⇒ pausa AUTOMÁTICA
+ * (la cola queda intacta). Se levanta sola cuando WhatsApp vuelve a READY.
+ */
+async function isWhatsappReady(): Promise<{ ready: boolean; status: string }> {
+  const url = process.env.WHATSAPP_API_URL || "http://localhost:3010";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(`${url}/status`, {
+      signal: controller.signal,
+      headers: process.env.WHATSAPP_INTERNAL_TOKEN ? { "x-internal-token": process.env.WHATSAPP_INTERNAL_TOKEN } : {},
+    });
+    const data: any = await res.json().catch(() => ({}));
+    const status = String(data?.status ?? "UNKNOWN");
+    return { ready: status === "READY", status };
+  } catch (err: any) {
+    return { ready: false, status: err?.name === "AbortError" ? "TIMEOUT" : "UNREACHABLE" };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function retryDelayMs(nextAttempt: number) {
@@ -187,6 +214,17 @@ async function validateFresh(fresh: FreshDelivery): Promise<boolean> {
   }
   if (!publisher.isActive || publisher.deletedAt || !publisher.canReceiveAssignments) {
     await markSkipped(fresh.id, "Publisher inactive or cannot receive messages");
+    return false;
+  }
+
+  // ── Fase 5 (restricción de fallback): flujo NUEVO sin snapshot NO se envía ──
+  // Un delivery del flujo nuevo (tiene batchId o sourceType) DEBE llevar su
+  // renderedMessage congelado. Si no lo tiene, es un error de generación: se
+  // BLOQUEA (no se renderiza en vivo silenciosamente). El render vivo (fallback)
+  // solo queda permitido para datos LEGACY (sin batchId ni sourceType).
+  const isNewFlow = !!fresh.batchId || !!fresh.sourceType;
+  if (isNewFlow && !fresh.renderedMessage) {
+    await markSkipped(fresh.id, "Flujo nuevo sin snapshot (renderedMessage vacío): no se renderiza en el worker");
     return false;
   }
 
@@ -364,8 +402,15 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
     return;
   }
 
-  const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
-  const message = resolveOutboundMessage(fresh.customMessage, templateMessage);
+  // Fase 5: si hay snapshot congelado, el worker lo envía TAL CUAL y NO renderiza.
+  // customMessage (mecanismo legacy) mantiene prioridad si existe.
+  let message: string;
+  if (fresh.renderedMessage) {
+    message = resolveOutboundMessage(fresh.customMessage, fresh.renderedMessage);
+  } else {
+    const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
+    message = resolveOutboundMessage(fresh.customMessage, templateMessage);
+  }
   // H1: clave idempotente estable por (entrega + teléfono + contenido).
   const idempotencyKey = buildIdempotencyKey({ deliveryIds: [fresh.id], phone, message });
   fresh.idempotencyKey = idempotencyKey;
@@ -435,9 +480,11 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
 
   const parts = deliveries.map(deliveryToMessagePart);
 
-  // Por decisión del usuario, TODOS los recordatorios (7/3/1 días) van sin hora
-  // y sin duración: solo sección + título (y rol/acompañante donde aplique).
-  const message = buildGroupedPersonMessage({
+  // Fase 5: si el grupo tiene snapshot congelado (todas las hermanas comparten el
+  // mismo texto), el worker lo envía TAL CUAL. Solo si no hay snapshot (legacy)
+  // cae al render en vivo.
+  const frozen = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? null;
+  const message = frozen ?? buildGroupedPersonMessage({
     personName: personDisplayName(publisher),
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
@@ -513,7 +560,7 @@ async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig
     };
   });
 
-  const message = buildMonthlyInitialMessage({
+  const message = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? buildMonthlyInitialMessage({
     personName: personDisplayName(publisher),
     monthName: monthNameFor(first),
     items,
@@ -696,10 +743,25 @@ async function runProcessReminders() {
   // H2: primero rescatar entregas atoradas en vuelo (reconciliación segura).
   await reconcileStuckDeliveries(now);
 
+  // Fase 6: GATE de envíos. La reconciliación (arriba) NO envía, así que siempre
+  // corre. Si hay pausa manual o WhatsApp no está READY, se PROTEGE la cola: no
+  // se reclama nada, no se consumen intentos, no se marca SENT nada.
+  const whatsapp = await isWhatsappReady();
+  const gate = evaluateSendGate({ manualPause: sendConfig.sendsPaused, whatsappReady: whatsapp.ready });
+  if (!gate.proceed) {
+    console.log(`[Worker] Envíos en pausa (${gate.reason}; WhatsApp=${whatsapp.status}). Cola intacta.`);
+    await prisma.jwAutomationEvent.create({
+      data: { eventType: "SENDS_PAUSED_TICK", entityType: "Worker", entityId: "worker", actorType: "worker", metadata: { reason: gate.reason, whatsappStatus: whatsapp.status } },
+    }).catch(() => undefined);
+    return;
+  }
+
   const due = await prisma.reminderDelivery.findMany({
     where: {
       OR: [
         { status: "PENDING", scheduledAt: { lte: now } },
+        // READY: snapshot aprobado y listo para enviar (mismo trato que PENDING).
+        { status: "READY", scheduledAt: { lte: now } },
         { status: "FAILED", nextRetryAt: { lte: now } },
       ],
     },

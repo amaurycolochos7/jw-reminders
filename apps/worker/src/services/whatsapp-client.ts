@@ -21,7 +21,10 @@ export async function sendWhatsappMessage(
   try {
     const res = await fetch(`${WHATSAPP_API_URL}/send`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.WHATSAPP_INTERNAL_TOKEN ? { "x-internal-token": process.env.WHATSAPP_INTERNAL_TOKEN } : {}),
+      },
       body: JSON.stringify({ phone, message, idempotencyKey }),
       signal: controller.signal,
     });

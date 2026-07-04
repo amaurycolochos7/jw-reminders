@@ -1,15 +1,11 @@
 /**
- * Agrupación de ReminderDelivery por persona + semana + bucket (Fase 3, Opción A).
- *
- * Núcleo PURO (sin efectos ni acceso a DB) para poder razonar/testear la
- * partición sin base de datos. El worker consume estos helpers para decidir
- * qué deliveries se envían en un solo mensaje agrupado.
+ * Agrupación de entregas por persona + semana + bucket (o persona + MES para el
+ * aviso inicial). Núcleo PURO y CANÓNICO: lo usan tanto el congelado del snapshot
+ * (API) como el envío (worker), de modo que el mensaje se agrupa IGUAL al generar
+ * y al enviar. Un solo mensaje por grupo.
  *
  * groupKey = `${publisherId}|${meetingWeekId}|${reminderType}`
- *
- * Deliveries hermanos (misma persona, misma semana, mismo tipo de recordatorio)
- * comparten scheduledAt idéntico, por lo que vencen en el mismo tick y llegan
- * juntos en el lote `due`. Se agrupan aquí y se envían como un único mensaje.
+ * Excepción INITIAL_NOTICE: `${publisherId}|month:${monthlyScheduleId}|INITIAL_NOTICE`.
  */
 
 export interface GroupableDelivery {
@@ -18,9 +14,6 @@ export interface GroupableDelivery {
   assignment: { meetingWeekId: string; meetingWeek?: { monthlyScheduleId?: string | null } | null };
 }
 
-/** Clave de agrupación por persona + semana + bucket de recordatorio.
- * Excepción: el AVISO INICIAL (INITIAL_NOTICE) se agrupa por persona + MES
- * (programa mensual), para enviar UN solo resumen mensual por persona. */
 export function groupKey(d: GroupableDelivery): string {
   if (d.reminderType === "INITIAL_NOTICE") {
     const month = d.assignment.meetingWeek?.monthlyScheduleId ?? d.assignment.meetingWeekId;
@@ -29,10 +22,7 @@ export function groupKey(d: GroupableDelivery): string {
   return `${d.publisherId}|${d.assignment.meetingWeekId}|${d.reminderType}`;
 }
 
-/**
- * Parte el lote en grupos preservando el orden de aparición del primer miembro
- * de cada grupo (estable). Cada grupo es la lista de deliveries hermanos.
- */
+/** Parte el lote en grupos, preservando el orden de aparición del primer miembro. */
 export function groupDeliveries<T extends GroupableDelivery>(deliveries: T[]): T[][] {
   const groups = new Map<string, T[]>();
   for (const d of deliveries) {
