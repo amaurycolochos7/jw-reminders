@@ -4,12 +4,31 @@
  * Requiere DB limpia+migrada+seed y PORT libre.
  */
 import "../src/server.js"; // inicia app.listen(PORT)
+import http from "node:http";
 import { prisma } from "@jw-reminders/database";
 import { createAutomationPlanForAssignment } from "../src/services/automation.service.js";
 
 const BASE = `http://localhost:${process.env.PORT || 4000}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let token = "";
+
+// WhatsApp MOCK (para que la guardia de envío vea READY). Puerto de WHATSAPP_API_URL.
+const waReceived: { phone: string; message: string }[] = [];
+let waServer: http.Server;
+function startFakeWhatsApp(): Promise<void> {
+  const url = new URL(process.env.WHATSAPP_API_URL || "http://localhost:3999");
+  return new Promise((resolve) => {
+    waServer = http.createServer((req, res) => {
+      if (req.method === "POST" && req.url === "/send") {
+        let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => {
+          const { phone, message } = JSON.parse(b || "{}"); waReceived.push({ phone, message });
+          res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ success: true, outcome: "SENT", messageId: `FAKE-${waReceived.length}` }));
+        });
+      } else { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ status: "READY" })); }
+    });
+    waServer.listen(Number(url.port), () => resolve());
+  });
+}
 
 async function call(method: string, path: string, body?: any) {
   const res = await fetch(`${BASE}${path}`, {
@@ -43,6 +62,7 @@ async function cleanup() {
 
 async function main() {
   await sleep(1500);
+  await startFakeWhatsApp();
   await cleanup();
 
   // 1) Login
@@ -113,8 +133,41 @@ async function main() {
   const resume = await call("POST", "/api/whatsapp/resume", {});
   ok("POST /whatsapp/resume", resume.status === 200 && resume.data.paused === false);
 
+  // ── Fase 8: mensaje de PRUEBA y MANUAL ────────────────────────────────────
+  const delivBefore = await prisma.reminderDelivery.count();
+  const batchBefore = await prisma.messageBatch.count();
+
+  // Preview de prueba (render único, sin enviar)
+  const tprev = await call("POST", "/api/whatsapp/test-template/preview", { templateId: initial.id });
+  ok("POST /test-template/preview (render único)", tprev.status === 200 && typeof tprev.data.rendered === "string" && tprev.data.version >= 1);
+
+  // Envío de prueba (WA mock READY) → enviado === preview
+  waReceived.length = 0;
+  const tsend = await call("POST", "/api/whatsapp/test-template", { templateId: initial.id, targetPhone: "5219990000009" });
+  ok("POST /test-template envía", tsend.status === 200 && tsend.data.sendResult?.sent === true);
+  ok("prueba: enviado === render (preview===enviado)", waReceived.length === 1 && waReceived[0].message === tsend.data.rendered);
+
+  // Mensaje manual (WA mock READY) → enviado === texto
+  waReceived.length = 0;
+  const manualText = "Aviso manual *importante* 🙂\n- punto";
+  const msend = await call("POST", "/api/whatsapp/manual-send", { phone: "5219990000009", message: manualText });
+  ok("POST /manual-send envía", msend.status === 200 && msend.data.sent === true);
+  ok("manual: enviado === texto", waReceived.length === 1 && waReceived[0].message === manualText);
+
+  // NO se crean batches ni deliveries por probar/enviar manual
+  ok("prueba/manual NO crean deliveries ni batches", (await prisma.reminderDelivery.count()) === delivBefore && (await prisma.messageBatch.count()) === batchBefore);
+
+  // Guardia: en pausa manual NO envía
+  await call("POST", "/api/whatsapp/pause", { reason: "smoke-guard" });
+  waReceived.length = 0;
+  const blocked = await call("POST", "/api/whatsapp/manual-send", { phone: "5219990000009", message: "no debe salir" });
+  ok("guardia: en pausa NO envía (manual)", blocked.status === 409 && blocked.data.sent === false && waReceived.length === 0);
+  const blockedTest = await call("POST", "/api/whatsapp/test-template", { templateId: initial.id, targetPhone: "5219990000009" });
+  ok("guardia: en pausa NO envía (prueba)", blockedTest.data.sendResult?.sent === false && waReceived.length === 0);
+  await call("POST", "/api/whatsapp/resume", {});
+
   await cleanup();
   console.log("\n🎉 SMOKE HTTP COMPLETO: todos los endpoints del frontend responden correctamente.");
 }
 
-main().then(async () => { await prisma.$disconnect(); process.exit(0); }).catch(async (e) => { console.error("\n❌ SMOKE FALLÓ:", e); await prisma.$disconnect().catch(() => {}); process.exit(1); });
+main().then(async () => { waServer?.close(); await prisma.$disconnect(); process.exit(0); }).catch(async (e) => { console.error("\n❌ SMOKE FALLÓ:", e); waServer?.close(); await prisma.$disconnect().catch(() => {}); process.exit(1); });

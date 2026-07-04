@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "@jw-reminders/database";
+import { getSendGuard, renderTemplateForTest, sendTemplateTest, sendManual } from "../../services/manual-send.service.js";
 
 const router = Router();
 const WA_URL = process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:3010";
@@ -22,20 +23,46 @@ router.get("/status", async (_req: Request, res: Response) => {
   }
 });
 
+// ─── Fase 8: mensaje MANUAL y mensaje de PRUEBA (conectados al modelo nuevo) ──
+
+// Mensaje manual (texto libre) con guardia: no envía si pausado o WhatsApp no READY.
+// NO crea batches ni deliveries; deja solo un log técnico mínimo.
+router.post("/manual-send", async (req: Request, res: Response) => {
+  const { phone, message } = req.body || {};
+  if (!phone || !message) return res.status(400).json({ error: "phone y message requeridos" });
+  const result = await sendManual({ phone, message });
+  res.status(result.sent ? 200 : 409).json(result);
+});
+
+// Preview del mensaje de prueba (render único, sin enviar).
+router.post("/test-template/preview", async (req: Request, res: Response) => {
+  const { templateId, publisherId } = req.body || {};
+  if (!templateId) return res.status(400).json({ error: "templateId requerido" });
+  try {
+    res.json(await renderTemplateForTest(templateId, publisherId));
+  } catch {
+    res.status(404).json({ error: "Plantilla no encontrada" });
+  }
+});
+
+// Envío de PRUEBA de una plantilla a un teléfono autorizado (no dispara automatización).
+router.post("/test-template", async (req: Request, res: Response) => {
+  const { templateId, publisherId, targetPhone } = req.body || {};
+  if (!templateId || !targetPhone) return res.status(400).json({ error: "templateId y targetPhone requeridos" });
+  try {
+    const result = await sendTemplateTest({ templateId, publisherId, targetPhone });
+    res.status(result.sendResult.sent ? 200 : 409).json(result);
+  } catch {
+    res.status(404).json({ error: "Plantilla no encontrada" });
+  }
+});
+
+// Compatibilidad: el antiguo send-test ahora usa el envío manual CON guardia.
 router.post("/send-test", async (req: Request, res: Response) => {
   const { phone, message } = req.body;
   if (!phone || !message) return res.status(400).json({ error: "phone and message required" });
-  try {
-    const r = await fetch(`${WA_URL}/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
-    });
-    const data = await r.json();
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: String(e) });
-  }
+  const result = await sendManual({ phone, message });
+  res.status(result.sent ? 200 : 409).json(result);
 });
 
 router.post("/restart", async (_req: Request, res: Response) => {
