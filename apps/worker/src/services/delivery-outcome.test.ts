@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planFinalState, planReaperTarget } from "./delivery-outcome.js";
+import { planFinalState, planReaperTarget, evaluateSendGate } from "./delivery-outcome.js";
 import type { SendResult } from "@jw-reminders/shared/whatsapp";
 
 const base = { attemptCount: 0, maxAttempts: 3 };
@@ -83,4 +83,15 @@ test("reaper: outbox FAILED o sin evidencia ⇒ PENDING (seguro reintentar)", ()
   assert.equal(planReaperTarget("FAILED"), "PENDING");
   assert.equal(planReaperTarget(null), "PENDING");
   assert.equal(planReaperTarget(undefined), "PENDING");
+});
+
+// ── Fase 6: gate de envíos (pausa manual / pausa automática) ──
+test("gate: todo listo ⇒ proceder", () => {
+  assert.deepEqual(evaluateSendGate({ manualPause: false, whatsappReady: true }), { proceed: true, reason: "ok" });
+});
+test("gate: pausa MANUAL tiene prioridad aunque WhatsApp esté READY (sticky)", () => {
+  assert.deepEqual(evaluateSendGate({ manualPause: true, whatsappReady: true }), { proceed: false, reason: "paused_manual" });
+});
+test("gate: WhatsApp no READY ⇒ pausa automática (cola protegida)", () => {
+  assert.deepEqual(evaluateSendGate({ manualPause: false, whatsappReady: false }), { proceed: false, reason: "whatsapp_not_ready" });
 });

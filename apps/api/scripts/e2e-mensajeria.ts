@@ -69,6 +69,7 @@ async function cleanup() {
     await prisma.monthlySchedule.delete({ where: { id: sched.id } });
   }
   if (pub) await prisma.jwPublisher.delete({ where: { id: pub.id } });
+  await prisma.appConfig.upsert({ where: { key: "SENDS_PAUSED" }, update: { value: "false" }, create: { key: "SENDS_PAUSED", value: "false" } });
 }
 
 async function main() {
@@ -212,6 +213,18 @@ async function main() {
   log(`Aprobación: DRAFT → READY (${appr.approved} entregas)`);
   const readyRows = await prisma.reminderDelivery.findMany({ where: { batchId: gen.batchId! } });
   assert.ok(readyRows.every((d) => d.status === "READY"), "todas READY");
+
+  // ── Fase 6: pausa manual protege la cola (no envía, no pierde) ────────────
+  await prisma.appConfig.upsert({ where: { key: "SENDS_PAUSED" }, update: { value: "true" }, create: { key: "SENDS_PAUSED", value: "true" } });
+  received.length = 0;
+  await processReminders();
+  assert.equal(received.length, 0, "en pausa NO se envía");
+  const stillReady = await prisma.reminderDelivery.findMany({ where: { batchId: gen.batchId!, status: "READY" } });
+  assert.equal(stillReady.length, 2, "la cola queda intacta (siguen READY, sin consumir intento)");
+  log("Fase 6: pausa manual → no envía y protege la cola (siguen READY)");
+  // Reanudar
+  await prisma.appConfig.update({ where: { key: "SENDS_PAUSED" }, data: { value: "false" } });
+  log("Fase 6: reanudación (SENDS_PAUSED=false)");
 
   // ── Worker envía SOLO renderedMessage (TEST_MODE, WhatsApp mock) ──────────
   received.length = 0;
