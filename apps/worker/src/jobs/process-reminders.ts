@@ -10,11 +10,11 @@ import {
   buildMonthlyInitialMessage,
   formatDateSpanish,
   ASSIGNMENT_TYPE_LABELS,
+  groupDeliveries,
   type MessagePart,
 } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
-import { groupDeliveries } from "../services/grouping.js";
 import { planFinalState, planReaperTarget } from "../services/delivery-outcome.js";
 import {
   buildIdempotencyKey,
@@ -364,8 +364,15 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
     return;
   }
 
-  const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
-  const message = resolveOutboundMessage(fresh.customMessage, templateMessage);
+  // Fase 5: si hay snapshot congelado, el worker lo envía TAL CUAL y NO renderiza.
+  // customMessage (mecanismo legacy) mantiene prioridad si existe.
+  let message: string;
+  if (fresh.renderedMessage) {
+    message = resolveOutboundMessage(fresh.customMessage, fresh.renderedMessage);
+  } else {
+    const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
+    message = resolveOutboundMessage(fresh.customMessage, templateMessage);
+  }
   // H1: clave idempotente estable por (entrega + teléfono + contenido).
   const idempotencyKey = buildIdempotencyKey({ deliveryIds: [fresh.id], phone, message });
   fresh.idempotencyKey = idempotencyKey;
@@ -435,9 +442,11 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
 
   const parts = deliveries.map(deliveryToMessagePart);
 
-  // Por decisión del usuario, TODOS los recordatorios (7/3/1 días) van sin hora
-  // y sin duración: solo sección + título (y rol/acompañante donde aplique).
-  const message = buildGroupedPersonMessage({
+  // Fase 5: si el grupo tiene snapshot congelado (todas las hermanas comparten el
+  // mismo texto), el worker lo envía TAL CUAL. Solo si no hay snapshot (legacy)
+  // cae al render en vivo.
+  const frozen = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? null;
+  const message = frozen ?? buildGroupedPersonMessage({
     personName: personDisplayName(publisher),
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
@@ -513,7 +522,7 @@ async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig
     };
   });
 
-  const message = buildMonthlyInitialMessage({
+  const message = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? buildMonthlyInitialMessage({
     personName: personDisplayName(publisher),
     monthName: monthNameFor(first),
     items,
@@ -700,6 +709,8 @@ async function runProcessReminders() {
     where: {
       OR: [
         { status: "PENDING", scheduledAt: { lte: now } },
+        // READY: snapshot aprobado y listo para enviar (mismo trato que PENDING).
+        { status: "READY", scheduledAt: { lte: now } },
         { status: "FAILED", nextRetryAt: { lte: now } },
       ],
     },
