@@ -528,6 +528,32 @@ router.post("/deliveries/:id/reschedule", async (req: Request<{ id: string }>, r
 
 // ─── Fase 4: snapshot congelado (generar / revisar / editar / regenerar / aprobar) ──
 
+// Listar batches recientes (pantalla de revisión).
+router.get("/batches", async (_req: Request, res: Response) => {
+  const batches = await prisma.messageBatch.findMany({ orderBy: { createdAt: "desc" }, take: 50 });
+  const withCounts = await Promise.all(
+    batches.map(async (b) => {
+      const deliveries = await prisma.reminderDelivery.findMany({
+        where: { batchId: b.id },
+        select: { publisherId: true, reminderType: true, renderedMessage: true, status: true, manuallyEdited: true },
+      });
+      const persons = new Set(deliveries.map((d) => `${d.publisherId}|${d.reminderType}|${d.renderedMessage ?? ""}`));
+      return {
+        id: b.id,
+        type: b.type,
+        periodLabel: b.periodLabel,
+        status: b.status,
+        createdAt: b.createdAt,
+        approvedAt: b.approvedAt,
+        messages: persons.size,
+        deliveries: deliveries.length,
+        edited: deliveries.filter((d) => d.manuallyEdited).length,
+      };
+    }),
+  );
+  res.json(withCounts);
+});
+
 // Generar y congelar snapshots de un alcance (mes o semana) en un batch DRAFT.
 router.post("/batches/generate", async (req: Request, res: Response) => {
   try {
