@@ -5,9 +5,15 @@ import { getSendGuard, renderTemplateForTest, sendTemplateTest, sendManual } fro
 const router = Router();
 const WA_URL = process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:3010";
 
+/** Cabecera de auth interna hacia el servicio WhatsApp (Fase 9). */
+function waHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = process.env.WHATSAPP_INTERNAL_TOKEN;
+  return { ...(token ? { "x-internal-token": token } : {}), ...extra };
+}
+
 router.get("/status", async (_req: Request, res: Response) => {
   try {
-    const r = await fetch(`${WA_URL}/status`);
+    const r = await fetch(`${WA_URL}/status`, { headers: waHeaders() });
     const data = await r.json();
     res.json(data);
   } catch {
@@ -67,7 +73,7 @@ router.post("/send-test", async (req: Request, res: Response) => {
 
 router.post("/restart", async (_req: Request, res: Response) => {
   try {
-    const r = await fetch(`${WA_URL}/restart`, { method: "POST" });
+    const r = await fetch(`${WA_URL}/restart`, { method: "POST", headers: waHeaders() });
     const data = await r.json();
     res.json(data);
   } catch (e) {
@@ -77,7 +83,7 @@ router.post("/restart", async (_req: Request, res: Response) => {
 
 router.post("/disconnect", async (_req: Request, res: Response) => {
   try {
-    const r = await fetch(`${WA_URL}/disconnect`, { method: "POST" });
+    const r = await fetch(`${WA_URL}/disconnect`, { method: "POST", headers: waHeaders() });
     const data = await r.json();
     res.json(data);
   } catch (e) {
@@ -87,7 +93,7 @@ router.post("/disconnect", async (_req: Request, res: Response) => {
 
 router.post("/generate-qr", async (_req: Request, res: Response) => {
   try {
-    const r = await fetch(`${WA_URL}/generate-qr`, { method: "POST" });
+    const r = await fetch(`${WA_URL}/generate-qr`, { method: "POST", headers: waHeaders() });
     const data = await r.json();
     res.json(data);
   } catch (e) {
@@ -104,7 +110,7 @@ router.get("/send-state", async (_req: Request, res: Response) => {
   const manualPaused = cfg?.value === "true";
   let whatsappStatus = "UNREACHABLE";
   try {
-    const r = await fetch(`${WA_URL}/status`);
+    const r = await fetch(`${WA_URL}/status`, { headers: waHeaders() });
     const data: any = await r.json();
     whatsappStatus = String(data?.status ?? "UNKNOWN");
   } catch { /* WhatsApp no responde */ }

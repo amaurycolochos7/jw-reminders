@@ -1,11 +1,8 @@
 import { PrismaClient } from "@prisma/client";
-import { createHash } from "crypto";
+import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 
 const prisma = new PrismaClient();
-
-function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
-}
 
 /** Extrae los nombres de variable {{var}} de un cuerpo (para variablesSchema). */
 function extractVariableNames(body: string): string[] {
@@ -146,12 +143,21 @@ async function ensureActiveTemplate(t: (typeof ACTIVE_TEMPLATES)[number]) {
 }
 
 async function main() {
-  await prisma.adminUser.upsert({
-    where: { email: "admin" },
-    update: {},
-    create: { email: "admin", password: hashPassword("dorian123"), name: "Administrador" },
-  });
-  console.log("✓ Admin user ensured");
+  // Admin: NO se resetea si ya existe. Contraseña desde ADMIN_PASSWORD (bcrypt).
+  // Si no existe admin y no hay ADMIN_PASSWORD, se genera una temporal y se imprime.
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const existingAdmin = await prisma.adminUser.findUnique({ where: { email: "admin" } });
+  if (!existingAdmin) {
+    const pw = adminPassword || randomBytes(9).toString("base64url");
+    await prisma.adminUser.create({ data: { email: "admin", password: await bcrypt.hash(pw, 10), name: "Administrador" } });
+    if (adminPassword) console.log("✓ Admin creado (contraseña desde ADMIN_PASSWORD)");
+    else console.log(`⚠ Admin creado con contraseña TEMPORAL: ${pw}  → cámbiala o define ADMIN_PASSWORD y re-siembra.`);
+  } else if (adminPassword) {
+    await prisma.adminUser.update({ where: { id: existingAdmin.id }, data: { password: await bcrypt.hash(adminPassword, 10) } });
+    console.log("✓ Admin: contraseña actualizada desde ADMIN_PASSWORD (bcrypt)");
+  } else {
+    console.log("✓ Admin ya existe (sin cambios)");
+  }
 
   for (const t of ACTIVE_TEMPLATES) {
     const msg = await ensureActiveTemplate(t);

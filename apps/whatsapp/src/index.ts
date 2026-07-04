@@ -7,6 +7,17 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Fase 9 — Auth interna: si WHATSAPP_INTERNAL_TOKEN está definido, TODOS los
+// endpoints (salvo /health) exigen la cabecera x-internal-token. Así el servicio
+// WhatsApp no acepta comandos de envío/sesión de cualquiera dentro de la red.
+const INTERNAL_TOKEN = process.env.WHATSAPP_INTERNAL_TOKEN;
+app.use((req, res, next) => {
+  if (req.path === "/health") return next();
+  if (!INTERNAL_TOKEN) return next(); // no configurado: compat (se advierte en API)
+  if (req.header("x-internal-token") === INTERNAL_TOKEN) return next();
+  return res.status(401).json({ error: "unauthorized (internal token)" });
+});
+
 app.get("/status", (_req, res) => {
   let deviceName: string | null = null;
   try {

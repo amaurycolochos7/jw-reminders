@@ -91,7 +91,10 @@ async function isWhatsappReady(): Promise<{ ready: boolean; status: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(`${url}/status`, { signal: controller.signal });
+    const res = await fetch(`${url}/status`, {
+      signal: controller.signal,
+      headers: process.env.WHATSAPP_INTERNAL_TOKEN ? { "x-internal-token": process.env.WHATSAPP_INTERNAL_TOKEN } : {},
+    });
     const data: any = await res.json().catch(() => ({}));
     const status = String(data?.status ?? "UNKNOWN");
     return { ready: status === "READY", status };

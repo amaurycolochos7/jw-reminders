@@ -22,6 +22,13 @@ export function toWhatsappNumber(raw: string): string {
   return d;
 }
 
+/** Enmascara un teléfono para logs (no exponer números completos). */
+function maskPhone(raw: string): string {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (d.length < 4) return "***";
+  return `${d.slice(0, 2)}****${d.slice(-2)}`;
+}
+
 /**
  * Envío IDEMPOTENTE de un mensaje de WhatsApp (H1/H3).
  *
@@ -107,7 +114,7 @@ export async function sendMessage(
         where: { idempotencyKey: key },
         data: { status: "FAILED", error: "Número no registrado en WhatsApp" },
       }).catch(() => undefined);
-      console.warn(`[WhatsApp] Número no registrado en WhatsApp: ${number} (origen: ${phone})`);
+      console.warn(`[WhatsApp] Número no registrado en WhatsApp: ${maskPhone(number)}`);
       return { success: false, outcome: "REJECTED", error: `El número ${number} no está registrado en WhatsApp.` };
     }
     const chatId = numberId._serialized;
@@ -117,7 +124,7 @@ export async function sendMessage(
       where: { idempotencyKey: key },
       data: { status: "SENT", providerMessageId: messageId ?? null, sentAt: new Date(), error: null },
     }).catch(() => undefined);
-    console.log(`[WhatsApp] Enviado a ${chatId} (msgId=${messageId}) key=${key.slice(0, 12)}…`);
+    console.log(`[WhatsApp] Enviado a ${maskPhone(number)} (msgId=${messageId}) key=${key.slice(0, 12)}…`);
     return { success: true, outcome: "SENT", messageId };
   } catch (err: any) {
     const msg = err?.message || String(err);
@@ -127,7 +134,7 @@ export async function sendMessage(
       where: { idempotencyKey: key },
       data: { status: "UNCERTAIN", error: msg },
     }).catch(() => undefined);
-    console.error(`[WhatsApp] Envío INCIERTO a ${number}:`, msg);
+    console.error(`[WhatsApp] Envío INCIERTO a ${maskPhone(number)}:`, msg);
     return { success: false, outcome: "UNCERTAIN", error: msg };
   }
 }

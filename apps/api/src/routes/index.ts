@@ -12,11 +12,12 @@ import whatsappRoutes from "../modules/whatsapp/whatsapp.routes.js";
 import monthlySchedulesRoutes from "../modules/monthly-schedules/monthly-schedules.routes.js";
 import automationCenterRoutes from "../modules/automation-center/automation-center.routes.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { rateLimit } from "../config/security.js";
 
 export const apiRouter = Router();
 
-// Public routes
-apiRouter.use("/auth", authRoutes);
+// Public routes (con rate limit: 10 intentos de login por minuto por IP).
+apiRouter.use("/auth", rateLimit({ windowMs: 60_000, max: 10 }), authRoutes);
 
 // Protected routes
 apiRouter.use("/dashboard", authMiddleware, dashboardRoutes);
