@@ -266,8 +266,15 @@ export async function regenerateFromTemplate(deliveryId: string) {
 
 /** Aprueba un batch: DRAFT → READY en sus entregas (listas para el worker). */
 export async function approveBatch(batchId: string) {
+  // Guard: no se puede aprobar si hay entregas sin snapshot (renderedMessage vacío).
+  const missing = await prisma.reminderDelivery.count({
+    where: { batchId, status: "DRAFT", renderedMessage: null },
+  });
+  if (missing > 0) {
+    throw new Error(`No se puede aprobar: ${missing} mensaje(s) sin renderedMessage. Regenera o corrige antes de aprobar.`);
+  }
   const updated = await prisma.reminderDelivery.updateMany({
-    where: { batchId, status: "DRAFT" },
+    where: { batchId, status: "DRAFT", renderedMessage: { not: null } },
     data: { status: "READY" },
   });
   await prisma.messageBatch.update({ where: { id: batchId }, data: { status: "APPROVED", approvedAt: new Date() } });

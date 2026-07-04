@@ -190,6 +190,17 @@ async function validateFresh(fresh: FreshDelivery): Promise<boolean> {
     return false;
   }
 
+  // ── Fase 5 (restricción de fallback): flujo NUEVO sin snapshot NO se envía ──
+  // Un delivery del flujo nuevo (tiene batchId o sourceType) DEBE llevar su
+  // renderedMessage congelado. Si no lo tiene, es un error de generación: se
+  // BLOQUEA (no se renderiza en vivo silenciosamente). El render vivo (fallback)
+  // solo queda permitido para datos LEGACY (sin batchId ni sourceType).
+  const isNewFlow = !!fresh.batchId || !!fresh.sourceType;
+  if (isNewFlow && !fresh.renderedMessage) {
+    await markSkipped(fresh.id, "Flujo nuevo sin snapshot (renderedMessage vacío): no se renderiza en el worker");
+    return false;
+  }
+
   // ── Deduplicación con NotificationLog (H1) ──
   // Barrera a nivel de DB contra duplicados: si YA existe una notificación SENT
   // para esta (asignación, persona, claveDeNotificación), NO se reenvía. Antes
