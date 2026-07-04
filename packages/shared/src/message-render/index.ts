@@ -57,7 +57,7 @@ const REMINDERS: TemplateTypeKey[] = ["SEVEN_DAYS_BEFORE", "THREE_DAYS_BEFORE", 
 export const TEMPLATE_VARIABLES: TemplateVariableDef[] = [
   { name: "nombre",            description: "Nombre visible del destinatario (displayName o nombre completo).", example: "Carlos",                         appliesTo: ALL,        required: true },
   { name: "telefono",          description: "Teléfono al que se enviará el mensaje.",                            example: "5219611234567",                  appliesTo: ALL,        required: false },
-  { name: "listaAsignaciones", description: "Bloque autogenerado con TODAS las asignaciones de la persona, ya formateado. Editable en el mensaje final.", example: "*Viernes 10 de julio*\n• Punto 3\n*Lectura de la Biblia*", appliesTo: ["INITIAL_NOTICE"], required: true },
+  { name: "listaAsignaciones", description: "Bloque autogenerado con las asignaciones de la persona, ya formateado (fecha, sección, título, rol/acompañante). Editable en el mensaje final.", example: "*Viernes 10 de julio*\n• Punto 3\n*Lectura de la Biblia*", appliesTo: ALL, required: true },
   { name: "asignacion",        description: "Título de la asignación (una sola parte).",                         example: "Lectura de la Biblia",           appliesTo: [...REMINDERS, "CHANGE_NOTICE"], required: false },
   { name: "seccion",           description: "Sección/tipo de la parte (etiqueta).",                              example: "Seamos Mejores Maestros",        appliesTo: [...REMINDERS, "CHANGE_NOTICE"], required: false },
   { name: "punto",             description: "Número del punto en el programa (WOL), si aplica.",                 example: "3",                              appliesTo: [...REMINDERS, "CHANGE_NOTICE"], required: false },

@@ -57,8 +57,8 @@ test("acepta alias con acento: {{compañero}} -> companero", () => {
 });
 
 test("valida que una variable no aplique al tipo de mensaje", () => {
-  // listaAsignaciones solo aplica a INITIAL_NOTICE
-  const r = validateTemplate("Hola {{nombre}} {{listaAsignaciones}}", "SEVEN_DAYS_BEFORE");
+  // {{mes}} solo aplica a INITIAL_NOTICE
+  const r = validateTemplate("Hola {{nombre}} en {{mes}}", "SEVEN_DAYS_BEFORE");
   assert.ok(r.warnings.some((w) => w.includes("no aplica")));
 });
 
