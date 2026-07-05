@@ -20,6 +20,7 @@ const updateSchema = z.object({
   body: z.string().optional(),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
+  variants: z.array(z.string()).optional(),
 });
 
 /** Lista de plantillas con metadatos para el panel. */
@@ -48,6 +49,7 @@ router.get("/", async (_req: Request, res: Response) => {
       // ¿Esta plantilla afecta realmente el envío? (tipo activo + isActive)
       connectedToSend: t.isActive && ACTIVE.has(t.type),
       isLegacy: !ACTIVE.has(t.type),
+      variants: t.variants ?? [],
     })),
   );
 });
@@ -127,6 +129,7 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
         description: data.description ?? t.description,
         isActive: data.isActive ?? t.isActive,
         ...(bodyChanged ? { body: data.body!, activeVersion: newVersion } : {}),
+        ...(data.variants !== undefined ? { variants: data.variants } : {}),
       },
     });
     res.json({ ...updated, versionCreated: bodyChanged ? newVersion : null });

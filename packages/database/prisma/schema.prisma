@@ -456,11 +456,11 @@ model JwMessageTemplate {
   body      String
   isActive  Boolean  @default(true)
   // ─── Reestructuración mensajería robusta (aditivo) ───
-  // Descripción para el panel y número de versión activa. `body` sigue siendo el
-  // cuerpo de la versión activa (espejo) para compatibilidad; el historial vive
-  // en MessageTemplateVersion.
   description   String?
   activeVersion Int      @default(1)
+  // Variantes: array de cuerpos alternativos. Al enviar se elige uno al azar
+  // (incluyendo `body` como variante principal). Anti-ban: cada mensaje es diferente.
+  variants      Json?    // ["variante 2 body", "variante 3 body", ...]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

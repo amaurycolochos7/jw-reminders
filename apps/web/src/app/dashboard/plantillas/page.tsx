@@ -43,7 +43,7 @@ export default function PlantillasPage() {
   const [versionsFor, setVersionsFor] = useState<Template | null>(null)
   const [versions, setVersions] = useState<Version[]>([])
 
-  const [form, setForm] = useState({ title: '', body: '', description: '' })
+  const [form, setForm] = useState({ title: '', body: '', description: '', variants: [] as string[] })
   const [preview, setPreview] = useState<{ rendered: string; warnings: string[]; invalidVariables: string[] }>({ rendered: '', warnings: [], invalidVariables: [] })
   const [saving, setSaving] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement | null>(null)
@@ -73,7 +73,7 @@ export default function PlantillasPage() {
 
   function openEdit(t: Template) {
     setEditing(t)
-    setForm({ title: t.title, body: t.body, description: t.description ?? '' })
+    setForm({ title: t.title, body: t.body, description: t.description ?? '', variants: Array.isArray((t as any).variants) ? (t as any).variants : [] })
     setPreview({ rendered: '', warnings: [], invalidVariables: [] })
   }
 
@@ -183,6 +183,27 @@ export default function PlantillasPage() {
                   <textarea ref={bodyRef} rows={12} value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })}
                     className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm font-mono resize-y" />
                 </div>
+
+                {/* Variantes anti-ban */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-ink">Variantes ({form.variants.length + 1} total)</label>
+                    <button type="button" onClick={() => setForm({ ...form, variants: [...form.variants, form.body] })}
+                      className="text-xs font-medium text-azure hover:opacity-80">+ Agregar variante</button>
+                  </div>
+                  <p className="text-[11px] text-graphite">Cada envío usa una variante al azar. Así ningún mensaje es idéntico (anti-ban).</p>
+                  {form.variants.map((v, i) => (
+                    <div key={i} className="relative">
+                      <textarea rows={6} value={v}
+                        onChange={(e) => { const copy = [...form.variants]; copy[i] = e.target.value; setForm({ ...form, variants: copy }) }}
+                        className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm font-mono resize-y pr-16"
+                        placeholder={`Variante ${i + 2}`} />
+                      <button type="button" onClick={() => { const copy = form.variants.filter((_, j) => j !== i); setForm({ ...form, variants: copy }) }}
+                        className="absolute top-2 right-2 text-[10px] text-red-600 bg-red-50 px-2 py-1 rounded-lg hover:bg-red-100">Eliminar</button>
+                    </div>
+                  ))}
+                </div>
+
                 {preview.warnings.length > 0 && (
                   <div className="text-xs bg-amber-50 text-amber-800 rounded-xl p-3 space-y-1">
                     {preview.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}

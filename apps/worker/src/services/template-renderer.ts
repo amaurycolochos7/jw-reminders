@@ -1,6 +1,18 @@
 import { prisma } from "@jw-reminders/database";
 import { renderTemplate, ASSIGNMENT_TYPE_LABELS, ROOM_LABELS, formatDateSpanish, formatMeetingTime } from "@jw-reminders/shared";
 
+/**
+ * Elige el cuerpo de la plantilla: si tiene variantes, toma una al azar
+ * (incluyendo el body principal). Anti-ban: cada mensaje es diferente.
+ */
+function pickTemplateBody(template: { body: string; variants?: unknown }): string {
+  const variants = Array.isArray(template.variants) ? template.variants.filter((v): v is string => typeof v === "string" && v.trim().length > 0) : [];
+  if (variants.length === 0) return template.body;
+  // Pool: body principal + variantes
+  const pool = [template.body, ...variants];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 export async function renderReminderMessage(reminder: any): Promise<string> {
   const { assignment, publisher } = reminder;
   const isCompanion = publisher.id === assignment.companionPublisherId;
@@ -36,5 +48,6 @@ export async function renderReminderMessage(reminder: any): Promise<string> {
     notes: assignment.notes || "",
   };
 
-  return renderTemplate(template.body, variables);
+  // Elegir variante al azar y renderizar
+  return renderTemplate(pickTemplateBody(template), variables);
 }
