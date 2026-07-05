@@ -93,6 +93,22 @@ export async function getWeekProgram(id: string) {
       assignmentByItem.set(a.programItemId, a);
     }
   }
+  // Fallback: si la asignación no tiene programItemId pero coincide por título/número,
+  // vincular igualmente para que la UI no muestre "Sin asignar" cuando ya existe.
+  const unlinkedAssignments = week.assignments.filter((a) => !a.programItemId);
+  if (unlinkedAssignments.length > 0) {
+    for (const item of week.programItems) {
+      if (assignmentByItem.has(item.id)) continue; // ya tiene asignación
+      const match = unlinkedAssignments.find((a) =>
+        a.title === item.title && !assignmentByItem.has(item.id) &&
+        !Array.from(assignmentByItem.values()).includes(a)
+      ) || unlinkedAssignments.find((a) =>
+        a.assignmentNumber === item.itemNumber && a.section === item.section &&
+        !Array.from(assignmentByItem.values()).includes(a)
+      );
+      if (match) assignmentByItem.set(item.id, match);
+    }
+  }
 
   return {
     id: week.id,
