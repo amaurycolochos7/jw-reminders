@@ -121,22 +121,7 @@ function createClient(): InstanceType<typeof Client> {
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--disable-extensions",
-        "--disable-software-rasterizer",
-        "--no-first-run",
-        "--disable-accelerated-2d-canvas",
-        "--disable-features=LockProfileCookieDatabase",
-        // H3: mantener vivo el render en headless (evita "congelar" la pestaña).
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        // NOTA (H3): se ELIMINARON "--single-process" y "--no-zygote" porque son
-        // la causa principal de crashes de Chromium ("Target closed") que el
-        // sistema interpretaba como desconexiones de WhatsApp. Ver auditoría §3.1.
       ],
-      timeout: 60000,
     },
   });
   setupListeners(c);

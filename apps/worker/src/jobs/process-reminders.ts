@@ -11,6 +11,7 @@ import {
   formatDateSpanish,
   ASSIGNMENT_TYPE_LABELS,
   groupDeliveries,
+  parseSpintax,
   type MessagePart,
 } from "@jw-reminders/shared";
 import { renderReminderMessage } from "../services/template-renderer.js";
@@ -450,10 +451,10 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
   // customMessage (mecanismo legacy) mantiene prioridad si existe.
   let message: string;
   if (fresh.renderedMessage) {
-    message = resolveOutboundMessage(fresh.customMessage, fresh.renderedMessage);
+    message = parseSpintax(resolveOutboundMessage(fresh.customMessage, fresh.renderedMessage));
   } else {
     const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
-    message = resolveOutboundMessage(fresh.customMessage, templateMessage);
+    message = parseSpintax(resolveOutboundMessage(fresh.customMessage, templateMessage));
   }
   // H1: clave idempotente estable por (entrega + teléfono + contenido).
   const idempotencyKey = buildIdempotencyKey({ deliveryIds: [fresh.id], phone, message });
@@ -528,14 +529,14 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
   // mismo texto), el worker lo envía TAL CUAL. Solo si no hay snapshot (legacy)
   // cae al render en vivo.
   const frozen = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? null;
-  const message = frozen ?? buildGroupedPersonMessage({
+  const message = parseSpintax(frozen ?? buildGroupedPersonMessage({
     personName: personDisplayName(publisher),
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
     parts,
     showTime: false,
     showDuration: false,
-  });
+  }));
 
   // H1: UNA sola clave idempotente para el grupo (un único mensaje físico). El
   // servicio WhatsApp deduplica por esta clave, así que aunque el grupo se
@@ -880,9 +881,9 @@ async function runProcessReminders() {
       // ── Cooldown entre mensajes: pausa variable 1-3 min ──
       // Solo si hay más grupos por procesar y no se alcanzó el tope.
       if (sentThisRun < maxSendsPerRun || maxSendsPerRun <= 0) {
-        // Pausa LARGA cada 5 mensajes: 5 minutos
-        const cooldownEvery = envInt("WHATSAPP_COOLDOWN_AFTER_MESSAGES", 5);
-        const cooldownLongMinutes = envInt("WHATSAPP_COOLDOWN_MINUTES", 5);
+        // Pausa LARGA cada 6 mensajes: 15 minutos (como el scrapper)
+        const cooldownEvery = envInt("WHATSAPP_COOLDOWN_AFTER_MESSAGES", 6);
+        const cooldownLongMinutes = envInt("WHATSAPP_COOLDOWN_MINUTES", 15);
         const isLongCooldown = cooldownEvery > 0 && sentThisRun > 0 && sentThisRun % cooldownEvery === 0;
 
         const cooldownMs = isLongCooldown

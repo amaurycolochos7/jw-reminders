@@ -9,10 +9,10 @@ import { client, status as whatsappStatus, waitForAck } from "../client/whatsapp
 import { sendMessage, toWhatsappNumber } from "../services/message-sender.js";
 import { prisma } from "@jw-reminders/database";
 
-// ── Configuración de typing (env, con defaults sensatos) ────────────────────
-const TYPING_MIN_S = Number(process.env.WHATSAPP_TYPING_MIN_SECONDS) || 4;
-const TYPING_MAX_S = Number(process.env.WHATSAPP_TYPING_MAX_SECONDS) || 18;
-const TYPING_PER_CHAR_MS = Number(process.env.WHATSAPP_TYPING_PER_CHAR_MS) || 35;
+// ── Configuración de typing (como el scrapper que no banea) ─────────────────
+const TYPING_MIN_S = Number(process.env.WHATSAPP_TYPING_MIN_SECONDS) || 2;
+const TYPING_MAX_S = Number(process.env.WHATSAPP_TYPING_MAX_SECONDS) || 5;
+const TYPING_PER_CHAR_MS = Number(process.env.WHATSAPP_TYPING_PER_CHAR_MS) || 15;
 const TYPING_JITTER_PERCENT = Number(process.env.WHATSAPP_TYPING_JITTER_PERCENT) || 30;
 const REQUIRE_TYPING = process.env.WHATSAPP_REQUIRE_TYPING_BEFORE_SEND !== "false";
 

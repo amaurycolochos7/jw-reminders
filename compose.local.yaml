@@ -63,8 +63,8 @@ services:
       CRON_SCHEDULE: "*/2 * * * *"
       TEST_MODE: "false"
       NODE_ENV: development
-      WHATSAPP_SEND_DELAY_MIN_MS: "60000"
-      WHATSAPP_SEND_DELAY_MAX_MS: "180000"
+      WHATSAPP_SEND_DELAY_MIN_MS: "28000"
+      WHATSAPP_SEND_DELAY_MAX_MS: "42000"
     depends_on:
       db:
         condition: service_healthy

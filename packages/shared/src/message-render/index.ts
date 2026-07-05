@@ -206,3 +206,21 @@ export function sampleVariables(): Record<string, string> {
   for (const v of TEMPLATE_VARIABLES) out[v.name] = v.example;
   return out;
 }
+
+/**
+ * Spintax: reemplaza {opción1|opción2|opción3} con una variante aleatoria.
+ * Permite que cada mensaje sea ligeramente diferente para evitar detección de spam.
+ * Ejemplo: "{Hola|Buenos días|Saludos} {nombre}" → "Buenos días Juan"
+ */
+export function parseSpintax(text: string): string {
+  if (!text) return text;
+  let result = text;
+  let matches;
+  // ponytail: regex simple, un solo nivel de anidamiento
+  while ((matches = result.match(/\{([^{}]+)\}/))) {
+    const options = matches[1].split("|");
+    const randomOpt = options[Math.floor(Math.random() * options.length)];
+    result = result.replace(matches[0], randomOpt);
+  }
+  return result;
+}
