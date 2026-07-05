@@ -87,7 +87,32 @@ const deliveryInclude = {
 };
 
 function mapDelivery(delivery: any, timeZone: string, now: Date) {
-  const overdue = delivery.scheduledAt < now && isOpenNotSent(delivery.status);
+  // ponytail: immediate notices (INITIAL_NOTICE, CHANGE_NOTICE, CANCELLATION_NOTICE)
+  // use scheduledAt = creation time. They're "in queue" not "overdue" unless >30min old.
+  const IMMEDIATE_TYPES = ["INITIAL_NOTICE", "CHANGE_NOTICE", "CANCELLATION_NOTICE"];
+  const OVERDUE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+  const isImmediate = IMMEDIATE_TYPES.includes(delivery.reminderType);
+  const msSinceScheduled = now.getTime() - new Date(delivery.scheduledAt).getTime();
+  const overdue = delivery.scheduledAt < now
+    && isOpenNotSent(delivery.status)
+    && (!isImmediate || msSinceScheduled > OVERDUE_THRESHOLD_MS);
+
+  // Time condition for UI: helps frontend show better labels
+  let timeCondition: string;
+  if (delivery.status === "SENT" || delivery.status === "CANCELLED" || delivery.status === "SKIPPED") {
+    timeCondition = "completed";
+  } else if (delivery.scheduledAt > now) {
+    timeCondition = "scheduled"; // future
+  } else if (isImmediate && msSinceScheduled <= OVERDUE_THRESHOLD_MS) {
+    timeCondition = "ready"; // in queue, waiting for worker cycle
+  } else if (msSinceScheduled <= OVERDUE_THRESHOLD_MS) {
+    timeCondition = "ready";
+  } else if (msSinceScheduled <= 2 * 60 * 60 * 1000) {
+    timeCondition = "delayed"; // >30min but <2h
+  } else {
+    timeCondition = "overdue_critical"; // >2h without processing
+  }
+
   return {
     id: delivery.id,
     reminderType: delivery.reminderType,
@@ -98,6 +123,7 @@ function mapDelivery(delivery: any, timeZone: string, now: Date) {
     localDate: localDateLabel(delivery.scheduledAt, timeZone),
     localTime: localTimeLabel(delivery.scheduledAt, timeZone),
     overdue,
+    timeCondition,
     attemptCount: delivery.attemptCount,
     maxAttempts: delivery.maxAttempts,
     nextRetryAt: delivery.nextRetryAt,
@@ -134,7 +160,23 @@ router.get("/overview", async (_req: Request, res: Response) => {
 
     const todayDeliveries = open.filter((d) => d.scheduledAt >= todayStart && d.scheduledAt < todayEnd);
     const tomorrowDeliveries = open.filter((d) => d.scheduledAt >= todayEnd && d.scheduledAt < tomorrowEnd);
-    const overdue = open.filter((d) => d.scheduledAt < now).length;
+
+    // ponytail: only count as overdue if >30min past scheduledAt (immediate notices aren't overdue right away)
+    const IMMEDIATE_TYPES_OV = ["INITIAL_NOTICE", "CHANGE_NOTICE", "CANCELLATION_NOTICE"];
+    const OVERDUE_MS = 30 * 60 * 1000;
+    const overdue = open.filter((d) => {
+      if (d.scheduledAt >= now) return false;
+      const ms = now.getTime() - new Date(d.scheduledAt).getTime();
+      if (IMMEDIATE_TYPES_OV.includes(d.reminderType) && ms <= OVERDUE_MS) return false;
+      return ms > OVERDUE_MS;
+    }).length;
+
+    // Ready to send: pending and scheduledAt <= now but not yet overdue
+    const readyToSend = open.filter((d) => {
+      if (d.scheduledAt > now) return false;
+      const ms = now.getTime() - new Date(d.scheduledAt).getTime();
+      return ms <= OVERDUE_MS;
+    }).length;
 
     const programMap = new Map<string, { id: string; name: string; pending: number }>();
     for (const d of open) {
@@ -168,12 +210,208 @@ router.get("/overview", async (_req: Request, res: Response) => {
         companion: todayDeliveries.filter((d) => d.recipientRole === "COMPANION").length,
       },
       tomorrow: { pending: tomorrowDeliveries.length },
+      readyToSend,
       overdue,
       failed,
       sentToday,
       programsWithPending: Array.from(programMap.values()).sort((a, b) => b.pending - a.pending),
       upcomingPublishers: Array.from(publisherMap.values()).sort((a, b) => a.nextLocalDate.localeCompare(b.nextLocalDate) || b.count - a.count).slice(0, 8),
     });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Operations status: estado operativo en tiempo real ───────────────────
+// Alimenta el panel principal del Centro de Automatizaciones.
+router.get("/operations-status", async (_req: Request, res: Response) => {
+  try {
+    const config = await getAutomationConfig(prisma);
+    const tz = config.timezone;
+    const now = new Date();
+    const today = localToday(tz);
+    const todayStart = zonedLocalTimeToUtc(today, 0, 0, tz);
+    const todayEnd = zonedLocalTimeToUtc(addDaysToLocalDate(today, 1), 0, 0, tz);
+
+    // Datos paralelos
+    const [appConfigs, whatsappRes, lastWorkerEvent, lastPauseEvent, sentToday, outboxRecent, pendingCount, failedCount, sentCount, uncertainCount] = await Promise.all([
+      prisma.appConfig.findMany({ where: { key: { in: ["SENDS_PAUSED", "TEST_MODE", "WORKER_PHASE"] } } }),
+      fetch(`${process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:3010"}/status`).then((r) => r.json()).catch(() => ({ status: "DISCONNECTED" })),
+      prisma.jwAutomationEvent.findFirst({ where: { actorType: "worker" }, orderBy: { createdAt: "desc" } }),
+      prisma.jwAutomationEvent.findFirst({ where: { eventType: "SENDS_AUTO_PAUSED" }, orderBy: { createdAt: "desc" } }),
+      prisma.reminderDelivery.count({ where: { status: "SENT", sentAt: { gte: todayStart, lt: todayEnd } } }),
+      prisma.whatsappOutbox.findMany({ where: { status: "SENT" }, orderBy: { sentAt: "desc" }, take: 5 }),
+      prisma.reminderDelivery.count({ where: { status: { in: ["PENDING", "READY", "QUEUED"] } } }),
+      prisma.reminderDelivery.count({ where: { status: { in: ["FAILED", "DEAD"] } } }),
+      prisma.reminderDelivery.count({ where: { status: "SENT" } }),
+      prisma.reminderDelivery.count({ where: { status: "UNCERTAIN" } }),
+    ]);
+
+    const configMap = Object.fromEntries(appConfigs.map((c) => [c.key, c.value]));
+    const paused = configMap.SENDS_PAUSED === "true";
+
+    // Próximo mensaje listo
+    const nextReady = await prisma.reminderDelivery.findFirst({
+      where: { status: { in: ["PENDING", "READY"] }, scheduledAt: { lte: now } },
+      include: { publisher: true },
+      orderBy: { scheduledAt: "asc" },
+    });
+
+    // Agrupación real: cuántos mensajes WhatsApp se enviarán (1 por persona/semana/tipo)
+    const pendingGroups = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(DISTINCT CONCAT("publisherId", '|', "assignmentId")) as count
+      FROM "ReminderDelivery"
+      WHERE status IN ('PENDING', 'READY', 'QUEUED')
+    `.catch(() => [{ count: BigInt(0) }]);
+    const whatsappMessagesToday = sentToday;
+
+    // Calcular próximo envío
+    let secondsUntilNextSend: number | null = null;
+    if (nextReady && !paused && whatsappRes.status === "READY") {
+      secondsUntilNextSend = 0; // listo ahora
+    } else if (!paused && whatsappRes.status === "READY") {
+      // Buscar el siguiente scheduledAt futuro (solo si es dentro de 24h)
+      const next24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const nextFuture = await prisma.reminderDelivery.findFirst({
+        where: { status: { in: ["PENDING", "READY"] }, scheduledAt: { gt: now, lte: next24h } },
+        orderBy: { scheduledAt: "asc" },
+        select: { scheduledAt: true },
+      });
+      if (nextFuture) {
+        secondsUntilNextSend = Math.max(0, Math.round((nextFuture.scheduledAt.getTime() - now.getTime()) / 1000));
+      }
+    }
+
+    // Último ACK recibido
+    const lastAck = outboxRecent[0]?.ack ?? null;
+    const lastAckPhone = outboxRecent[0]?.phone ?? null;
+    const lastAckTime = outboxRecent[0]?.ackUpdatedAt ?? outboxRecent[0]?.sentAt ?? null;
+
+    // Pause reason
+    let pauseReason: string | null = null;
+    let pauseSource: string | null = null;
+    if (paused && lastPauseEvent) {
+      const meta = lastPauseEvent.metadata as any;
+      pauseReason = meta?.reason || "Pausa manual";
+      pauseSource = meta?.phone ? `ACK=-1 en ${meta.phone}` : "auto-pausa";
+    } else if (paused) {
+      pauseReason = "Pausa manual";
+      pauseSource = "manual";
+    }
+
+    res.json({
+      serverNow: now.toISOString(),
+      timezone: tz,
+      whatsapp: {
+        status: whatsappRes.status || "DISCONNECTED",
+        connectedNumber: whatsappRes.connectedNumber || null,
+        deviceName: whatsappRes.deviceName || null,
+        lastConnected: whatsappRes.lastConnected || null,
+        error: whatsappRes.error || null,
+      },
+      worker: {
+        status: lastWorkerEvent ? "running" : "unknown",
+        lastTickAt: lastWorkerEvent?.createdAt || null,
+        cron: process.env.CRON_SCHEDULE || "*/10 * * * *",
+      },
+      // Estado en tiempo real del worker (fase actual)
+      workerPhase: (() => {
+        try {
+          const raw = configMap.WORKER_PHASE;
+          return raw ? JSON.parse(raw) : null;
+        } catch { return null; }
+      })(),
+      queue: {
+        paused,
+        pauseReason,
+        pauseSource,
+        pausedAt: paused && lastPauseEvent ? lastPauseEvent.createdAt : null,
+        nextSendAt: nextReady ? nextReady.scheduledAt : null,
+        secondsUntilNextSend,
+        nextPublisherName: nextReady?.publisher?.displayName || nextReady?.publisher?.fullName || null,
+        nextPublisherPhone: nextReady?.publisher?.phone || null,
+      },
+      counts: {
+        whatsappMessagesToday,
+        pendingMessages: pendingCount,
+        sentMessages: sentCount,
+        failedMessages: failedCount,
+        uncertainMessages: uncertainCount,
+        estimatedWhatsappGroups: Number(pendingGroups[0]?.count ?? 0),
+      },
+      lastEvent: {
+        type: lastWorkerEvent?.eventType || null,
+        ack: lastAck,
+        phone: lastAckPhone,
+        time: lastAckTime,
+        error: (lastWorkerEvent?.metadata as any)?.error || null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Send groups: mensajes agrupados por publicador ──────────────────────
+// Un "send group" = un mensaje WhatsApp real que puede contener 1+ asignaciones.
+router.get("/send-groups", async (_req: Request, res: Response) => {
+  try {
+    const config = await getAutomationConfig(prisma);
+    const tz = config.timezone;
+    const now = new Date();
+    const today = localToday(tz);
+    const todayStart = zonedLocalTimeToUtc(today, 0, 0, tz);
+    const weekEnd = zonedLocalTimeToUtc(addDaysToLocalDate(today, 7), 0, 0, tz);
+
+    // Buscar deliveries de hoy y próximos 7 días, agrupados por persona (1 mensaje = 1 persona)
+    const deliveries = await prisma.reminderDelivery.findMany({
+      where: { scheduledAt: { gte: todayStart, lt: weekEnd }, status: { notIn: ["CANCELLED", "SKIPPED"] } },
+      include: {
+        publisher: true,
+        assignment: { include: { meetingWeek: { include: { monthlySchedule: true } } } },
+      },
+      orderBy: { scheduledAt: "asc" },
+      take: 200,
+    });
+
+    // Agrupar por publisherId solamente = 1 mensaje WhatsApp por persona
+    // (el worker agrupa múltiples asignaciones de la misma persona en 1 solo mensaje)
+    const groupMap = new Map<string, typeof deliveries>();
+    for (const d of deliveries) {
+      const key = d.publisherId;
+      const group = groupMap.get(key) || [];
+      group.push(d);
+      groupMap.set(key, group);
+    }
+
+    const groups = Array.from(groupMap.values()).map((items) => {
+      const first = items[0];
+      const publisher = first.publisher;
+      // Status del grupo: si ALGUNO está SENT, todo el grupo es SENT (porque se envía 1 solo msg)
+      const hasSent = items.some((d) => d.status === "SENT");
+      const hasFailed = items.some((d) => d.status === "FAILED" || d.status === "DEAD");
+      const groupStatus = hasSent ? "SENT" : hasFailed ? "FAILED" : first.status;
+      return {
+        groupKey: first.publisherId,
+        publisherName: publisher?.displayName || publisher?.fullName || "Sin publicador",
+        phone: publisher?.whatsappPhone || publisher?.phone || null,
+        reminderType: first.reminderType,
+        programName: first.assignment?.meetingWeek?.monthlySchedule?.name || null,
+        assignmentCount: items.length,
+        assignments: items.map((d) => ({
+          id: d.assignmentId,
+          title: d.assignment?.title || "Sin asignacion",
+          role: d.recipientRole,
+        })),
+        status: groupStatus,
+        scheduledAt: first.scheduledAt,
+        localTime: localTimeLabel(first.scheduledAt, tz),
+        localDate: localDateLabel(first.scheduledAt, tz),
+        deliveryIds: items.map((d) => d.id),
+      };
+    }).sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+
+    res.json({ groups, timezone: tz, generatedAt: now.toISOString() });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -266,6 +504,26 @@ router.post("/deliveries/:id/cancel", async (req: Request<{ id: string }>, res: 
     res.json({ ok: true, status: updated.status });
   } catch {
     res.status(404).json({ error: "Entrega no encontrada" });
+  }
+});
+
+// ─── Cancelar TODOS los envíos pendientes de golpe ───────
+router.post("/cancel-all-pending", async (_req: Request, res: Response) => {
+  try {
+    const result = await prisma.reminderDelivery.updateMany({
+      where: { status: { in: ["PENDING", "READY", "QUEUED", "FAILED"] } },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "bulk_cancelled_by_admin" },
+    });
+    await createAutomationEvent(prisma, {
+      eventType: "BULK_CANCEL",
+      entityType: "ReminderDelivery",
+      entityId: "all",
+      actorType: "admin",
+      metadata: { count: result.count, reason: "bulk_cancelled_by_admin" },
+    });
+    res.json({ ok: true, cancelled: result.count });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 

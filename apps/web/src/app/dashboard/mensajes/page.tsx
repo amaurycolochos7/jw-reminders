@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
+import Portal from '@/components/Portal'
 
 interface Batch { id: string; type: string; periodLabel: string | null; status: string; createdAt: string; approvedAt: string | null; messages: number; deliveries: number; edited: number }
 interface Msg { deliveryId: string; publisherName: string; phone: string | null; reminderType: string; status: string; manuallyEdited: boolean; renderedMessage: string | null }

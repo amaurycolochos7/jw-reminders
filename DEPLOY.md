@@ -14,7 +14,7 @@ Este archivo existe para cumplir la Directiva Maestra y servir como entrada rapi
 - Plataforma: Dokploy
 - Compose: `jw-reminders-stack`
 - Rama: `main`
-- Compose path: `./docker-compose.yml`
+- Compose path: `./compose.yaml`
 
 ## Flujo obligatorio
 

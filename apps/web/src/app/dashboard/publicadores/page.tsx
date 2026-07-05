@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import Portal from '@/components/Portal'
 import {
   CAPABILITIES,
   APPOINTMENT_OPTIONS,
@@ -164,7 +165,7 @@ export default function PublicadoresPage() {
       fullName: p.fullName,
       displayName: p.displayName || '',
       phone: toNational(p.phone),
-      gender: (p.gender as GenderValue | null) || '',
+      gender: (p.gender as GenderValue | null) ?? '' as '' | GenderValue,
       isActive: p.isActive,
       isBaptized: p.isBaptized,
       isRegularPioneer: p.isRegularPioneer,
@@ -191,12 +192,25 @@ export default function PublicadoresPage() {
 
   /** Applies a gender change, enforcing strict rules immediately. */
   function changeGender(gender: '' | GenderValue) {
-    setForm((prev) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setForm((prev: any) => {
       const next = { ...prev, gender }
       if (gender === 'FEMALE') {
-        // Strict: clear male-only capabilities and appointment.
         const enforced = enforceStrictCapabilities({ ...next, gender: 'FEMALE' as GenderValue })
         return { ...next, ...enforced, gender }
+      }
+      return next
+    })
+  }
+
+  /** Applies a baptized change, enforcing strict rules (clears appointment if unbaptized). */
+  function changeBaptized(isBaptized: boolean) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setForm((prev: any) => {
+      const next = { ...prev, isBaptized }
+      if (!isBaptized) {
+        const enforced = enforceStrictCapabilities({ ...next, isBaptized: false })
+        return { ...next, ...enforced }
       }
       return next
     })
@@ -354,7 +368,7 @@ export default function PublicadoresPage() {
 
       {/* Create/Edit Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowForm(false)}>
+        <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-card p-7 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-ink tracking-tight mb-5">
               {editing ? 'Editar publicador' : 'Nuevo publicador'}
@@ -421,7 +435,12 @@ export default function PublicadoresPage() {
               {/* ─── 2. Estado congregacional ─── */}
               <section className="space-y-2 border-t border-silver-mist pt-5">
                 <h3 className="text-sm font-semibold text-ink uppercase tracking-wide mb-2">2. Estado congregacional</h3>
-                <Toggle label="Bautizado" checked={form.isBaptized} onChange={(v) => setForm({ ...form, isBaptized: v })} />
+                <Toggle label="Bautizado" checked={form.isBaptized} onChange={changeBaptized} />
+                {!form.isBaptized && (
+                  <p className="text-xs text-amber-700 p-2 bg-amber-50 rounded-xl">
+                    Un publicador no bautizado no puede tener nombramiento. Si lo tenía, se estableció en "Ninguno".
+                  </p>
+                )}
                 <Toggle
                   label="Precursor regular"
                   hint="Puede ser hombre o mujer"
@@ -432,9 +451,9 @@ export default function PublicadoresPage() {
                   <label className="block text-sm font-medium text-ink mb-1.5">Nombramiento</label>
                   <select
                     value={form.appointment}
-                    disabled={!isMale}
+                    disabled={!isMale || !form.isBaptized}
                     onChange={(e) => changeAppointment(e.target.value as AppointmentValue)}
-                    className={`w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white ${!isMale ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`w-full px-4 py-2.5 border border-silver-mist rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-azure/30 bg-white ${(!isMale || !form.isBaptized) ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {APPOINTMENT_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -443,6 +462,11 @@ export default function PublicadoresPage() {
                   {!isMale && (
                     <p className="text-xs text-amber-700 mt-1">
                       Solo los hombres pueden ser nombrados (anciano o siervo ministerial).
+                    </p>
+                  )}
+                  {isMale && !form.isBaptized && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      Un publicador no bautizado no puede tener nombramiento.
                     </p>
                   )}
                 </div>
@@ -505,12 +529,12 @@ export default function PublicadoresPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Delete Confirmation Modal */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmDelete(null)}>
+        <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setConfirmDelete(null)}>
           <div className="bg-white rounded-card p-7 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
@@ -542,7 +566,7 @@ export default function PublicadoresPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* List - responsive card/table */}

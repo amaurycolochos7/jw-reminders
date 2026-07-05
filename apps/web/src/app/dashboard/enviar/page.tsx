@@ -8,6 +8,13 @@ interface Publisher { id: string; fullName: string; displayName: string | null }
 interface SendState { canSend: boolean; paused: boolean; manualPaused: boolean; autoPaused: boolean; pauseReason: string | null; whatsappStatus: string }
 
 export default function EnviarPage() {
+  const [prefix, setPrefix] = useState('52')
+
+  function normalizePhone(raw: string): string {
+    const digits = raw.replace(/\D/g, '')
+    return prefix.replace(/\D/g, '') + digits
+  }
+
   const [tab, setTab] = useState<'manual' | 'prueba'>('prueba')
   const [templates, setTemplates] = useState<Template[]>([])
   const [publishers, setPublishers] = useState<Publisher[]>([])
@@ -36,8 +43,9 @@ export default function EnviarPage() {
 
   async function sendManual() {
     setBusy('manual'); setNotice(null)
+    const phone = normalizePhone(mPhone)
     try {
-      const r = await api('/api/whatsapp/manual-send', { method: 'POST', body: JSON.stringify({ phone: mPhone, message: mText }) })
+      const r = await api('/api/whatsapp/manual-send', { method: 'POST', body: JSON.stringify({ phone, message: mText }) })
       const d = await r.json()
       setNotice({ ok: r.ok && d.sent, text: d.sent ? 'Mensaje manual enviado.' : `No se envió: ${d.reason || d.error}` })
       if (d.sent) { setMText(''); setMConfirm(false) }
@@ -52,8 +60,9 @@ export default function EnviarPage() {
   }
   async function sendTest() {
     setBusy('test'); setNotice(null)
+    const phone = normalizePhone(tPhone)
     try {
-      const r = await api('/api/whatsapp/test-template', { method: 'POST', body: JSON.stringify({ templateId: tTemplate, publisherId: tPublisher || undefined, targetPhone: tPhone }) })
+      const r = await api('/api/whatsapp/test-template', { method: 'POST', body: JSON.stringify({ templateId: tTemplate, publisherId: tPublisher || undefined, targetPhone: phone }) })
       const d = await r.json()
       setNotice({ ok: r.ok && d.sendResult?.sent, text: d.sendResult?.sent ? 'Mensaje de prueba enviado.' : `No se envió: ${d.sendResult?.reason || d.error}` })
     } finally { setBusy('') }
@@ -103,7 +112,10 @@ export default function EnviarPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-graphite mb-1">Teléfono de prueba</label>
-              <input value={tPhone} onChange={(e) => setTPhone(e.target.value)} placeholder="5219611234567" className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm" />
+              <div className="flex items-center gap-2">
+                <input value={prefix} onChange={(e) => setPrefix(e.target.value)} className="w-16 px-2 py-2 bg-fog border border-silver-mist rounded-xl text-sm text-center" />
+                <input value={tPhone} onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 10); setTPhone(v) }} placeholder="9611234567" maxLength={10} inputMode="numeric" className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm" />
+              </div>
             </div>
           </div>
           <div className="flex gap-3">
@@ -126,7 +138,10 @@ export default function EnviarPage() {
           <p className="text-xs text-graphite">Mensaje de texto libre a un número. Respeta el formato WhatsApp. No queda en el historial de automatizaciones.</p>
           <div>
             <label className="block text-xs font-medium text-graphite mb-1">Teléfono</label>
-            <input value={mPhone} onChange={(e) => setMPhone(e.target.value)} placeholder="5219611234567" className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm" />
+            <div className="flex items-center gap-2">
+              <input value={prefix} onChange={(e) => setPrefix(e.target.value)} className="w-16 px-2 py-2 bg-fog border border-silver-mist rounded-xl text-sm text-center" />
+              <input value={mPhone} onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 10); setMPhone(v) }} placeholder="9611234567" maxLength={10} inputMode="numeric" className="w-full px-3 py-2 border border-silver-mist rounded-xl text-sm" />
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-graphite mb-1">Mensaje (*negritas*, _cursivas_, saltos, emojis)</label>

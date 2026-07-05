@@ -1153,7 +1153,7 @@ jw-reminders/
 │   ├── healthcheck.sh
 │   └── backup-db.sh
 │
-├── docker-compose.yml
+├── compose.yaml
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── .env.example
@@ -1464,7 +1464,7 @@ Antes de desplegar en Dokploy, el agente debe levantar todo localmente con Docke
 
 | Archivo | Uso |
 |---|---|
-| `docker-compose.local.yml` | Levanta todos los servicios en local |
+| `compose.local.yaml` | Levanta todos los servicios en local |
 | `.env.example` | Template de variables para produccion |
 | `.env.local.example` | Template de variables para desarrollo local |
 

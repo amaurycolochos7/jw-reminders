@@ -9,9 +9,9 @@ export const WHATSAPP_SEND_DELAY_MS = 3000; // 3 seconds between messages (legac
 // worker (tick) tiene un TOPE de mensajes: si al generar una semana completa se
 // programan muchos avisos iniciales a la vez, no se mandan todos de golpe; el
 // resto queda pendiente y se envía en los siguientes ticks (cada 10 min).
-export const WHATSAPP_SEND_DELAY_MIN_MS = 6000; // mínimo entre mensajes (6 s)
-export const WHATSAPP_SEND_DELAY_MAX_MS = 15000; // máximo entre mensajes (15 s)
-export const WORKER_MAX_SENDS_PER_RUN = 8; // tope de mensajes enviados por tick
+export const WHATSAPP_SEND_DELAY_MIN_MS = 60000; // mínimo entre mensajes (1 min)
+export const WHATSAPP_SEND_DELAY_MAX_MS = 180000; // máximo entre mensajes (3 min)
+export const WORKER_MAX_SENDS_PER_RUN = 50; // procesar todos los pendientes en un tick (con delays internos)
 
 /**
  * Devuelve una pausa aleatoria (ms) dentro del rango [min, max]. Si el rango es

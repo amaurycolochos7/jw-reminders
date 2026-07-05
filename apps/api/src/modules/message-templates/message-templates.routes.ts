@@ -24,7 +24,17 @@ const updateSchema = z.object({
 
 /** Lista de plantillas con metadatos para el panel. */
 router.get("/", async (_req: Request, res: Response) => {
-  const templates = await prisma.jwMessageTemplate.findMany({ orderBy: { type: "asc" } });
+  const templates = await prisma.jwMessageTemplate.findMany({ orderBy: { createdAt: "asc" } });
+
+  // Orden lógico: las activas siguen ACTIVE_TEMPLATE_TYPES; las legacy van después por título.
+  const typeOrder = new Map<string, number>(ACTIVE_TEMPLATE_TYPES.map((t, i) => [t, i]));
+  templates.sort((a, b) => {
+    const ai = typeOrder.get(a.type) ?? 1000;
+    const bi = typeOrder.get(b.type) ?? 1000;
+    if (ai !== bi) return ai - bi;
+    return a.title.localeCompare(b.title);
+  });
+
   res.json(
     templates.map((t) => ({
       id: t.id,

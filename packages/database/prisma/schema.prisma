@@ -569,11 +569,14 @@ model WhatsappOutbox {
   idempotencyKey    String    @unique
   phone             String
   contentHash       String
-  // SENDING | SENT | FAILED | UNCERTAIN (string libre para no acoplar enums).
+  // SENDING | SENT | FAILED | UNCERTAIN | REJECTED (string libre para no acoplar enums).
   status            String
   providerMessageId String?
   error             String?
   attempts          Int       @default(0)
+  // ACK real de WhatsApp: -1=error, 0=pending, 1=server, 2=delivered, 3=read, 4=played
+  ack               Int?
+  ackUpdatedAt      DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   sentAt            DateTime?
@@ -582,6 +585,8 @@ model WhatsappOutbox {
   @@index([phone, contentHash, status])
   // Reaper / reconciliación por antigüedad.
   @@index([status, updatedAt])
+  // Lookup por messageId para actualizar ACK.
+  @@index([providerMessageId])
 }
 
 model AppConfig {

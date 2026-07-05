@@ -158,3 +158,104 @@ test("publicador activo que puede recibir asignaciones es elegible", () => {
     true,
   );
 });
+
+// ─── Regla: isBaptized + appointment ───
+
+test("no bautizado no puede tener nombramiento", () => {
+  assert.ok(validatePublisherCapabilities({ gender: "MALE", isBaptized: false, appointment: "ELDER" }).length > 0);
+  assert.ok(validatePublisherCapabilities({ gender: "MALE", isBaptized: false, appointment: "MINISTERIAL_SERVANT" }).length > 0);
+});
+
+test("no bautizado con appointment NONE es válido", () => {
+  assert.equal(validatePublisherCapabilities({ gender: "MALE", isBaptized: false, appointment: "NONE" }).length, 0);
+});
+
+test("bautizado con nombramiento es válido", () => {
+  assert.equal(validatePublisherCapabilities({ gender: "MALE", isBaptized: true, appointment: "ELDER" }).length, 0);
+  assert.equal(validatePublisherCapabilities({ gender: "MALE", isBaptized: true, appointment: "MINISTERIAL_SERVANT" }).length, 0);
+});
+
+test("enforceStrictCapabilities limpia nombramiento si no bautizado", () => {
+  const cleaned = enforceStrictCapabilities({
+    gender: "MALE",
+    isBaptized: false,
+    appointment: "ELDER",
+    canGiveTalk: true,
+  });
+  assert.equal(cleaned.appointment, "NONE");
+  assert.equal(cleaned.canGiveTalk, true); // capacidades manuales se conservan
+  assert.ok(isValidPublisherCapabilities(cleaned));
+});
+
+test("cambio de hombre con nombramiento a mujer: enforce limpia todo", () => {
+  const cleaned = enforceStrictCapabilities({
+    gender: "FEMALE",
+    isBaptized: true,
+    appointment: "MINISTERIAL_SERVANT",
+    canBibleReading: true,
+    canGiveTalk: true,
+    canBeChairman: true,
+    canTreasures: true,
+    canParticipateSMM: true,
+  });
+  assert.equal(cleaned.appointment, "NONE");
+  assert.equal(cleaned.canBibleReading, false);
+  assert.equal(cleaned.canGiveTalk, false);
+  assert.equal(cleaned.canBeChairman, false);
+  assert.equal(cleaned.canTreasures, false);
+  assert.equal(cleaned.canParticipateSMM, true);
+  assert.ok(isValidPublisherCapabilities(cleaned));
+});
+
+test("publicador con canBibleReading=false no es elegible para BIBLE_READING", () => {
+  assert.equal(
+    isPublisherEligibleForAssignment(
+      { isActive: true, deletedAt: null, canReceiveAssignments: true, canBibleReading: false, gender: "MALE" },
+      "BIBLE_READING",
+    ),
+    false,
+  );
+});
+
+test("publicador con canGiveTalk=false no es elegible para TALK", () => {
+  assert.equal(
+    isPublisherEligibleForAssignment(
+      { isActive: true, deletedAt: null, canReceiveAssignments: true, canGiveTalk: false, gender: "MALE" },
+      "TALK",
+    ),
+    false,
+  );
+});
+
+test("mujer no es elegible para BIBLE_READING (solo hombres)", () => {
+  assert.equal(
+    isPublisherEligibleForAssignment(
+      { isActive: true, deletedAt: null, canReceiveAssignments: true, canBibleReading: true, gender: "FEMALE" },
+      "BIBLE_READING",
+    ),
+    false,
+  );
+});
+
+test("anciano con canBeChairman=false no es elegible para CHAIRMAN", () => {
+  assert.equal(
+    isPublisherEligibleForAssignment(
+      { isActive: true, deletedAt: null, canReceiveAssignments: true, canBeChairman: false, gender: "MALE" },
+      "CHAIRMAN",
+    ),
+    false,
+  );
+});
+
+test("generación: canParticipateSMM=false bloquea partes de estudiante", () => {
+  for (const type of ["START_CONVERSATION", "MAKE_RETURN_VISIT", "BIBLE_STUDY", "EXPLAIN_BELIEFS"]) {
+    assert.equal(
+      isPublisherEligibleForAssignment(
+        { isActive: true, deletedAt: null, canReceiveAssignments: true, canParticipateSMM: false },
+        type,
+      ),
+      false,
+      `debe bloquear ${type} sin canParticipateSMM`,
+    );
+  }
+});

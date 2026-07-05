@@ -117,10 +117,16 @@ export function validatePublisherCapabilities(input: PublisherCapabilityInput): 
   const errors: string[] = [];
   const gender = input.gender ?? null;
   const appointment = input.appointment ?? "NONE";
+  const isBaptized = input.isBaptized ?? true; // Conservador: sin dato se asume bautizado.
 
   // Regla estricta: nombramiento solo para hombres.
   if (appointment !== "NONE" && gender !== "MALE") {
     errors.push("Solo los hombres pueden ser nombrados (anciano o siervo ministerial).");
+  }
+
+  // Regla estricta: nombramiento requiere estar bautizado.
+  if (appointment !== "NONE" && isBaptized === false) {
+    errors.push("Un publicador no bautizado no puede tener nombramiento.");
   }
 
   // Regla estricta: mujeres no pueden tener capacidades reservadas a hombres.
@@ -153,6 +159,9 @@ export function enforceStrictCapabilities<T extends PublisherCapabilityInput>(in
     for (const key of MALE_ONLY_CAPABILITIES) {
       if (out[key]) out[key] = false;
     }
+    out.appointment = "NONE";
+  }
+  if (out.isBaptized === false) {
     out.appointment = "NONE";
   }
   return out;

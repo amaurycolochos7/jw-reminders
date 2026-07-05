@@ -7,18 +7,91 @@
     overflow-x: hidden;
   }
   body {
-    @apply bg-fog text-ink antialiased;
-    font-family: 'Inter', 'SF Pro Text', system-ui, sans-serif;
-    letter-spacing: -0.003em;
+    @apply bg-canvas text-body antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.01em;
     overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
   }
-  h1, h2, h3 { letter-spacing: -0.02em; }
-  input, select, textarea {
-    @apply w-full px-4 py-3 bg-fog border-0 rounded-xl text-ink placeholder:text-graphite/60 focus:outline-none focus:ring-2 focus:ring-azure/30 transition-all;
+  h1, h2, h3, h4 {
+    @apply text-heading;
+    letter-spacing: -0.02em;
   }
+
+  /* ─── Form elements ─── */
+  input, select, textarea {
+    @apply w-full px-4 py-2.5 bg-white border border-hairline rounded-xl text-body text-ink
+      placeholder:text-muted/70
+      focus:outline-none focus:ring-2 focus:ring-azure/20 focus:border-azure/40
+      transition-all;
+    font-size: 14px;
+  }
+  select {
+    @apply bg-white appearance-none cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%237e7e7d' viewBox='0 0 16 16'%3E%3Cpath d='M4.427 6.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 6H4.604a.25.25 0 00-.177.427z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+  }
+
+  /* ─── Focus ─── */
   button:focus-visible {
-    @apply outline-none ring-2 ring-azure/40 ring-offset-2;
+    @apply outline-none ring-2 ring-azure/30 ring-offset-2 ring-offset-canvas;
+  }
+  a:focus-visible {
+    @apply outline-none ring-2 ring-azure/30 ring-offset-2 ring-offset-canvas rounded-lg;
+  }
+}
+
+@layer components {
+  /* ─── Card system ─── */
+  .card {
+    @apply bg-white rounded-card shadow-inset-card p-6;
+  }
+  .card-elevated {
+    @apply bg-white rounded-card shadow-inset-card shadow-soft p-6;
+  }
+
+  /* ─── Button variants ─── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 font-semibold rounded-pill
+      transition-all duration-150 cursor-pointer
+      disabled:opacity-50 disabled:cursor-not-allowed;
+    font-size: 14px;
+  }
+  .btn-sm { @apply px-4 py-2 text-micro; }
+  .btn-md { @apply px-5 py-2.5; }
+  .btn-lg { @apply px-6 py-3; }
+
+  .btn-primary {
+    @apply btn btn-md bg-ink text-white hover:bg-heading active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply btn btn-md bg-sand text-ink border border-hairline hover:bg-stone active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply btn btn-md bg-transparent text-body hover:bg-sand active:scale-[0.98];
+  }
+  .btn-azure {
+    @apply btn btn-md bg-azure text-white hover:opacity-90 active:scale-[0.98];
+  }
+  .btn-danger {
+    @apply btn btn-md bg-alert-red text-white hover:opacity-90 active:scale-[0.98];
+  }
+
+  /* ─── Badge ─── */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-pill text-micro font-semibold;
+  }
+  .badge-green { @apply badge bg-grass/10 text-grass; }
+  .badge-red { @apply badge bg-alert-red/10 text-alert-red; }
+  .badge-amber { @apply badge bg-sun/20 text-gold; }
+  .badge-blue { @apply badge bg-azure/10 text-azure; }
+  .badge-gray { @apply badge bg-stone text-muted; }
+
+  /* ─── Section title ─── */
+  .section-title {
+    @apply text-[11px] font-bold uppercase tracking-widest text-muted;
   }
 }
 

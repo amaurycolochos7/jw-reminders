@@ -2,14 +2,16 @@ import { WHATSAPP_SEND_HTTP_TIMEOUT_MS, type SendResult, type SendOutcome } from
 
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || "http://localhost:3010";
 
+// Timeout alto porque /send-with-typing-and-ack incluye typing (hasta 18s) + ACK wait (hasta 60s).
+const TYPING_SEND_TIMEOUT_MS = 100_000; // 100s
+
 /**
- * Envía un mensaje al servicio WhatsApp con:
- *  - `idempotencyKey` para deduplicación crash-safe en el servicio (H1).
- *  - Timeout explícito vía AbortController (H3): un cuelgue no bloquea el worker.
- *  - Clasificación de resultado (SendResult.outcome). CLAVE: un error de
- *    transporte (timeout/red) NO se reporta como fallo definitivo, sino como
- *    UNCERTAIN, porque el mensaje pudo haberse entregado. Así el worker NO lo
- *    reintenta a ciegas (que es lo que causaba duplicados).
+ * Envía un mensaje al servicio WhatsApp usando /send-with-typing-and-ack:
+ *  - Activa estado "escribiendo" por duración variable (obligatorio).
+ *  - Espera ACK real antes de reportar éxito.
+ *  - Si ACK=-1 → REJECTED.
+ *  - Si timeout sin ACK → UNCERTAIN.
+ *  - Si typing falla → fallo (worker debe pausar cola).
  */
 export async function sendWhatsappMessage(
   phone: string,
@@ -17,15 +19,15 @@ export async function sendWhatsappMessage(
   idempotencyKey?: string,
 ): Promise<SendResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), WHATSAPP_SEND_HTTP_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), TYPING_SEND_TIMEOUT_MS);
   try {
-    const res = await fetch(`${WHATSAPP_API_URL}/send`, {
+    const res = await fetch(`${WHATSAPP_API_URL}/send-with-typing-and-ack`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(process.env.WHATSAPP_INTERNAL_TOKEN ? { "x-internal-token": process.env.WHATSAPP_INTERNAL_TOKEN } : {}),
       },
-      body: JSON.stringify({ phone, message, idempotencyKey }),
+      body: JSON.stringify({ phone, message, idempotencyKey, waitForAckSeconds: 60 }),
       signal: controller.signal,
     });
     const data: any = await res.json().catch(() => ({}));
@@ -35,17 +37,20 @@ export async function sendWhatsappMessage(
       return { success: true, outcome, messageId: data.messageId, deduped: !!data.deduped };
     }
 
-    // El servicio devuelve un outcome explícito incluso en no-2xx: respetarlo.
+    // Mapear outcomes del nuevo endpoint a SendOutcome del worker
     if (data && typeof data.outcome === "string") {
-      return { success: false, outcome: data.outcome as SendOutcome, error: data.error };
+      const outcome: SendOutcome =
+        data.outcome === "TYPING_FAILED" ? "NOT_READY" :
+        data.outcome === "REJECTED" ? "REJECTED" :
+        data.outcome === "NOT_READY" ? "NOT_READY" :
+        "UNCERTAIN";
+      return { success: false, outcome, error: data.error };
     }
 
-    // HTTP no-ok sin outcome legible: ambiguo (no sabemos si entregó).
     return { success: false, outcome: "UNCERTAIN", error: data?.error || `HTTP ${res.status}` };
   } catch (err: any) {
-    // Timeout / conexión caída ⇒ AMBIGUO. Pudo haberse entregado ⇒ UNCERTAIN.
     const error = err?.name === "AbortError"
-      ? `Timeout (${WHATSAPP_SEND_HTTP_TIMEOUT_MS} ms) al servicio WhatsApp`
+      ? `Timeout (${TYPING_SEND_TIMEOUT_MS}ms) esperando typing+send+ACK`
       : String(err);
     return { success: false, outcome: "UNCERTAIN", error };
   } finally {

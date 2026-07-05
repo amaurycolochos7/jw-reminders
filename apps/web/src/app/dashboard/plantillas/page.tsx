@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from '@/lib/api'
+import Portal from '@/components/Portal'
 
 interface Template {
   id: string
@@ -159,6 +160,7 @@ export default function PlantillasPage() {
 
       {/* EDITOR + PREVIEW */}
       {editing && (
+        <Portal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setEditing(null)}>
           <div className="bg-white rounded-card w-full max-w-5xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-silver-mist flex items-center justify-between">
@@ -219,10 +221,12 @@ export default function PlantillasPage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {/* VERSIONS */}
       {versionsFor && (
+        <Portal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4" onClick={() => setVersionsFor(null)}>
           <div className="bg-white rounded-card p-6 w-full max-w-lg max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-ink mb-4">Versiones — {versionsFor.title}</h2>
@@ -240,6 +244,7 @@ export default function PlantillasPage() {
             <button onClick={() => setVersionsFor(null)} className="mt-4 text-sm text-graphite px-5 py-2 rounded-pill border border-silver-mist hover:bg-fog">Cerrar</button>
           </div>
         </div>
+        </Portal>
       )}
     </div>
   )

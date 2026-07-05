@@ -105,7 +105,7 @@ Pantalla `Enviar` (pestaña Prueba): probar cualquier plantilla activa con datos
 - `apps/whatsapp/src/{index.ts,services/message-sender.ts}`.
 - `apps/web/src/app/dashboard/{plantillas,mensajes,enviar,whatsapp}/page.tsx`; `components/Sidebar.tsx`.
 - Eliminado: `apps/api/src/services/notifications/assignment-message.ts` (+test) — renderizador emoji obsoleto.
-- Config: `docker-compose.yml`, `.env.example`, `README.md`.
+- Config: `compose.yaml`, `.env.example`, `README.md`.
 
 ## 20. Endpoints nuevos/modificados
 - `GET /message-templates` (con `connectedToSend`/`isLegacy`), `GET /message-templates/variables`, `GET /:id/versions`, `POST /:id/preview`, `PUT /:id` (crea versión).

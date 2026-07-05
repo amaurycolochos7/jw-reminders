@@ -9,16 +9,22 @@ import {
 
 /**
  * Normaliza un número a formato internacional para resolver el WID de WhatsApp.
- * - 10 dígitos (nacional MX) -> 52 + número.
- * - 13 dígitos 521XXXXXXXXXX (formato móvil MX antiguo) -> 52 + últimos 10
- *   (WhatsApp resuelve el WID real; el "1" extra suele sobrar).
- * - 12 dígitos 52XXXXXXXXXX -> tal cual.
- * - Otro -> se deja como viene (números internacionales).
+ *
+ * Regla México (código 52): WhatsApp requiere formato 521XXXXXXXXXX (13 dígitos).
+ * - 10 dígitos (nacional MX) -> 521 + número.
+ * - 12 dígitos 52XXXXXXXXXX (falta el 1) -> 521 + últimos 10.
+ * - 13 dígitos 521XXXXXXXXXX -> tal cual.
+ * - Otro país / longitud -> se deja como viene.
  */
 export function toWhatsappNumber(raw: string): string {
   const d = String(raw).replace(/\D/g, "");
-  if (d.length === 10) return "52" + d;
-  if (d.length === 13 && d.startsWith("521")) return "52" + d.slice(3);
+  // 10 dígitos nacionales MX → 521 + número
+  if (d.length === 10) return "521" + d;
+  // 12 dígitos con prefijo 52 pero sin el 1 → insertar el 1
+  if (d.length === 12 && d.startsWith("52")) return "521" + d.slice(2);
+  // 13 dígitos con 521 → ya está correcto
+  if (d.length === 13 && d.startsWith("521")) return d;
+  // Cualquier otro formato internacional → dejar tal cual
   return d;
 }
 

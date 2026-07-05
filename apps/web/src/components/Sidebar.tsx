@@ -62,8 +62,8 @@ export default function Sidebar() {
             onClick={(e) => { e.preventDefault(); router.push(item.href); }}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] transition-colors ${
               isActive(item.href)
-                ? 'text-azure font-medium bg-azure/5'
-                : 'text-ink/70 hover:bg-fog'
+                ? 'text-azure font-semibold bg-azure/8'
+                : 'text-body hover:bg-sand'
             }`}
           >
             {item.icon}
@@ -71,10 +71,10 @@ export default function Sidebar() {
           </a>
         ))}
       </nav>
-      <div className="px-6 py-4 border-t border-silver-mist">
+      <div className="px-6 py-4 border-t border-hairline">
         <button
           onClick={() => { localStorage.removeItem('token'); router.push('/login'); }}
-          className="text-[13px] text-graphite hover:text-ink transition-colors"
+          className="text-[13px] text-muted hover:text-ink transition-colors"
         >
           Cerrar sesion
         </button>
@@ -85,10 +85,10 @@ export default function Sidebar() {
   return (
     <>
       {/* Mobile header bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-snow/95 backdrop-blur-sm border-b border-silver-mist px-4 h-14 flex items-center">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-canvas/95 backdrop-blur-sm border-b border-hairline px-4 h-14 flex items-center">
         <button
           onClick={() => setOpen(true)}
-          className="p-2 -ml-2 rounded-xl hover:bg-fog transition-colors"
+          className="p-2 -ml-2 rounded-xl hover:bg-sand transition-colors"
           aria-label="Abrir menu"
         >
           <svg className="w-5 h-5 text-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -110,14 +110,14 @@ export default function Sidebar() {
           aria-label="Cerrar menu"
         />
         <div
-          className={`absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-snow transition-transform duration-200 ease-out ${
+          className={`absolute left-0 top-0 bottom-0 w-[280px] max-w-[85vw] bg-canvas transition-transform duration-200 ease-out ${
             open ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
           {/* Close button */}
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-4 right-4 p-1.5 rounded-xl hover:bg-fog transition-colors"
+            className="absolute top-4 right-4 p-1.5 rounded-xl hover:bg-sand transition-colors"
             aria-label="Cerrar menu"
           >
             <svg className="w-5 h-5 text-graphite" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -129,7 +129,7 @@ export default function Sidebar() {
       </div>
 
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block w-[260px] min-w-[260px] h-screen sticky top-0 bg-snow border-r border-silver-mist">
+      <aside className="hidden lg:flex lg:flex-col w-[260px] min-w-[260px] h-full shrink-0 bg-canvas border-r border-hairline">
         {navContent}
       </aside>
     </>

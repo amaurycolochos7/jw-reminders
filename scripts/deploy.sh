@@ -5,10 +5,10 @@ set -e
 echo "=== JW Reminders Deploy ==="
 
 echo "1. Building images..."
-docker compose -f docker-compose.local.yml build
+docker compose -f compose.local.yaml build
 
 echo "2. Starting services..."
-docker compose -f docker-compose.local.yml up -d
+docker compose -f compose.local.yaml up -d
 
 echo "3. Waiting for database..."
 sleep 5

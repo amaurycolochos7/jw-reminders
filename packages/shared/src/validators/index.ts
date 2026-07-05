@@ -8,12 +8,13 @@ export function isValidPhone(phone: string): boolean {
 }
 
 /**
- * Normalizes phone to WhatsApp format: 521XXXXXXXXXX
+ * Normalizes phone to WhatsApp format for Mexico: 521XXXXXXXXXX
+ * Non-MX numbers are returned as-is (digits only).
  */
 export function normalizePhone(phone: string): string {
   const cleaned = phone.replace(/[\s\-\(\)\+]/g, "");
   if (cleaned.length === 10) return `521${cleaned}`;
-  if (cleaned.startsWith("52") && cleaned.length === 12) return `1${cleaned}`;
+  if (cleaned.startsWith("52") && cleaned.length === 12) return `521${cleaned.slice(2)}`;
   if (cleaned.startsWith("521") && cleaned.length === 13) return cleaned;
   return cleaned;
 }

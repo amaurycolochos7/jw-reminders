@@ -30,6 +30,32 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 // se detiene el bucle y se espera un QR nuevo en lugar de reconectar en loop.
 let awaitingQr = false;
 
+// ─── ACK Waiters: permite a /send-and-wait-ack esperar ACK real ───
+type AckWaiter = { resolve: (ack: number) => void; latestAck: number };
+export const ackWaiters = new Map<string, AckWaiter>();
+
+/** Espera ACK real para un messageId (resuelve con ACK >= 2 o -1, o timeout). */
+export function waitForAck(messageId: string, timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      const waiter = ackWaiters.get(messageId);
+      const lastAck = waiter?.latestAck ?? null;
+      ackWaiters.delete(messageId);
+      resolve(lastAck);
+    }, timeoutMs);
+    // ponytail: unref para que no bloquee shutdown
+    if (typeof timer === "object" && timer.unref) timer.unref();
+
+    ackWaiters.set(messageId, {
+      latestAck: 0,
+      resolve: (ack) => {
+        clearTimeout(timer);
+        resolve(ack);
+      },
+    });
+  });
+}
+
 /**
  * H4 — ¿El motivo de desconexión es irrecuperable sin re-vincular (QR)?
  * whatsapp-web.js emite en `disconnected` un WAState/Reason. LOGOUT, CONFLICT
@@ -162,6 +188,34 @@ function setupListeners(c: InstanceType<typeof Client>) {
   c.on("auth_failure", (msg: string) => {
     lastError = msg;
     logStatus("FAILED", msg);
+  });
+
+  // ─── ACK Tracking: escuchar confirmaciones reales de entrega ───
+  c.on("message_ack", async (message: any, ack: number) => {
+    if (!message.fromMe) return; // solo nos interesan nuestros mensajes salientes
+    const messageId = message.id?.id;
+    if (!messageId) return;
+
+    // Actualizar outbox con ACK real
+    try {
+      await prisma.whatsappOutbox.updateMany({
+        where: { providerMessageId: messageId },
+        data: { ack, ackUpdatedAt: new Date() },
+      });
+    } catch { /* DB no disponible: no fatal */ }
+
+    // Notificar a waiters pendientes (para /send-and-wait-ack)
+    const waiter = ackWaiters.get(messageId);
+    if (waiter) {
+      waiter.latestAck = ack;
+      // Resolver si ACK >= 2 (delivered) o ACK == -1 (rejected)
+      if (ack >= 2 || ack === -1) {
+        waiter.resolve(ack);
+        ackWaiters.delete(messageId);
+      }
+    }
+
+    console.log(`[WhatsApp] ACK ${ack} para msgId=${messageId.slice(0, 12)}…`);
   });
 }
 

@@ -25,6 +25,43 @@ import {
 
 const BATCH_SIZE = Number(process.env.WORKER_BATCH_SIZE || 50);
 
+/**
+ * Auto-pausa: si un envío falla con REJECTED o TYPING_FAILED, pausar la cola
+ * automáticamente para evitar envíos masivos a un canal roto.
+ */
+async function autoPauseSends(reason: string, deliveryId?: string, phone?: string, error?: string) {
+  console.error(`[Worker] AUTO-PAUSA: ${reason} (delivery=${deliveryId}, phone=${phone})`);
+  await prisma.appConfig.upsert({ where: { key: "SENDS_PAUSED" }, update: { value: "true" }, create: { id: "sends_paused_auto", key: "SENDS_PAUSED", value: "true" } }).catch(() => undefined);
+  await prisma.jwAutomationEvent.create({
+    data: { eventType: "SENDS_AUTO_PAUSED", entityType: "Worker", entityId: deliveryId || "worker", actorType: "worker", metadata: { reason, phone, error } },
+  }).catch(() => undefined);
+  await updateWorkerPhase("PAUSED", null, reason);
+}
+
+/**
+ * Actualiza el estado visible del worker en DB para que la UI lo muestre en tiempo real.
+ * La UI lee WORKER_PHASE de AppConfig cada pocos segundos.
+ */
+async function updateWorkerPhase(
+  phase: "IDLE" | "TYPING" | "SENDING" | "WAITING_ACK" | "COOLDOWN" | "PAUSED" | "DONE",
+  publisherName?: string | null,
+  detail?: string | null,
+  extra?: { cooldownSeconds?: number; sentCount?: number; totalCount?: number; nextPublisher?: string }
+) {
+  const value = JSON.stringify({
+    phase,
+    publisherName: publisherName || null,
+    detail: detail || null,
+    updatedAt: new Date().toISOString(),
+    ...extra,
+  });
+  await prisma.appConfig.upsert({
+    where: { key: "WORKER_PHASE" },
+    update: { value },
+    create: { id: "worker_phase", key: "WORKER_PHASE", value },
+  }).catch(() => undefined);
+}
+
 const MESES_ES_LOWER = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -387,6 +424,13 @@ async function finalizeDeliveryStatus(fresh: FreshDelivery, result: SendResult) 
     await event("REMINDER_DEAD", "ReminderDelivery", fresh.id, { attemptCount, idempotencyKey });
   } else {
     await event("REMINDER_RETRY_SCHEDULED", "ReminderDelivery", fresh.id, { attemptCount, nextRetryAt, idempotencyKey });
+  }
+
+  // Auto-pausa: si WhatsApp rechazó el envío (ACK=-1), pausar cola
+  // para evitar seguir mandando a un canal que no entrega.
+  if (result.outcome === "REJECTED") {
+    const phone = fresh.publisher?.whatsappPhone || fresh.publisher?.phone || "?";
+    await autoPauseSends("REJECTED por WhatsApp (ACK=-1)", fresh.id, phone, result.error);
   }
 }
 
@@ -815,27 +859,52 @@ async function runProcessReminders() {
       }
       if (sendable.length === 0) continue;
 
+      // ── Fase de envío: actualizar estado visible ──
+      const publisherName = sendable[0].publisher?.displayName || sendable[0].publisher?.fullName || "?";
+      await updateWorkerPhase("TYPING", publisherName, `Escribiendo (${sendable.length} parte${sendable.length > 1 ? 's' : ''})`, { sentCount: sentThisRun, totalCount: groups.length });
+
       if (sendable[0].reminderType === "INITIAL_NOTICE" && !sendable.some(hasCustom)) {
-        // Aviso inicial MENSUAL: un solo mensaje por persona con todo el mes.
         await performMonthlyInitialSend(sendable, sendConfig);
         sentThisRun += 1;
       } else if (isRichReminderGroup(sendable)) {
-        // Recordatorio 7/3/1 días: SIEMPRE un mensaje rico y uniforme por persona
-        // (una o varias partes), con la misma estructura que el aviso inicial.
         await performGroupedSend(sendable, sendConfig);
         sentThisRun += 1;
       } else {
-        // Aviso especial (cambio/cancelación) o delivery con customMessage:
-        // envío individual con plantilla editable + customMessage. Respeta el tope.
         for (const f of sendable) {
           await performSingleSend(f, sendConfig);
           sentThisRun += 1;
           if (maxSendsPerRun > 0 && sentThisRun >= maxSendsPerRun) break;
         }
       }
+
+      // ── Cooldown entre mensajes: pausa variable 1-3 min ──
+      // Solo si hay más grupos por procesar y no se alcanzó el tope.
+      if (sentThisRun < maxSendsPerRun || maxSendsPerRun <= 0) {
+        // Pausa LARGA cada 5 mensajes: 5 minutos
+        const cooldownEvery = envInt("WHATSAPP_COOLDOWN_AFTER_MESSAGES", 5);
+        const cooldownLongMinutes = envInt("WHATSAPP_COOLDOWN_MINUTES", 5);
+        const isLongCooldown = cooldownEvery > 0 && sentThisRun > 0 && sentThisRun % cooldownEvery === 0;
+
+        const cooldownMs = isLongCooldown
+          ? cooldownLongMinutes * 60 * 1000
+          : randomSendDelayMs(sendConfig.delayMinMs, sendConfig.delayMaxMs);
+        const cooldownSec = Math.round(cooldownMs / 1000);
+
+        // Buscar nombre del próximo publicador para la UI
+        const nextGroupIdx = groups.indexOf(group) + 1;
+        const nextGroup = nextGroupIdx < groups.length ? groups[nextGroupIdx] : undefined;
+        const nextName = nextGroup ? (nextGroup[0] as any)?.publisher?.displayName || (nextGroup[0] as any)?.publisher?.fullName || null : null;
+
+        const detail = isLongCooldown
+          ? `Descanso largo (${cooldownLongMinutes} min) después de ${cooldownEvery} mensajes`
+          : `Esperando ${cooldownSec}s antes del siguiente`;
+        await updateWorkerPhase("COOLDOWN", publisherName, detail, { cooldownSeconds: cooldownSec, sentCount: sentThisRun, totalCount: groups.length, nextPublisher: nextName });
+        console.log(`[Worker] ${isLongCooldown ? `COOLDOWN LARGO ${cooldownLongMinutes}min` : `Cooldown ${cooldownSec}s`} antes del siguiente envío.`);
+        await delay(cooldownMs);
+      }
+
     } catch (err) {
       console.error(`[Worker] Error on reminder group ${groupId}:`, err);
-      // Marca como FAILED todos los deliveries del grupo (resultado consistente).
       for (const d of group) {
         await prisma.reminderDelivery.update({
           where: { id: d.id },
@@ -850,4 +919,7 @@ async function runProcessReminders() {
       }
     }
   }
+
+  // Marcar como IDLE cuando termina
+  await updateWorkerPhase("DONE", null, `${sentThisRun} mensajes enviados este tick`);
 }

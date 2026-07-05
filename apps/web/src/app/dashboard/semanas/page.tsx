@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
+import Portal from '@/components/Portal'
 import { importStatusMeta } from '@/lib/week-program'
 
 interface MeetingWeek {

@@ -32,7 +32,7 @@ jw-reminders/
 cp .env.local.example .env.local
 
 # 2. Levantar con Docker
-docker compose -f docker-compose.local.yml up -d
+docker compose -f compose.local.yaml up -d
 
 # 3. Ejecutar migraciones
 ./scripts/db-migrate.sh
