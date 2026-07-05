@@ -427,9 +427,9 @@ async function finalizeDeliveryStatus(fresh: FreshDelivery, result: SendResult) 
     await event("REMINDER_RETRY_SCHEDULED", "ReminderDelivery", fresh.id, { attemptCount, nextRetryAt, idempotencyKey });
   }
 
-  // Auto-pausa: si WhatsApp rechazó el envío (ACK=-1), pausar cola
-  // para evitar seguir mandando a un canal que no entrega.
-  if (result.outcome === "REJECTED") {
+  // Auto-pausa: solo pausar si el error NO es por número inválido individual.
+  // Un número sin WhatsApp no significa que la cuenta esté bloqueada.
+  if (result.outcome === "REJECTED" && result.error && !result.error.includes("no registrado") && !result.error.includes("not registered")) {
     const phone = fresh.publisher?.whatsappPhone || fresh.publisher?.phone || "?";
     await autoPauseSends("REJECTED por WhatsApp (ACK=-1)", fresh.id, phone, result.error);
   }
