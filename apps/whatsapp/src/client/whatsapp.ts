@@ -121,6 +121,7 @@ function createClient(): InstanceType<typeof Client> {
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
       ],
     },
   });
