@@ -785,6 +785,13 @@ async function runProcessReminders() {
   const now = new Date();
   const sendConfig = await getSendConfig();
 
+  // Guardar timestamp del tick actual para que la UI muestre countdown al próximo
+  await prisma.appConfig.upsert({
+    where: { key: "WORKER_LAST_TICK" },
+    update: { value: now.toISOString() },
+    create: { id: "worker_last_tick", key: "WORKER_LAST_TICK", value: now.toISOString() },
+  }).catch(() => undefined);
+
   // H2: primero rescatar entregas atoradas en vuelo (reconciliación segura).
   await reconcileStuckDeliveries(now);
 

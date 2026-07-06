@@ -21,7 +21,7 @@ interface OpsStatus {
   serverNow: string
   timezone: string
   whatsapp: { status: string; connectedNumber: string | null; deviceName: string | null; error: string | null }
-  worker: { status: string; lastTickAt: string | null; cron: string }
+  worker: { status: string; lastTickAt: string | null; cron: string; nextTickIn: number | null }
   workerPhase: WorkerPhase | null
   queue: { paused: boolean; pauseReason: string | null; pauseSource: string | null; pausedAt: string | null; nextSendAt: string | null; secondsUntilNextSend: number | null; nextPublisherName: string | null; nextPublisherPhone: string | null }
   counts: { whatsappMessagesToday: number; pendingMessages: number; sentMessages: number; failedMessages: number; uncertainMessages: number; estimatedWhatsappGroups: number }
@@ -70,7 +70,9 @@ export default function AutomatizacionesPage() {
   const [actionLoading, setActionLoading] = useState('')
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0)
+  const [nextTickRemaining, setNextTickRemaining] = useState<number>(0)
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   function notify(type: 'success' | 'error', text: string) {
     setToast({ type, text }); setTimeout(() => setToast(null), 4000)
@@ -92,6 +94,10 @@ export default function AutomatizacionesPage() {
         } else {
           setCooldownRemaining(0)
         }
+        // Countdown al próximo ciclo
+        if (d.worker.nextTickIn !== null) {
+          setNextTickRemaining(Math.max(0, d.worker.nextTickIn))
+        }
       }
       if (groupsRes.ok) { const d = await groupsRes.json(); setGroups(d.groups || []) }
     } finally { setLoading(false) }
@@ -111,6 +117,14 @@ export default function AutomatizacionesPage() {
     cooldownRef.current = setInterval(() => setCooldownRemaining((c) => c > 0 ? c - 1 : 0), 1000)
     return () => { if (cooldownRef.current) clearInterval(cooldownRef.current) }
   }, [cooldownRemaining])
+
+  // Next tick countdown (cada segundo)
+  useEffect(() => {
+    if (tickRef.current) clearInterval(tickRef.current)
+    if (nextTickRemaining <= 0) return
+    tickRef.current = setInterval(() => setNextTickRemaining((c) => c > 0 ? c - 1 : 0), 1000)
+    return () => { if (tickRef.current) clearInterval(tickRef.current) }
+  }, [nextTickRemaining])
 
   async function togglePause() {
     setActionLoading('pause')
@@ -320,6 +334,32 @@ export default function AutomatizacionesPage() {
           </div>
         )}
       </div>
+
+      {/* ━━━ PRÓXIMO CICLO ━━━ */}
+      {!activePhase && pendingMsgs === 0 && nextTickRemaining > 0 && (
+        <div className="bg-white rounded-card p-4 flex items-center gap-4">
+          <div className="text-center min-w-[60px]">
+            <p className="text-lg font-bold text-ink font-mono">{fmtTimer(nextTickRemaining)}</p>
+            <p className="text-[10px] text-graphite">próximo escaneo</p>
+          </div>
+          <div className="flex-1">
+            <p className="text-sm text-ink">Sin pendientes por enviar ahora</p>
+            <p className="text-[10px] text-graphite">El sistema revisará nuevamente en {fmtTimer(nextTickRemaining)}</p>
+          </div>
+        </div>
+      )}
+      {!activePhase && pendingMsgs > 0 && nextTickRemaining > 0 && (
+        <div className="bg-white rounded-card p-4 flex items-center gap-4">
+          <div className="text-center min-w-[60px]">
+            <p className="text-lg font-bold text-azure font-mono">{fmtTimer(nextTickRemaining)}</p>
+            <p className="text-[10px] text-graphite">para enviar</p>
+          </div>
+          <div className="flex-1">
+            <p className="text-sm text-ink font-medium">{pendingMsgs} mensaje{pendingMsgs > 1 ? 's' : ''} listo{pendingMsgs > 1 ? 's' : ''} para enviar</p>
+            <p className="text-[10px] text-graphite">Se enviarán cuando inicie el próximo ciclo</p>
+          </div>
+        </div>
+      )}
 
       {/* ━━━ LISTA DE DESTINATARIOS ━━━ */}
       <div className="bg-white rounded-card overflow-hidden">

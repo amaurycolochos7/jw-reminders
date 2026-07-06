@@ -235,7 +235,7 @@ router.get("/operations-status", async (_req: Request, res: Response) => {
 
     // Datos paralelos
     const [appConfigs, whatsappRes, lastWorkerEvent, lastPauseEvent, sentToday, outboxRecent, pendingCount, failedCount, sentCount, uncertainCount] = await Promise.all([
-      prisma.appConfig.findMany({ where: { key: { in: ["SENDS_PAUSED", "TEST_MODE", "WORKER_PHASE"] } } }),
+      prisma.appConfig.findMany({ where: { key: { in: ["SENDS_PAUSED", "TEST_MODE", "WORKER_PHASE", "WORKER_LAST_TICK"] } } }),
       fetch(`${process.env.WHATSAPP_API_URL || "http://jw-reminders-whatsapp:3010"}/status`).then((r) => r.json()).catch(() => ({ status: "DISCONNECTED" })),
       prisma.jwAutomationEvent.findFirst({ where: { actorType: "worker" }, orderBy: { createdAt: "desc" } }),
       prisma.jwAutomationEvent.findFirst({ where: { eventType: "SENDS_AUTO_PAUSED" }, orderBy: { createdAt: "desc" } }),
@@ -311,8 +311,16 @@ router.get("/operations-status", async (_req: Request, res: Response) => {
       },
       worker: {
         status: lastWorkerEvent ? "running" : "unknown",
-        lastTickAt: lastWorkerEvent?.createdAt || null,
-        cron: process.env.CRON_SCHEDULE || "*/10 * * * *",
+        lastTickAt: configMap.WORKER_LAST_TICK || lastWorkerEvent?.createdAt || null,
+        cron: process.env.CRON_SCHEDULE || "*/2 * * * *",
+        // Próximo tick: último tick + 2 minutos
+        nextTickIn: (() => {
+          const last = configMap.WORKER_LAST_TICK;
+          if (!last) return null;
+          const nextAt = new Date(new Date(last).getTime() + 2 * 60 * 1000);
+          const secs = Math.max(0, Math.round((nextAt.getTime() - now.getTime()) / 1000));
+          return secs;
+        })(),
       },
       // Estado en tiempo real del worker (fase actual)
       workerPhase: (() => {
