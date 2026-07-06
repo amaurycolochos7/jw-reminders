@@ -75,10 +75,9 @@ services:
       dockerfile: apps/whatsapp/Dockerfile
     container_name: jw-reminders-whatsapp
     restart: unless-stopped
-    # H3: `init` reap-ea procesos Chromium zombis; límites de memoria evitan que
-    # un pico de Chromium dispare el OOM-killer del host y tumbe la sesión.
     init: true
-    mem_limit: 1200m
+    shm_size: "1gb"
+    mem_limit: 1500m
     mem_reservation: 512m
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-jw_admin}:${POSTGRES_PASSWORD}@jw-reminders-db:5432/${POSTGRES_DB:-jw_reminders}
