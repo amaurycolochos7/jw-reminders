@@ -76,7 +76,7 @@ export async function sendWithTypingAndAck(input: TypingSendInput): Promise<Typi
 
   // 2. Obtener chat para typing
   try {
-    const numberId = await client.getNumberId(number);
+    const numberId = await client.getNumberId(number + "@c.us");
     if (!numberId) {
       return { success: false, outcome: "REJECTED", ack: null, messageId: null, typingDurationMs: 0, chatId: null, error: `Número ${number} no registrado en WhatsApp` };
     }

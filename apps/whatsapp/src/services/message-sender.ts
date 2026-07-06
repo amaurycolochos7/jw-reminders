@@ -116,7 +116,7 @@ export async function sendMessage(
 
   // 5) Resolver WID y enviar.
   try {
-    const numberId = await client.getNumberId(number);
+    const numberId = await client.getNumberId(number + "@c.us");
     if (!numberId) {
       await prisma.whatsappOutbox.update({
         where: { idempotencyKey: key },
