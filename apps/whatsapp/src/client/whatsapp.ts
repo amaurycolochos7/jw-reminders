@@ -122,6 +122,9 @@ function createClient(): InstanceType<typeof Client> {
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-first-run",
+        "--disable-features=dbus",
       ],
     },
   });
