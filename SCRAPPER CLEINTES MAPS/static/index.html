@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lead Pipeline B2B — Dashboard</title>
+    <meta name="description" content="Pipeline de generación de leads B2B automatizado">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon">LP</div>
+                <div>
+                    <h1 class="logo-title">Lead Pipeline</h1>
+                    <p class="logo-subtitle">B2B Generator</p>
+                </div>
+            </div>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-view="dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <rect x="14" y="14" width="7" height="7" rx="1" />
+                </svg>
+                Dashboard
+            </a>
+            <a href="#" class="nav-item" data-view="extract">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35" />
+                </svg>
+                Extraer Leads
+            </a>
+            <a href="#" class="nav-item" data-view="leads">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+                Todos los Leads
+            </a>
+            <a href="#" class="nav-item" data-view="pipeline">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                Pipeline
+            </a>
+            <a href="#" class="nav-item" data-view="gestion">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+                Gestión
+            </a>
+            <a href="#" class="nav-item" data-view="whatsapp">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+                    <path
+                        d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.604-1.47A11.96 11.96 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.16 0-4.16-.7-5.79-1.885l-.403-.295-2.732.872.87-2.633-.32-.42A9.72 9.72 0 0 1 2.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z" />
+                </svg>
+                WhatsApp
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <button class="btn btn-outline btn-sm" onclick="exportCSV()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Exportar CSV
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Dashboard View -->
+        <section class="view active" id="view-dashboard">
+            <div class="view-header">
+                <h2>Dashboard</h2>
+                <p class="text-muted">Vista general del pipeline</p>
+            </div>
+
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-total">0</span>
+                        <span class="stat-label">Total Leads</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-qualified">0</span>
+                        <span class="stat-label">Calificados</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon purple">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                            <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-outreach">0</span>
+                        <span class="stat-label">Outreach Listo</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23" />
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="stat-rate">0%</span>
+                        <span class="stat-label">Tasa Calificación</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Leads -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Leads Recientes</h3>
+                    <button class="btn btn-sm btn-ghost" onclick="switchView('leads')">Ver todos</button>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Negocio</th>
+                                <th>Categoría</th>
+                                <th>Rating</th>
+                                <th>Reseñas</th>
+                                <th>Status</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recent-leads-body">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Cargando...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Extract View -->
+        <section class="view" id="view-extract">
+            <div class="view-header">
+                <h2>Extraer Leads</h2>
+                <p class="text-muted">Busca negocios en Google Maps usando Apify</p>
+            </div>
+
+            <div class="cards-row">
+                <div class="card flex-1">
+                    <div class="card-header">
+                        <h3>Buscar con Apify API</h3>
+                    </div>
+                    <div class="form-group">
+                        <label for="apify-token">🔑 API Key de Apify</label>
+                        <div style="display:flex;gap:6px">
+                            <input type="password" id="apify-token" class="input" placeholder="apify_api_..."
+                                style="flex:1;font-size:12px">
+                            <button class="btn btn-sm btn-ghost" onclick="toggleTokenVisibility()"
+                                title="Mostrar/ocultar" style="padding:6px 10px">👁</button>
+                            <button class="btn btn-sm btn-ghost" onclick="saveApifyToken()" title="Guardar"
+                                style="padding:6px 10px;color:var(--green)">💾</button>
+                        </div>
+                        <span class="text-muted text-sm" id="token-status">Cargando...</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="extract-keyword">Palabra Clave</label>
+                        <input type="text" id="extract-keyword" class="input"
+                            placeholder="ej: gimnasios, restaurantes, salones de fiestas">
+                    </div>
+                    <div class="form-group">
+                        <label for="extract-location">Ubicación</label>
+                        <input type="text" id="extract-location" class="input"
+                            placeholder="ej: Guadalajara, Monterrey, CDMX">
+                    </div>
+                    <div class="form-group">
+                        <label for="extract-max">Máximo resultados</label>
+                        <input type="number" id="extract-max" class="input" value="100" min="10" max="500">
+                    </div>
+                    <button class="btn btn-primary" id="btn-extract" onclick="startExtraction()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <path d="M21 21l-4.35-4.35" />
+                        </svg>
+                        Iniciar Extracción
+                    </button>
+                    <div id="extract-result" class="result-box hidden"></div>
+                </div>
+
+                <div class="card flex-1">
+                    <div class="card-header">
+                        <h3>Importar JSON de Apify</h3>
+                    </div>
+                    <p class="text-muted mb-16">Si ya corriste el scraper desde la consola de Apify, descarga el JSON y
+                        súbelo aquí.</p>
+                    <div class="form-group">
+                        <label for="import-file">Archivo JSON</label>
+                        <div class="file-drop" id="file-drop">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="17 8 12 3 7 8" />
+                                <line x1="12" y1="3" x2="12" y2="15" />
+                            </svg>
+                            <p>Arrastra tu archivo JSON aquí</p>
+                            <p class="text-muted text-sm">o haz click para seleccionar</p>
+                            <input type="file" id="import-file" accept=".json" class="file-input">
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="importJSON()">
+                        Importar Leads
+                    </button>
+                    <div id="import-result" class="result-box hidden"></div>
+                </div>
+            </div>
+
+            <!-- Search History -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Historial de Búsquedas</h3>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Keyword</th>
+                                <th>Ubicación</th>
+                                <th>Resultados</th>
+                                <th>Status</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody id="search-history-body">
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">Sin búsquedas aún</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Leads View -->
+        <section class="view" id="view-leads">
+            <div class="view-header">
+                <div>
+                    <h2>Todos los Leads</h2>
+                    <p class="text-muted">Gestiona tu base de datos de prospectos</p>
+                </div>
+                <div class="view-header-actions">
+                    <input type="text" id="leads-search" class="input input-sm" placeholder="Buscar por nombre..."
+                        oninput="debounceSearch()">
+                    <select id="leads-filter" class="input input-sm" onchange="loadLeads()">
+                        <option value="">Todos</option>
+                        <option value="new">Nuevos</option>
+                        <option value="qualified">Calificados</option>
+                        <option value="disqualified">Descalificados</option>
+                        <option value="enriched">Enriquecidos</option>
+                        <option value="outreach_ready">Outreach Listo</option>
+                        <option value="contacted">Contactados</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Negocio</th>
+                                <th>Categoría</th>
+                                <th>Rating</th>
+                                <th>Reseñas</th>
+                                <th>Teléfono</th>
+                                <th>Website</th>
+                                <th>Status</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leads-table-body">
+                            <tr>
+                                <td colspan="8" class="text-center text-muted">Cargando...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="pagination"></div>
+            </div>
+        </section>
+
+        <!-- Pipeline View -->
+        <section class="view" id="view-pipeline">
+            <div class="view-header">
+                <h2>Pipeline de Procesamiento</h2>
+                <p class="text-muted">Ejecuta cada fase del pipeline paso a paso</p>
+            </div>
+
+            <div class="pipeline-steps">
+                <!-- Step 2: Qualify -->
+                <div class="pipeline-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Calificar Leads</h3>
+                        <p class="text-muted">Filtra leads que no tienen web, con 50+ reseñas y 4+ estrellas</p>
+                        <div class="step-config">
+                            <div class="form-group form-inline">
+                                <label>Min. Reseñas:</label>
+                                <input type="number" id="qualify-reviews" class="input input-sm" value="50" min="1">
+                            </div>
+                            <div class="form-group form-inline">
+                                <label>Min. Rating:</label>
+                                <input type="number" id="qualify-rating" class="input input-sm" value="4.0" min="1"
+                                    max="5" step="0.1">
+                            </div>
+                        </div>
+                        <div class="step-actions">
+                            <button class="btn btn-primary" onclick="runQualify()">Ejecutar Calificación</button>
+                            <button class="btn btn-ghost" onclick="runRequalify()">Re-calificar Todo</button>
+                        </div>
+                        <div id="qualify-result" class="result-box hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Enrich -->
+                <div class="pipeline-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Enriquecer Datos</h3>
+                        <p class="text-muted">Genera links de WhatsApp y busca emails con Hunter.io</p>
+                        <div class="step-actions">
+                            <button class="btn btn-primary" onclick="runEnrich()">Ejecutar Enriquecimiento</button>
+                        </div>
+                        <div id="enrich-result" class="result-box hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Outreach -->
+                <div class="pipeline-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Generar Outreach</h3>
+                        <p class="text-muted">Genera emails y mensajes de WhatsApp personalizados con IA</p>
+                        <div class="step-actions">
+                            <button class="btn btn-primary" onclick="runOutreach(true)">Generar con IA (OpenAI)</button>
+                            <button class="btn btn-secondary" onclick="runOutreach(false)">Generar con
+                                Templates</button>
+                        </div>
+                        <div id="outreach-result" class="result-box hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Run All -->
+                <div class="pipeline-step highlight">
+                    <div class="step-number">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                    </div>
+                    <div class="step-content">
+                        <h3>Ejecutar Pipeline Completo</h3>
+                        <p class="text-muted">Fases 2 + 3 + 4 en secuencia automática</p>
+                        <div class="step-actions">
+                            <button class="btn btn-accent" onclick="runFullPipeline()">Ejecutar Todo</button>
+                        </div>
+                        <div id="pipeline-result" class="result-box hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gestión View -->
+        <section class="view" id="view-gestion">
+            <div class="view-header">
+                <div>
+                    <h2>Gestión de Leads</h2>
+                    <p class="text-muted">Analiza, verifica WhatsApp y envía mensajes por categoría</p>
+                </div>
+                <div class="view-header-actions">
+                    <span class="wa-status-indicator" id="wa-gestion-status">
+                        <span class="wa-dot disconnected"></span>
+                        <span id="wa-gestion-status-text">WhatsApp: verificando...</span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="g-layout">
+                <!-- LEFT: Categories -->
+                <div class="g-sidebar">
+                    <!-- Pendientes -->
+                    <div class="g-section">
+                        <div class="g-section-header">
+                            <span>📋 Pendientes</span>
+                            <span class="g-section-badge" id="pending-section-count">0</span>
+                        </div>
+                        <div class="g-cat-list" id="pending-categories">
+                            <div class="g-cat-empty">Cargando...</div>
+                        </div>
+                    </div>
+
+                    <!-- Contactados -->
+                    <div class="g-section sent">
+                        <div class="g-section-header" onclick="toggleSection(this)">
+                            <span>✅ Contactados</span>
+                            <span class="g-section-badge green" id="sent-section-count">0</span>
+                            <svg class="g-chevron collapsed" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                        </div>
+                        <div class="g-cat-list collapsible collapsed" id="sent-categories">
+                            <div class="g-cat-empty">Sin categorías enviadas</div>
+                        </div>
+                    </div>
+
+                    <div class="g-sidebar-footer">
+                        <button class="btn btn-sm btn-ghost danger" onclick="purgeAll()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path
+                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                            Purgar todo
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RIGHT: Detail -->
+                <div class="g-main">
+                    <!-- Empty -->
+                    <div class="g-empty" id="gestion-empty">
+                        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)"
+                            stroke-width="1.5" opacity="0.3">
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <h3 style="margin-top:12px">Selecciona una categoría</h3>
+                        <p class="text-muted text-sm">Haz clic en una categoría para ver sus leads y acciones
+                            disponibles.</p>
+                    </div>
+
+                    <!-- Detail Panel -->
+                    <div class="hidden" id="category-detail">
+                        <!-- Header -->
+                        <div class="g-detail-header">
+                            <div>
+                                <h3 id="cat-detail-title">—</h3>
+                                <p class="text-muted text-sm" id="cat-detail-subtitle"></p>
+                            </div>
+                            <button class="btn btn-sm btn-ghost danger" onclick="deleteEntireCategory()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path
+                                        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                                Eliminar
+                            </button>
+                            <button class="btn btn-sm btn-ghost" onclick="markCategoryAsContacted()"
+                                style="color:var(--green)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                                    <polyline points="22 4 12 14.01 9 11.01" />
+                                </svg>
+                                Marcar contactados
+                            </button>
+                        </div>
+
+                        <!-- Stats Bar -->
+                        <div class="g-stats-bar">
+                            <div class="g-stat-chip"><span class="stat-num" id="stat-pending-count">0</span> pendientes
+                            </div>
+                            <div class="g-stat-chip green"><span class="stat-num" id="stat-phone-count">0</span> con tel
+                            </div>
+                            <div class="g-stat-chip blue"><span class="stat-num" id="stat-contacted-count">0</span>
+                                contactados</div>
+                        </div>
+
+                        <!-- Single Action: Analizar & Limpiar -->
+                        <div class="g-action-panel" id="g-action-panel">
+                            <button class="btn btn-accent g-action-btn" id="btn-analyze" onclick="analyzeCategory()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <circle cx="11" cy="11" r="8" />
+                                    <path d="M21 21l-4.35-4.35" />
+                                </svg>
+                                Analizar y Limpiar WhatsApp
+                            </button>
+                            <p class="text-muted text-sm" id="analyze-hint">Verifica cuáles tienen WhatsApp, elimina los
+                                que no y deja solo los válidos.</p>
+                        </div>
+
+                        <!-- Analysis Progress -->
+                        <div class="hidden" id="analyze-progress">
+                            <div class="g-progress-panel">
+                                <div class="g-progress-steps" id="analyze-steps"></div>
+                                <div class="g-progress-bar-wrap">
+                                    <div class="g-progress-bar" id="analyze-bar" style="width:0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- WhatsApp Composer (hidden until analysis done) -->
+                        <div class="hidden" id="g-composer">
+                            <div class="g-composer-box">
+                                <div class="g-composer-header">
+                                    <div style="display:flex;align-items:center;gap:8px">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366">
+                                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+                                            <path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492l4.604-1.47A11.96 11.96 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-2.16 0-4.16-.7-5.79-1.885l-.403-.295-2.732.872.87-2.633-.32-.42A9.72 9.72 0 0 1 2.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z" />
+                                        </svg>
+                                        <strong>Enviar WhatsApp (Mensaje Único)</strong>
+                                    </div>
+                                    <span class="text-muted text-sm" id="composer-lead-count">0 destinatarios</span>
+                                </div>
+                                <textarea id="wa-compose-msg" class="input g-textarea" rows="5" style="max-height: 150px;"
+                                    placeholder="¡Hola {{business}}! ¿Tienen un minuto? ... (Escribe aquí tu mensaje)"></textarea>
+
+                                <div class="g-composer-footer" style="flex-wrap: wrap; gap: 12px; margin-top: 12px;">
+                                    <div class="g-delay-ctrl" style="background: rgba(15, 23, 42, 0.4); border-radius: 8px; padding: 8px; display: flex; align-items: center; gap: 8px;">
+                                        <label class="text-sm text-muted">Delay (Anti-ban):</label>
+                                        <input type="number" id="wa-compose-delay" class="input input-sm" value="35"
+                                            min="30" max="180" style="width:52px;text-align:center;padding:4px">
+                                        <span class="text-muted text-sm">s</span>
+                                    </div>
+                                    <div class="g-delay-ctrl" style="background: rgba(15, 23, 42, 0.4); border-radius: 8px; padding: 8px; display: flex; align-items: center; gap: 8px;">
+                                        <label class="text-sm text-muted" title="Pausar después de enviar N mensajes">Lote de:</label>
+                                        <input type="number" id="wa-batch-size" class="input input-sm" value="6"
+                                            min="2" max="25" style="width:52px;text-align:center;padding:4px">
+                                        <span class="text-muted text-sm">msjs</span>
+                                    </div>
+                                    <div class="g-delay-ctrl" style="background: rgba(15, 23, 42, 0.4); border-radius: 8px; padding: 8px; display: flex; align-items: center; gap: 8px;">
+                                        <label class="text-sm text-muted" title="Tiempo de descanso después de cada lote">Pausa Lote:</label>
+                                        <input type="number" id="wa-batch-pause" class="input input-sm" value="15"
+                                            min="5" max="60" style="width:52px;text-align:center;padding:4px">
+                                        <span class="text-muted text-sm">min</span>
+                                    </div>
+                                    
+                                    <button class="btn btn-wa" id="btn-send-wa" onclick="sendWAToCategory()" style="margin-left: auto;">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path d="M22 2L11 13" />
+                                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                        </svg>
+                                        Empezar Envío
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Send Progress (Premium Redesign) -->
+                        <div class="hidden" id="send-progress">
+                            <div class="premium-progress-panel">
+                                <div class="premium-stats-header">
+                                    <div class="premium-stat-item">
+                                        <div class="premium-stat-icon success">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                        </div>
+                                        <div class="premium-stat-info">
+                                            <span class="premium-stat-value" id="send-sent" style="color: #10b981;">0</span>
+                                            <span class="premium-stat-label">Enviados</span>
+                                        </div>
+                                    </div>
+                                    <div class="premium-stat-item">
+                                        <div class="premium-stat-icon error">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                        </div>
+                                        <div class="premium-stat-info">
+                                            <span class="premium-stat-value" id="send-failed" style="color: #ef4444;">0</span>
+                                            <span class="premium-stat-label">Fallidos</span>
+                                        </div>
+                                    </div>
+                                    <div class="premium-stat-item total">
+                                        <span class="premium-stat-total-label" id="send-total-label">de 0 destinatarios</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="premium-progress-container">
+                                    <div class="premium-progress-track">
+                                        <div class="premium-progress-fill" id="send-bar" style="width: 0%;">
+                                            <div class="premium-progress-glow"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="premium-log-container">
+                                    <div class="premium-log-header">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                                        <span>Registro de Actividad (En vivo)</span>
+                                    </div>
+                                    <div id="send-log" class="premium-log-body"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tabs -->
+                        <div class="g-tabs">
+                            <button class="g-tab active" id="tab-pending" onclick="switchGestionTab('pending')">
+                                Pendientes <span class="g-tab-badge" id="tab-pending-count">0</span>
+                            </button>
+                            <button class="g-tab" id="tab-contacted" onclick="switchGestionTab('contacted')">
+                                Contactados <span class="g-tab-badge green" id="tab-contacted-count">0</span>
+                            </button>
+                        </div>
+
+                        <!-- Leads Tables -->
+                        <div class="g-table-wrap" id="tab-content-pending">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Negocio</th>
+                                        <th>Rating</th>
+                                        <th>Reseñas</th>
+                                        <th>Teléfono</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cat-leads-body"></tbody>
+                            </table>
+                            <div class="pagination" id="cat-pagination"></div>
+                        </div>
+
+                        <div class="g-table-wrap" id="tab-content-contacted" style="display:none">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Negocio</th>
+                                        <th>Rating</th>
+                                        <th>Reseñas</th>
+                                        <th>Teléfono</th>
+                                        <th>Contactado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cat-contacted-body"></tbody>
+                            </table>
+                            <div class="pagination" id="cat-contacted-pagination"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- WhatsApp View -->
+        <section class="view" id="view-whatsapp">
+            <div class="view-header">
+                <div>
+                    <h2>WhatsApp Sender</h2>
+                    <p class="text-muted">Envía mensajes masivos a tus leads vía WhatsApp</p>
+                </div>
+                <div class="view-header-actions">
+                    <span class="wa-status-badge" id="wa-status-badge">Desconectado</span>
+                </div>
+            </div>
+
+            <div class="cards-row">
+                <!-- QR / Connection Panel -->
+                <div class="card flex-1" id="wa-connect-card">
+                    <div class="card-header">
+                        <h3>Conexión WhatsApp</h3>
+                    </div>
+                    <div id="wa-connect-content" style="text-align:center;padding:20px">
+                        <p class="text-muted">Cargando estado...</p>
+                    </div>
+                </div>
+
+                <!-- Message Composer -->
+                <div class="card flex-2">
+                    <div class="card-header">
+                        <h3>Mensaje a Enviar</h3>
+                        <span class="text-muted text-sm">Usa {{name}} para personalizar</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="wa-message">Mensaje (Soporta Spintax Ej: {Hola|Buen día|Qué tal})</label>
+                        <textarea id="wa-message" class="input" rows="6" placeholder="{Hola|Buen día|Hola qué tal} {{name}}, soy [tu nombre]...">Hola {{name}} 👋 buen día, disculpa la molestia.
+
+Soy Jahaziel, diseñador web. Vi su negocio en Google Maps y me llamó la atención que no tienen página web.
+
+Le hago una propuesta sin compromiso: le diseño su página gratis. Si le gusta, platicamos costos. Si no, no pasa nada 🤝
+
+¿Le interesa que le muestre cómo se vería?</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="wa-delay">Delay entre mensajes (segundos)</label>
+                        <input type="number" id="wa-delay" class="input input-sm" value="35" min="30" max="180"
+                            style="width:120px">
+                        <span class="text-muted text-sm" style="margin-left:8px">Por seguridad, nunca uses menos de 30s</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Filtro de leads</label>
+                        <select id="wa-filter" class="input input-sm" onchange="loadWALeadCount()">
+                            <option value="no-website">Sin website (prospectos ideales)</option>
+                            <option value="qualified">Calificados</option>
+                            <option value="all-with-phone">Todos con teléfono</option>
+                        </select>
+                        <span class="text-muted text-sm" id="wa-lead-count" style="margin-left:8px"></span>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:16px">
+                        <button class="btn btn-wa" id="btn-wa-send" onclick="startBulkWA()" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M22 2L11 13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                            Enviar a Todos
+                        </button>
+                        <button class="btn btn-ghost danger hidden" id="btn-wa-cancel" onclick="cancelBulkWA()">
+                            Cancelar Envío
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bulk Send Progress -->
+            <div class="card hidden" id="wa-progress-card">
+                <div class="card-header">
+                    <h3>Progreso de Envío</h3>
+                </div>
+                <div class="wa-progress-stats" id="wa-progress-stats">
+                    <div class="category-stat"><span class="category-stat-value" id="wa-p-total">0</span><span
+                            class="category-stat-label">Total</span></div>
+                    <div class="category-stat"><span class="category-stat-value green" id="wa-p-sent">0</span><span
+                            class="category-stat-label">Enviados</span></div>
+                    <div class="category-stat"><span class="category-stat-value red" id="wa-p-failed">0</span><span
+                            class="category-stat-label">Fallidos</span></div>
+                </div>
+                <div class="wa-progress-bar-wrapper">
+                    <div class="wa-progress-bar" id="wa-progress-bar" style="width:0%"></div>
+                </div>
+                <div id="wa-progress-log" class="wa-log"></div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Lead Detail Modal -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">Detalle del Lead</h3>
+                <button class="btn-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Filled dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loading">
+        <div class="spinner"></div>
+        <p>Procesando...</p>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

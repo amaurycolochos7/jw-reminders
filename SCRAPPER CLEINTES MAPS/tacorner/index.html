@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TACORNER - Taquería en Guadalajara</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --rojo-tacorner: #e31e24;
+            --verde-tacorner: #207244;
+        }
+        .bg-tacorner-red { background-color: var(--rojo-tacorner); }
+        .text-tacorner-red { color: var(--rojo-tacorner); }
+        .bg-tacorner-green { background-color: var(--verde-tacorner); }
+        .border-tacorner-green { border-color: var(--verde-tacorner); }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+    <!-- Header / Logo -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <img src="logo_tacorner.png" alt="TACORNER" class="h-12"> <!-- Reemplazar con tu logo -->
+            <div class="flex gap-4">
+                <a href="https://www.facebook.com/Tacorner" target="_blank" class="text-blue-600 text-2xl"><i class="fab fa-facebook"></i></a>
+                <button onclick="toggleCart()" class="relative text-tacorner-green text-2xl">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span id="cart-count" class="absolute -top-2 -right-2 bg-tacorner-red text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">0</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="bg-tacorner-red text-white py-12 px-4 text-center">
+        <h1 class="text-4xl font-bold mb-2">¡Los mejores tacos de Guadalajara!</h1>
+        <p class="mb-4">Av Adolfo López Mateos Nte 1106, Italia Providencia.</p>
+        <span class="bg-yellow-400 text-black px-3 py-1 rounded-full font-bold text-sm">⭐ 4.6 (95 opiniones)</span>
+    </section>
+
+    <!-- Menú -->
+    <main class="container mx-auto px-4 py-8">
+        
+        <!-- Categoría: Tacos -->
+        <h2 class="text-2xl font-bold mb-6 border-b-2 border-tacorner-green pb-2">🌮 Nuestros Tacos</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+            <!-- Producto -->
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Asada</h3>
+                    <p class="text-tacorner-green font-bold">$20.00</p>
+                </div>
+                <button onclick="addToCart('Taco de Asada', 20)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Labio</h3>
+                    <p class="text-tacorner-green font-bold">$20.00</p>
+                </div>
+                <button onclick="addToCart('Taco de Labio', 20)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Adobada</h3>
+                    <p class="text-tacorner-green font-bold">$20.00</p>
+                </div>
+                <button onclick="addToCart('Taco de Adobada', 20)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Chorizo</h3>
+                    <p class="text-tacorner-green font-bold">$20.00</p>
+                </div>
+                <button onclick="addToCart('Taco de Chorizo', 20)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Tripa</h3>
+                    <p class="text-tacorner-green font-bold">$20.00</p>
+                </div>
+                <button onclick="addToCart('Taco de Tripa', 20)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center border-2 border-yellow-400">
+                <div>
+                    <h3 class="font-bold text-lg text-tacorner-red">Arrachera</h3>
+                    <p class="text-tacorner-green font-bold">$30.00</p>
+                </div>
+                <button onclick="addToCart('Taco de Arrachera', 30)" class="bg-tacorner-red text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+        </div>
+
+        <!-- Categoría: Quesadillas -->
+        <h2 class="text-2xl font-bold mb-6 border-b-2 border-tacorner-green pb-2">🧀 Quesadillas</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Sencilla</h3>
+                    <p class="text-tacorner-green font-bold">$25.00</p>
+                </div>
+                <button onclick="addToCart('Quesadilla Sencilla', 25)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Con Carne</h3>
+                    <p class="text-tacorner-green font-bold">$40.00</p>
+                </div>
+                <button onclick="addToCart('Quesadilla con Carne', 40)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-md flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg">Con Arrachera</h3>
+                    <p class="text-tacorner-green font-bold">$45.00</p>
+                </div>
+                <button onclick="addToCart('Quesadilla con Arrachera', 45)" class="bg-tacorner-green text-white px-4 py-2 rounded-lg">+</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Información -->
+    <footer class="bg-gray-800 text-white py-10 mt-12 px-4">
+        <div class="container mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <h3 class="text-xl font-bold mb-4">Ubicación</h3>
+                <p>Av Adolfo López Mateos Nte 1106, Italia Providencia, 44656 Guadalajara, Jal.</p>
+                <p class="mt-2 text-gray-400">Consumo en el lugar • Pedidos desde el automóvil • Entrega sin contacto</p>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold mb-4">Síguenos</h3>
+                <a href="https://www.facebook.com/Tacorner" class="text-blue-400 hover:underline">Facebook Oficial</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modal del Carrito (Oculto por defecto) -->
+    <div id="cart-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[60] hidden flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+            <div class="p-4 bg-tacorner-green text-white flex justify-between items-center">
+                <h2 class="text-xl font-bold">Tu Pedido</h2>
+                <button onclick="toggleCart()" class="text-2xl">&times;</button>
+            </div>
+            
+            <div id="cart-items" class="p-4 max-height-[400px] overflow-y-auto">
+                <!-- Se llena con JS -->
+                <p class="text-center text-gray-500">Tu carrito está vacío</p>
+            </div>
+
+            <div class="p-4 border-t border-gray-100">
+                <div class="flex justify-between font-bold text-xl mb-4">
+                    <span>Total:</span>
+                    <span id="cart-total">$0.00</span>
+                </div>
+                
+                <div class="space-y-3">
+                    <input type="text" id="client-name" placeholder="Tu nombre" class="w-full border p-2 rounded-lg focus:outline-tacorner-green">
+                    <button onclick="sendOrder()" class="w-full bg-tacorner-red text-white py-3 rounded-lg font-bold text-lg flex items-center justify-center gap-2">
+                        <i class="fab fa-whatsapp"></i> Hacer Pedido por WhatsApp
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURACIÓN
+        const WHATSAPP_NUMBER = "523300000000"; // CAMBIA ESTO POR EL NÚMERO REAL
+        let cart = [];
+
+        function addToCart(name, price) {
+            const existingItem = cart.find(item => item.name === name);
+            if (existingItem) {
+                existingItem.quantity += 1;
+            } else {
+                cart.push({ name, price, quantity: 1 });
+            }
+            updateCartUI();
+        }
+
+        function removeFromCart(name) {
+            cart = cart.filter(item => item.name !== name);
+            updateCartUI();
+        }
+
+        function updateCartUI() {
+            const cartItemsContainer = document.getElementById('cart-items');
+            const cartCount = document.getElementById('cart-count');
+            const cartTotal = document.getElementById('cart-total');
+            
+            cartItemsContainer.innerHTML = '';
+            let total = 0;
+            let count = 0;
+
+            if (cart.length === 0) {
+                cartItemsContainer.innerHTML = '<p class="text-center text-gray-500 py-4">Tu carrito está vacío</p>';
+            } else {
+                cart.forEach(item => {
+                    total += item.price * item.quantity;
+                    count += item.quantity;
+                    cartItemsContainer.innerHTML += `
+                        <div class="flex justify-between items-center mb-3 border-b pb-2">
+                            <div>
+                                <p class="font-bold">${item.name} x${item.quantity}</p>
+                                <p class="text-sm text-gray-500">$${(item.price * item.quantity).toFixed(2)}</p>
+                            </div>
+                            <button onclick="removeFromCart('${item.name}')" class="text-red-500 text-sm">Eliminar</button>
+                        </div>
+                    `;
+                });
+            }
+
+            cartCount.innerText = count;
+            cartTotal.innerText = `$${total.toFixed(2)}`;
+        }
+
+        function toggleCart() {
+            const modal = document.getElementById('cart-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function sendOrder() {
+            const name = document.getElementById('client-name').value;
+            if (!name) {
+                alert("Por favor ingresa tu nombre");
+                return;
+            }
+            if (cart.length === 0) {
+                alert("El carrito está vacío");
+                return;
+            }
+
+            let message = `*NUEVO PEDIDO - TACORNER*\n\n`;
+            message += `👤 *Cliente:* ${name}\n`;
+            message += `--------------------------\n`;
+            
+            let total = 0;
+            cart.forEach(item => {
+                message += `• ${item.quantity}x ${item.name} - $${(item.price * item.quantity).toFixed(2)}\n`;
+                total += item.price * item.quantity;
+            });
+
+            message += `--------------------------\n`;
+            message += `💰 *TOTAL A PAGAR: $${total.toFixed(2)}*`;
+
+            const encodedMessage = encodeURIComponent(message);
+            const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodedMessage}`;
+            
+            window.open(whatsappUrl, '_blank');
+        }
+    </script>
+</body>
+</html>

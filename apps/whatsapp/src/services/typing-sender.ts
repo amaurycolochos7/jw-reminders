@@ -14,7 +14,7 @@ const TYPING_MIN_S = Number(process.env.WHATSAPP_TYPING_MIN_SECONDS) || 2;
 const TYPING_MAX_S = Number(process.env.WHATSAPP_TYPING_MAX_SECONDS) || 5;
 const TYPING_PER_CHAR_MS = Number(process.env.WHATSAPP_TYPING_PER_CHAR_MS) || 15;
 const TYPING_JITTER_PERCENT = Number(process.env.WHATSAPP_TYPING_JITTER_PERCENT) || 30;
-const REQUIRE_TYPING = process.env.WHATSAPP_REQUIRE_TYPING_BEFORE_SEND !== "false";
+const REQUIRE_TYPING = process.env.WHATSAPP_REQUIRE_TYPING_BEFORE_SEND === "true";
 
 export interface TypingSendInput {
   phone: string;
@@ -83,7 +83,7 @@ export async function sendWithTypingAndAck(input: TypingSendInput): Promise<Typi
     chatId = numberId._serialized;
 
     // 3. Activar estado "escribiendo"
-    const chat = await client.getChatById(number + "@c.us");
+    const chat = await client.getChatById(chatId);
     typingDurationMs = generateTypingDurationMs(message);
 
     try {
