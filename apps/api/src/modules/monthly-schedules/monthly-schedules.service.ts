@@ -6,6 +6,7 @@ import {
   createAutomationPlanForAssignment,
   publisherSnapshot,
   regenerateAssignmentAutomation,
+  supersedeActivePlansForAssignment,
 } from "../../services/automation.service.js";
 import { buildAssignmentProposal, ProposalOptions } from "../../services/assignment-proposal.js";
 import { hardDeleteWeekData } from "../meeting-weeks/meeting-weeks.service.js";
@@ -331,8 +332,21 @@ export async function generateProgramAutomations(id: string) {
             select: { id: true },
           });
           if (active) {
-            skipped += 1;
-            continue;
+            // ¿El plan activo aún tiene recordatorios "vivos" (pendientes)? Si sí,
+            // ya está automatizada → saltar. Si todos fueron cancelados o enviados
+            // (p. ej. tras "Cancelar pendientes"), REGENERAR para restaurar el flujo
+            // en vez de saltar (antes se saltaba y no volvía a enviar nada).
+            const live = await tx.reminderDelivery.count({
+              where: { assignmentId: assignment.id, status: { notIn: ["CANCELLED", "SENT", "SKIPPED", "DEAD"] } },
+            });
+            if (live > 0) {
+              skipped += 1;
+              continue;
+            }
+            // Plan activo pero sin recordatorios vivos (todos cancelados): se
+            // reemplaza y se genera de nuevo como PRIMERA VEZ (aviso inicial), NO
+            // como aviso de cambio. Luego cae al bloque de generación fresca.
+            await supersedeActivePlansForAssignment(tx, assignment.id, "program_generate_restore");
           }
           await applyAssignmentSnapshots(tx, assignment.id);
           const result = await createAutomationPlanForAssignment(tx, assignment.id, {
@@ -415,18 +429,27 @@ export async function cancelProgramPending(id: string) {
     const assignmentIds = assignments.map((assignment) => assignment.id);
     if (assignmentIds.length === 0) return { cancelled: 0 };
 
+    // Cancelación COMPLETA: TODOS los recordatorios no terminales (no solo
+    // PENDING/QUEUED/FAILED).
     const result = await tx.reminderDelivery.updateMany({
-      where: { assignmentId: { in: assignmentIds }, status: { in: CANCELLABLE_STATUSES } },
+      where: { assignmentId: { in: assignmentIds }, status: { notIn: ["CANCELLED", "SENT", "SKIPPED", "DEAD"] } },
       data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "program_cancel_pending" },
     });
+    // También desactivar los planes de automatización activos. Así, al volver a
+    // dar "Generar automatizaciones", arranca el flujo COMPLETO desde cero (aviso
+    // inicial), no como aviso de cambio.
+    const plans = await tx.automationPlan.updateMany({
+      where: { assignmentId: { in: assignmentIds }, status: "ACTIVE" },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
 
-    if (result.count > 0) {
+    if (result.count > 0 || plans.count > 0) {
       await createAutomationEvent(tx, {
         eventType: "MONTHLY_AUTOMATIONS_CANCELLED",
         entityType: "MonthlySchedule",
         entityId: id,
         actorType: "admin",
-        metadata: { cancelled: result.count },
+        metadata: { cancelled: result.count, plansCancelled: plans.count },
       });
     }
 

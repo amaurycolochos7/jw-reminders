@@ -1,5 +1,5 @@
 FROM node:20-slim
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl python3 make g++ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
 WORKDIR /app
 
@@ -13,6 +13,9 @@ RUN pnpm install --frozen-lockfile || pnpm install
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
 COPY templates/ ./templates/
+COPY data/precursor-study-index/ ./data/precursor-study-index/
+COPY data/bible/ ./data/bible/
+COPY data/manual-fallbacks/ ./data/manual-fallbacks/
 
 RUN pnpm --filter @jw-reminders/shared build
 RUN pnpm --filter @jw-reminders/database generate

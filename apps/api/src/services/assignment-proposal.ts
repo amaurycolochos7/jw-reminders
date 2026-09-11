@@ -22,6 +22,7 @@
  */
 
 import {
+  isChairmanAutofillType,
   isCompanionGenderAllowed,
   isPublisherEligibleForAssignment,
   type SectionId,
@@ -203,6 +204,8 @@ export function buildAssignmentProposal(input: {
     const used = new Set<string>(week.existingPublisherIds);
     const existingNumbers = new Set(week.existingNumbers);
     const weekSlots = week.slots ?? slots;
+    // ponytail: track chairman per week so CBS reader can't be the same person
+    let weekChairmanId: string | null = null;
 
     for (const slot of weekSlots) {
       if (existingNumbers.has(slot.assignmentNumber)) continue;
@@ -210,9 +213,14 @@ export function buildAssignmentProposal(input: {
       const assignSalt = salt(week.weekId, slot.assignmentNumber);
 
       // Pick assigned publisher (respecting capability + gender rules for this part).
-      const slotEligible = assignable.filter((p) =>
+      let slotEligible = assignable.filter((p) =>
         isPublisherEligibleForAssignment(p, slot.assignmentType, "ASSIGNEE"),
       );
+
+      // Hard rule: chairman cannot also be CBS reader in the same week.
+      if (slot.assignmentType === "CONGREGATION_BIBLE_STUDY_READER" && weekChairmanId) {
+        slotEligible = slotEligible.filter((p) => p.id !== weekChairmanId);
+      }
 
       // Hard rule: if nobody eligible (by capability/gender) exists, leave the
       // slot UNASSIGNED. Never fall back to an ineligible person (e.g. someone
@@ -231,6 +239,11 @@ export function buildAssignmentProposal(input: {
       const assigned = [...pool].sort(byScore((p) => baseScore(p.id), assignSalt))[0];
       liveCount[assigned.id] = (liveCount[assigned.id] || 0) + 1;
       used.add(assigned.id);
+
+      // Track chairman for CBS reader exclusion rule
+      if (slot.assignmentType === "CHAIRMAN") {
+        weekChairmanId = assigned.id;
+      }
 
       // Pick companion if the slot needs one (same-gender rule applies to student parts).
       let companionId: string | null = null;
@@ -281,22 +294,22 @@ export function buildAssignmentProposal(input: {
   // persona en esa semana. Si no hay ninguno elegible, se registra una advertencia.
   enforceMinisterialServantChairman(assignments, input.publishers, baseScore, warnings, seed);
 
-  // ─── Autocompletado del inicio: oración inicial + palabras de introducción ──
+  // ─── Autocompletado de las partes del presidente ────────────────────────────
   // Por defecto las realiza el mismo presidente. Tras fijar la presidencia de
-  // cada semana (incluida la regla del siervo ministerial), la oración inicial
-  // (OPENING_PRAYER) y las palabras de introducción (OPENING_COMMENTS) toman el
-  // mismo publicador que preside esa semana. La oración final (CLOSING_PRAYER)
-  // NO se toca: queda independiente para asignarse aparte.
+  // cada semana (incluida la regla del siervo ministerial), las partes en
+  // CHAIRMAN_AUTOFILL_TYPES (oración inicial, palabras de introducción, palabras
+  // de conclusión y oración final) toman el mismo publicador que preside.
   autofillOpeningPartsFromChairman(assignments);
 
   return { assignments, warnings };
 }
 
 /**
- * Hace que, por cada semana, la oración inicial y las palabras de introducción
- * queden asignadas al mismo publicador que preside (CHAIRMAN). Muta
- * `assignments` en su lugar. No crea partes que no existan; solo alinea las que
- * el programa de la semana ya incluye.
+ * Hace que, por cada semana, las partes que realiza el presidente
+ * (CHAIRMAN_AUTOFILL_TYPES: oración inicial, palabras de introducción, palabras
+ * de conclusión y oración final) queden asignadas al mismo publicador que preside
+ * (CHAIRMAN). Muta `assignments` en su lugar. No crea partes que no existan; solo
+ * alinea las que el programa de la semana ya incluye.
  */
 export function autofillOpeningPartsFromChairman(assignments: ProposedAssignment[]): void {
   const chairmanByWeek = new Map<string, string>();
@@ -304,7 +317,7 @@ export function autofillOpeningPartsFromChairman(assignments: ProposedAssignment
     if (a.assignmentType === "CHAIRMAN") chairmanByWeek.set(a.weekId, a.assignedPublisherId);
   }
   for (const a of assignments) {
-    if (a.assignmentType === "OPENING_PRAYER" || a.assignmentType === "OPENING_COMMENTS") {
+    if (isChairmanAutofillType(a.assignmentType)) {
       const chairId = chairmanByWeek.get(a.weekId);
       if (chairId) {
         a.assignedPublisherId = chairId;

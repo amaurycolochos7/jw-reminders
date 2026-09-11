@@ -182,10 +182,11 @@ test("duración: presidente y oraciones no llevan duración; palabras de introdu
   assert.equal(deriveDurationMinutes("CLOSING_PRAYER"), 0);
 });
 
-test("autocompletado: oración inicial y palabras de introducción siguen al presidente; oración final no", () => {
+test("autocompletado: oración inicial, introducción y conclusión siguen al presidente; oración final NO", () => {
   assert.equal(isChairmanAutofillType("OPENING_PRAYER"), true);
   assert.equal(isChairmanAutofillType("OPENING_COMMENTS"), true);
-  assert.equal(isChairmanAutofillType("CLOSING_PRAYER"), false, "la oración final es independiente");
+  assert.equal(isChairmanAutofillType("CONCLUDING_COMMENTS"), true, "palabras de conclusión siguen al presidente");
+  assert.equal(isChairmanAutofillType("CLOSING_PRAYER"), false, "la oración final la hace otra persona");
   assert.equal(isChairmanAutofillType("CHAIRMAN"), false);
 });
 

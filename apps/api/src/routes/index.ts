@@ -11,6 +11,7 @@ import messageLogsRoutes from "../modules/message-logs/message-logs.routes.js";
 import whatsappRoutes from "../modules/whatsapp/whatsapp.routes.js";
 import monthlySchedulesRoutes from "../modules/monthly-schedules/monthly-schedules.routes.js";
 import automationCenterRoutes from "../modules/automation-center/automation-center.routes.js";
+import researchChatRoutes from "../modules/research-chat/http/research-chat.routes.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { rateLimit } from "../config/security.js";
 
@@ -31,3 +32,4 @@ apiRouter.use("/automation-center", authMiddleware, automationCenterRoutes);
 apiRouter.use("/message-templates", authMiddleware, messageTemplatesRoutes);
 apiRouter.use("/message-logs", authMiddleware, messageLogsRoutes);
 apiRouter.use("/whatsapp", authMiddleware, whatsappRoutes);
+apiRouter.use("/research-chat", authMiddleware, researchChatRoutes);

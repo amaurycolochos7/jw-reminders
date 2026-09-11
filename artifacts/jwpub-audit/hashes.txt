@@ -1,0 +1,35 @@
+C:\Users\Amaury\Documents\JW-REMINDERS\pt14_S.jwpub
+  size   1773916
+  sha256 f19fc396fbf21ab0211cc032020449aba12abc291a594c20b53a600e7913a799
+  sha1   866cfda4e3091e26c81e1ca118baf37d59f9a047
+  mtime  2026-07-06T16:21:45.836454
+C:\Users\Amaury\Documents\JW-REMINDERS\mwb_S_202611.jwpub
+  size   3943212
+  sha256 b51c1f20ff77fe182208bf0757ae5afa538fe7a9926418d4bb92629695497f11
+  sha1   15d7adb3f0a9593d0285c6bea9e5e8ac4894d961
+  mtime  2026-09-03T00:07:39.913410
+C:\Users\Amaury\Documents\JW-REMINDERS\pt14z_S.jwpub
+  size   1778744
+  sha256 259e50b063051edb95bd354fa0d1a5a563ab4cd7febea272a7499b800bbe68cd
+  sha1   95cd9c8cf076b6f78e41c300db2e08814a74ece2
+  mtime  2026-09-03T10:31:51.114622
+C:\Users\Amaury\Documents\JW-REMINDERS\mlsalon_S.jwpub
+  size   734411
+  sha256 0b4ace3f862e45d4803ba4e58c41e8a8b50334bf0d8b4a9d211c2c96c2ce1d03
+  sha1   7ec7fd10179cec5ced25fb4755ffa69698dabc13
+  mtime  2026-09-03T10:21:32.717109
+C:\Users\Amaury\Desktop\mlsalon_S.jwpub
+  size   734411
+  sha256 0b4ace3f862e45d4803ba4e58c41e8a8b50334bf0d8b4a9d211c2c96c2ce1d03
+  sha1   7ec7fd10179cec5ced25fb4755ffa69698dabc13
+  mtime  2026-09-03T10:33:44.727725
+C:\Users\Amaury\Desktop\pt14z_S.jwpub
+  size   1778744
+  sha256 259e50b063051edb95bd354fa0d1a5a563ab4cd7febea272a7499b800bbe68cd
+  sha1   95cd9c8cf076b6f78e41c300db2e08814a74ece2
+  mtime  2026-09-03T10:33:44.709481
+C:\Users\Amaury\Downloads\mwb_S_202611.jwpub
+  size   3943212
+  sha256 b51c1f20ff77fe182208bf0757ae5afa538fe7a9926418d4bb92629695497f11
+  sha1   15d7adb3f0a9593d0285c6bea9e5e8ac4894d961
+  mtime  2026-09-03T00:07:39.913410

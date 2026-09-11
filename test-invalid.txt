@@ -1,0 +1,21 @@
+﻿Parsed refs: [
+  {
+    "type": "wol",
+    "publicationCode": "w99",
+    "date": "99/99",
+    "page": 999,
+    "paragraphs": [
+      99
+    ],
+    "raw": "w99 99/99 p├íg. 999 p├írr. 99",
+    "language": "es"
+  }
+]
+Resolved: [
+  {
+    "type": "wol",
+    "raw": "w99 99/99 p├íg. 999 p├írr. 99",
+    "status": "invalid_reference",
+    "notes": "Referencia inv├ílida: Mes inv├ílido: 99"
+  }
+]

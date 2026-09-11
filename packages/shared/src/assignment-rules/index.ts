@@ -30,6 +30,7 @@ export type AssignmentTypeId =
   | "EXPLAIN_BELIEFS"
   | "MAKE_DISCIPLES"
   | "TALK"
+  | "AUDIENCE_ANALYSIS"
   | "OTHER"
   // Fase 3: resto de la reunión (aditivo, no altera SMM).
   | "CHAIRMAN"
@@ -134,6 +135,17 @@ export const ASSIGNMENT_TYPE_RULES: Record<AssignmentTypeId, AssignmentTypeRule>
     defaultTitle: "Discurso",
     defaultDurationMinutes: 5,
     needsCompanion: false,
+    allowedAssigneeGenders: ["MALE"],
+    companionSameGender: false,
+  },
+  AUDIENCE_ANALYSIS: {
+    type: "AUDIENCE_ANALYSIS",
+    label: "Análisis con el auditorio",
+    section: "APPLY_YOURSELF",
+    defaultTitle: "Análisis con el auditorio",
+    defaultDurationMinutes: 6,
+    needsCompanion: false,
+    // La dirige un hermano capacitado (el mismo que puede pasar discursos).
     allowedAssigneeGenders: ["MALE"],
     companionSameGender: false,
   },
@@ -360,6 +372,8 @@ export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   EXPLAIN_BELIEFS: "canParticipateSMM",
   MAKE_DISCIPLES: "canParticipateSMM",
   TALK: "canGiveTalk",
+  // Análisis con el auditorio: lo dirige quien puede pasar discursos.
+  AUDIENCE_ANALYSIS: "canGiveTalk",
   OTHER: null,
   // ─── Fase 3 ───
   // "Ser presidente" implica automáticamente oración inicial, oración final y
@@ -401,14 +415,20 @@ export function typeHasNoDuration(type: string): boolean {
 }
 
 /**
- * Partes del inicio de la reunión que por defecto realiza el mismo presidente y
- * que se AUTOCOMPLETAN con la persona asignada como presidente: la oración
- * inicial y las palabras de introducción. La oración final (CLOSING_PRAYER) NO
- * está aquí: es independiente y se asigna aparte.
+ * Partes que por defecto realiza el mismo presidente y que se AUTOCOMPLETAN con
+ * la persona asignada como presidente. En esta congregación el presidente hace
+ * la oración inicial, las palabras de introducción y las palabras de conclusión:
+ * al cambiar el presidente, esas tres partes lo siguen automáticamente (salvo las
+ * editadas a mano, que se respetan). La ORACIÓN FINAL (CLOSING_PRAYER) NO está
+ * aquí: la hace otra persona (se elige entre los demás que pueden orar).
  */
-export const CHAIRMAN_AUTOFILL_TYPES: AssignmentTypeId[] = ["OPENING_PRAYER", "OPENING_COMMENTS"];
+export const CHAIRMAN_AUTOFILL_TYPES: AssignmentTypeId[] = [
+  "OPENING_PRAYER",
+  "OPENING_COMMENTS",
+  "CONCLUDING_COMMENTS",
+];
 
-/** ¿Este tipo se autocompleta con el presidente (oración inicial / palabras de introducción)? */
+/** ¿Este tipo se autocompleta con el presidente? (oración inicial/final, intro y conclusión) */
 export function isChairmanAutofillType(type: string): boolean {
   return CHAIRMAN_AUTOFILL_TYPES.includes(type as AssignmentTypeId);
 }
@@ -436,6 +456,7 @@ export const ASSIGNMENT_TYPE_OPTIONS: AssignmentTypeOption[] = (
     "EXPLAIN_BELIEFS",
     "MAKE_DISCIPLES",
     "TALK",
+    "AUDIENCE_ANALYSIS",
     "CHRISTIAN_LIVING",
     "CONGREGATION_BIBLE_STUDY_CONDUCTOR",
     "CONGREGATION_BIBLE_STUDY_READER",

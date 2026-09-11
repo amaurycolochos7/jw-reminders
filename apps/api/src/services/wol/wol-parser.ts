@@ -45,7 +45,7 @@ export interface ParseWolResult {
  * encabezados emiten item.
  */
 const TARGET_TITLES = [
-  // SMM (sin cambios)
+  // SMM en forma de mandato ("usted"), usada hasta la guía de octubre 2026
   "lectura de la biblia",
   "empiece conversaciones",
   "primera conversacion",
@@ -55,6 +55,13 @@ const TARGET_TITLES = [
   "explique sus creencias",
   "curso biblico",
   "discurso",
+  // SMM en forma "nosotros": desde la guía de noviembre 2026 los mismos títulos
+  // cambian de persona ("Empecemos conversaciones", "Hagamos discípulos"...).
+  // Sin estas variantes las partes se perdían SIN aviso (ver detección de huecos).
+  "empecemos conversaciones",
+  "hagamos revisitas",
+  "hagamos discipulos",
+  "expliquemos nuestras creencias",
   // Fase 3: partes de reunión con título fijo
   "busquemos perlas escondidas",
   "perlas escondidas",
@@ -65,9 +72,32 @@ const TARGET_TITLES = [
   "cantico",
 ];
 
+/**
+ * Un título de parte es corto ("Estudio bíblico de la congregación" son 34
+ * caracteres; el más largo de la lista no llega a 40). Una frase del cuerpo que
+ * empiece por una de esas palabras es mucho más larga, así que el límite separa
+ * ambas cosas sin depender de la redacción.
+ */
+const MAX_FIXED_TITLE_LENGTH = 60;
+
+/**
+ * ¿El título de la línea es el de una parte conocida?
+ *
+ * El match va ANCLADO al principio y acotado en longitud: WOL escribe el título
+ * al inicio de la línea. Con `includes` cualquier frase del cuerpo que mencionara
+ * una palabra de la lista ("...asistir al discurso especial", "...ofrecerles un
+ * curso bíblico") se convertía en una parte fantasma sin duración, y eso dejaba
+ * la semana entera en NEEDS_REVIEW.
+ */
 function isTargetTitle(title: string): boolean {
   const n = normalizeTitle(title);
-  return TARGET_TITLES.some((t) => n.includes(t));
+  if (n.length > MAX_FIXED_TITLE_LENGTH) return false;
+  return TARGET_TITLES.some((t) => n.startsWith(t));
+}
+
+/** ¿El texto de la parte corresponde a un "Análisis con el auditorio"? */
+function isAudienceAnalysis(text: string): boolean {
+  return normalizeTitle(text).includes("analisis con el auditorio");
 }
 
 /**
@@ -238,6 +268,13 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
   // punto 1 → TREASURES_TALK; partes de Nuestra Vida Cristiana → CHRISTIAN_LIVING).
   let currentSection: "TREASURES" | "SMM" | "LIVING" | null = null;
 
+  // Control de huecos: toda parte numerada que WOL imprime DENTRO del programa
+  // debe acabar como item. Si alguna se cae (p. ej. porque cambió su título en
+  // una guía nueva), se registra aquí y se avisa al final en vez de desaparecer
+  // sin dejar rastro, que es lo que ocurría con los títulos nuevos de noviembre.
+  const numberedSeen = new Map<number, string>();
+  const numberedEmitted = new Set<number>();
+
   const DURATION_RE = /\(\s*\d+\s*mins?\.?\s*\)/i;
 
   for (let i = 0; i < lines.length; i += 1) {
@@ -256,6 +293,13 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
     const itemNumber = headed ? parseInt(headed[1], 10) : null;
     const afterNumber = headed ? headed[2].trim() : line;
 
+    // Sólo se vigilan los números que aparecen ya dentro del programa (después
+    // del primer encabezado de sección). Fuera de él, los números son párrafos
+    // de un artículo (p. ej. la semana de la Conmemoración enlaza La Atalaya).
+    if (itemNumber != null && currentSection && !numberedSeen.has(itemNumber)) {
+      numberedSeen.set(itemNumber, afterNumber.replace(DURATION_RE, "").trim());
+    }
+
     // Las partes de reunión traen título Y duración en la MISMA línea
     // ("Palabras de introducción (1 min.)"). El título es lo que va ANTES del
     // marcador de duración; el resto (marcador + detalles) es cuerpo en línea.
@@ -273,10 +317,17 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
     // reunión con nombre estable) → conserva EXACTAMENTE el comportamiento SMM.
     // Prioridad 2: partes de TÍTULO VARIABLE según la sección en curso.
     const isFixedTarget = titleCandidate.length > 0 && isTargetTitle(titleCandidate);
-    let variableType: "TREASURES_TALK" | "CHRISTIAN_LIVING" | null = null;
+    let variableType: "TREASURES_TALK" | "CHRISTIAN_LIVING" | "AUDIENCE_ANALYSIS" | null = null;
     if (!isFixedTarget && titleCandidate.length > 0 && headed) {
       if (currentSection === "TREASURES") variableType = "TREASURES_TALK";
       else if (currentSection === "LIVING") variableType = "CHRISTIAN_LIVING";
+      // Partes nuevas de "Seamos mejores maestros" con título variable
+      // ("¿Qué diría?", etc.): son "Análisis con el auditorio", las dirige un
+      // hermano capacitado (canGiveTalk). Se detectan por esa etiqueta, mirando
+      // también la línea siguiente por si va en renglón aparte.
+      else if (currentSection === "SMM" && isAudienceAnalysis(`${afterNumber} ${lines[i + 1] ?? ""}`)) {
+        variableType = "AUDIENCE_ANALYSIS";
+      }
     }
     if (!isFixedTarget && !variableType) continue;
 
@@ -314,6 +365,8 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
     const type = variableType ?? mapWolTitleToType(titleCandidate);
     const section = variableType ? deriveSection(variableType) : mapWolTitleToSection(titleCandidate);
 
+    if (itemNumber != null) numberedEmitted.add(itemNumber);
+
     items.push({
       itemNumber,
       section,
@@ -334,6 +387,19 @@ export function parseWolProgram(rawText: string, _sourceUrl = ""): ParseWolResul
 
   if (items.length === 0) {
     warnings.push("No se reconoció ninguna asignación conocida en el texto de WOL.");
+  }
+
+  // Huecos: partes numeradas del programa que no se convirtieron en item.
+  const missing = [...numberedSeen.entries()].filter(([n]) => !numberedEmitted.has(n));
+  for (const [n, title] of missing) {
+    warnings.push(`No se reconoció la parte ${n} del programa ("${title}"). Revísala a mano.`);
+  }
+
+  // Un programa sin ninguna parte asignable (solo cánticos) casi siempre
+  // significa que esa semana no hay reunión normal (Conmemoración, asamblea) o
+  // que WOL enlazó otra cosa. Se avisa para que un humano lo decida.
+  if (items.length > 0 && !items.some((i) => i.requiresAssignee !== false)) {
+    warnings.push("El programa no contiene ninguna parte asignable (solo cánticos). Comprueba si esa semana hay reunión.");
   }
 
   return { items, warnings };

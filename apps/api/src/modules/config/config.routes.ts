@@ -11,7 +11,13 @@ router.get("/", async (_req, res) => {
 });
 
 router.put("/", async (req, res) => {
-  const entries = Object.entries(req.body) as [string, string][];
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  // Aceptar dos formatos: el mapa { CLAVE: valor } y el par { key, value }.
+  // (Este segundo formato causaba filas basura "key"/"value" antes.)
+  const entries: [string, string][] =
+    typeof body.key === "string" && "value" in body
+      ? [[body.key, String(body.value)]]
+      : (Object.entries(body).map(([k, v]) => [k, String(v)]) as [string, string][]);
   for (const [key, value] of entries) {
     await prisma.appConfig.upsert({ where: { key }, update: { value }, create: { key, value } });
   }

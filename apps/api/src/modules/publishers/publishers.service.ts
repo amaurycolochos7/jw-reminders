@@ -124,6 +124,13 @@ export async function updatePublisher(id: string, data: any) {
       throw new Error(phoneValidation.error);
     }
     data.phone = phoneValidation.normalized;
+    // El número de WhatsApp (usado para ENVIAR) sigue al phone editado si no se
+    // especifica uno distinto. Antes quedaba desincronizado: al editar el número
+    // de un publicador, whatsappPhone conservaba el viejo y los mensajes se
+    // enviaban al número equivocado.
+    if (!data.whatsappPhone) {
+      data.whatsappPhone = phoneValidation.normalized;
+    }
   }
   if (data.whatsappPhone) {
     data.whatsappPhone = normalizePhone(data.whatsappPhone);

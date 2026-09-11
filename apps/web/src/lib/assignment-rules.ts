@@ -22,6 +22,7 @@ export type AssignmentTypeId =
   | 'EXPLAIN_BELIEFS'
   | 'MAKE_DISCIPLES'
   | 'TALK'
+  | 'AUDIENCE_ANALYSIS'
   | 'OTHER'
   // Fase 3: resto de la reunión.
   | 'CHAIRMAN'
@@ -55,6 +56,7 @@ export const ASSIGNMENT_TYPE_RULES: Record<AssignmentTypeId, AssignmentTypeRule>
   EXPLAIN_BELIEFS: { type: 'EXPLAIN_BELIEFS', label: 'Explique sus creencias', section: 'APPLY_YOURSELF', defaultTitle: 'Explique sus creencias', defaultDurationMinutes: 5, needsCompanion: true, allowedAssigneeGenders: [], companionSameGender: true },
   MAKE_DISCIPLES: { type: 'MAKE_DISCIPLES', label: 'Haga discípulos', section: 'APPLY_YOURSELF', defaultTitle: 'Haga discípulos', defaultDurationMinutes: 5, needsCompanion: true, allowedAssigneeGenders: [], companionSameGender: true },
   TALK: { type: 'TALK', label: 'Discurso', section: 'APPLY_YOURSELF', defaultTitle: 'Discurso', defaultDurationMinutes: 5, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
+  AUDIENCE_ANALYSIS: { type: 'AUDIENCE_ANALYSIS', label: 'Análisis con el auditorio', section: 'APPLY_YOURSELF', defaultTitle: 'Análisis con el auditorio', defaultDurationMinutes: 6, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
   OTHER: { type: 'OTHER', label: 'Otra asignación', section: 'APPLY_YOURSELF', defaultTitle: 'Otra asignación', defaultDurationMinutes: 5, needsCompanion: false, allowedAssigneeGenders: [], companionSameGender: false },
   // ─── Fase 3: resto de la reunión. Todas sin acompañante y solo hombres. ───
   CHAIRMAN: { type: 'CHAIRMAN', label: 'Presidente', section: 'OPENING', defaultTitle: 'Presidente de la reunión', defaultDurationMinutes: 0, needsCompanion: false, allowedAssigneeGenders: ['MALE'], companionSameGender: false },
@@ -149,6 +151,7 @@ export const ASSIGNMENT_TYPE_REQUIRED_CAPABILITY: Record<
   EXPLAIN_BELIEFS: 'canParticipateSMM',
   MAKE_DISCIPLES: 'canParticipateSMM',
   TALK: 'canGiveTalk',
+  AUDIENCE_ANALYSIS: 'canGiveTalk',
   OTHER: null,
   CHAIRMAN: 'canBeChairman',
   OPENING_COMMENTS: 'canBeChairman',
@@ -185,10 +188,16 @@ export function typeHasNoDuration(type: string): boolean {
 }
 
 /**
- * Partes del inicio que por defecto realiza el presidente y se autocompletan con
- * él: oración inicial y palabras de introducción. La oración final es aparte.
+ * Partes que por defecto realiza el presidente y se autocompletan con él: oración
+ * inicial, palabras de introducción y palabras de conclusión. Al cambiar el
+ * presidente, estas tres lo siguen (salvo las editadas a mano). La oración final
+ * NO está aquí: la hace otra persona (se elige entre los demás que pueden orar).
  */
-export const CHAIRMAN_AUTOFILL_TYPES: AssignmentTypeId[] = ['OPENING_PRAYER', 'OPENING_COMMENTS']
+export const CHAIRMAN_AUTOFILL_TYPES: AssignmentTypeId[] = [
+  'OPENING_PRAYER',
+  'OPENING_COMMENTS',
+  'CONCLUDING_COMMENTS',
+]
 
 export function isChairmanAutofillType(type: string): boolean {
   return CHAIRMAN_AUTOFILL_TYPES.includes(type as AssignmentTypeId)
@@ -229,6 +238,7 @@ export const ASSIGNMENT_TYPE_OPTIONS: { value: AssignmentTypeId; label: string }
   { value: 'EXPLAIN_BELIEFS', label: 'Explique sus creencias' },
   { value: 'MAKE_DISCIPLES', label: 'Haga discípulos' },
   { value: 'TALK', label: 'Discurso' },
+  { value: 'AUDIENCE_ANALYSIS', label: 'Análisis con el auditorio' },
   { value: 'CHRISTIAN_LIVING', label: 'Nuestra Vida Cristiana' },
   { value: 'CONGREGATION_BIBLE_STUDY_CONDUCTOR', label: 'Estudio Bíblico de la Congregación (conductor)' },
   { value: 'CONGREGATION_BIBLE_STUDY_READER', label: 'Estudio Bíblico de la Congregación (lector)' },

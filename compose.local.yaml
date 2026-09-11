@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: jw_admin
       POSTGRES_PASSWORD: jw_local_pass
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -33,6 +33,11 @@ services:
       WHATSAPP_API_URL: http://whatsapp:3010
       TEST_MODE: "true"
       TEST_PHONE: "5219611234567"
+      RESEARCH_CHAT_ENABLED: "true"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "gpt-5.4-nano"
+      RESEARCH_CHAT_WOL_ENABLED: "true"
+      ADMIN_PASSWORD: "admin"
     depends_on:
       db:
         condition: service_healthy

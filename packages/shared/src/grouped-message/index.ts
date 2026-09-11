@@ -22,9 +22,9 @@
  *    existen; nunca se generan líneas vacías ni etiquetas huérfanas.
  */
 
-/** Frase de bendición de cierre, común a los cuatro mensajes. */
+/** Frase de bendición de cierre con spintax — variantes resueltas por parseSpintax. */
 export const BLESSING_LINE =
-  "Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.";
+  "{Que Jehová bendiga su esfuerzo y preparación al presentar esta participación.|Contamos con su valiosa participación. ¡Éxito en su preparación!|Que Jehová le conceda sabiduría al preparar sus participaciones.}";
 
 /**
  * Formatea una hora "HH:mm" (24h) a "h:mm a.m./p.m." en español. Si el valor no
@@ -216,9 +216,9 @@ export function buildMonthlyInitialMessage(input: MonthlyInitialInput): string {
   const dates = [...byDate.values()].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
 
   const lines: string[] = [];
-  lines.push(`Hola ${input.personName.trim()}.`);
+  lines.push(`{Hola|Buenos días|Saludos} ${input.personName.trim()}{.|, esperamos que se encuentre bien.| 👋}`);
   lines.push("");
-  lines.push(`Le compartimos sus asignaciones para las reuniones del mes de ${input.monthName}.`);
+  lines.push(`{Le compartimos|Le hacemos llegar|Aquí le dejamos} sus asignaciones para {las reuniones del mes de|el programa de} ${input.monthName}.`);
 
   for (const d of dates) {
     lines.push("");
@@ -254,12 +254,12 @@ export interface GroupedPersonMessageInput {
 export function buildGroupedPersonMessage(input: GroupedPersonMessageInput): string {
   const parts = [...input.parts].sort((a, b) => a.sortOrder - b.sortOrder);
   const lines: string[] = [];
-  lines.push(`Hola ${input.personName.trim()}.`);
+  lines.push(`{Hola|Buenos días|Saludos} ${input.personName.trim()}{.|, ¿cómo está?| 👋}`);
   lines.push("");
   lines.push(
     parts.length > 1
-      ? "Le recordamos sus asignaciones para la próxima reunión:"
-      : "Le recordamos su asignación para la próxima reunión:",
+      ? "{Le recordamos sus asignaciones para la próxima reunión:|Solo le hacemos llegar un recordatorio de sus participaciones:|Le compartimos un recordatorio sobre sus asignaciones:}"
+      : "{Le recordamos su asignación para la próxima reunión:|Solo le hacemos llegar un recordatorio de su participación:|Le compartimos un recordatorio sobre su asignación:}",
   );
   lines.push("");
   lines.push(`*${dateHeader(input.meetingDateText)}*`);

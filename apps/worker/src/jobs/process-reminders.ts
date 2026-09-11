@@ -12,9 +12,10 @@ import {
   ASSIGNMENT_TYPE_LABELS,
   groupDeliveries,
   parseSpintax,
+  typeNeedsCompanion,
   type MessagePart,
 } from "@jw-reminders/shared";
-import { renderReminderMessage } from "../services/template-renderer.js";
+import { renderReminderMessage, renderFromTemplate } from "../services/template-renderer.js";
 import { sendWhatsappMessage } from "../services/whatsapp-client.js";
 import { planFinalState, planReaperTarget, evaluateSendGate } from "../services/delivery-outcome.js";
 import {
@@ -449,9 +450,10 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
 
   // Fase 5: si hay snapshot congelado, el worker lo envía TAL CUAL y NO renderiza.
   // customMessage (mecanismo legacy) mantiene prioridad si existe.
+  // ponytail: spintax ya se resolvió al congelar el snapshot; no re-resolver aquí.
   let message: string;
   if (fresh.renderedMessage) {
-    message = parseSpintax(resolveOutboundMessage(fresh.customMessage, fresh.renderedMessage));
+    message = resolveOutboundMessage(fresh.customMessage, fresh.renderedMessage);
   } else {
     const templateMessage = await renderReminderMessage({ ...fresh, reminderDay: fresh.reminderType });
     message = parseSpintax(resolveOutboundMessage(fresh.customMessage, templateMessage));
@@ -467,6 +469,7 @@ async function performSingleSend(fresh: FreshDelivery, sendConfig: SendConfig) {
   await event("REMINDER_SENDING", "ReminderDelivery", fresh.id, { prevStatus: "QUEUED", newStatus: "SENDING", reminderType: fresh.reminderType, phone, idempotencyKey });
 
   const result = await sendWhatsappMessage(phone, message, idempotencyKey);
+  console.log(`[whatsapp-send] deliveryId=${fresh.id} type=${fresh.reminderType} source=${fresh.renderedMessage ? "snapshot" : "legacy"} status=${result.outcome} msgLength=${message.length}`);
 
   if (result.outcome !== "NOT_READY") {
     await recordDeliveryAudit(fresh, phone, message, result);
@@ -498,7 +501,7 @@ function deliveryToMessagePart(d: FreshDelivery): MessagePart {
     sectionLabel: ASSIGNMENT_TYPE_LABELS[a.assignmentType] || a.assignmentType,
     title: a.title,
     durationMinutes: a.durationMinutes,
-    isApplyYourself: a.section === "APPLY_YOURSELF",
+    isApplyYourself: a.section === "APPLY_YOURSELF" && typeNeedsCompanion(a.assignmentType),
     recipientRole: d.recipientRole,
     companionName: personDisplayName(a.companion) || null,
     assignedName: personDisplayName(a.assigned) || null,
@@ -527,9 +530,11 @@ async function performGroupedSend(deliveries: FreshDelivery[], sendConfig: SendC
 
   // Fase 5: si el grupo tiene snapshot congelado (todas las hermanas comparten el
   // mismo texto), el worker lo envía TAL CUAL. Solo si no hay snapshot (legacy)
-  // cae al render en vivo.
+  // cae al render en vivo con parseSpintax.
   const frozen = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? null;
-  const message = parseSpintax(frozen ?? buildGroupedPersonMessage({
+  // Prioridad: snapshot congelado → render desde PLANTILLA activa → hardcode legacy.
+  const fromTemplate = frozen ? null : await renderFromTemplate(deliveries);
+  const message = frozen ?? fromTemplate ?? parseSpintax(buildGroupedPersonMessage({
     personName: personDisplayName(publisher),
     meetingDateText: formatDateSpanish(meetingWeek.meetingDate),
     meetingTimeText: meetingWeek.meetingTime,
@@ -605,12 +610,15 @@ async function performMonthlyInitialSend(deliveries: FreshDelivery[], sendConfig
     };
   });
 
-  const message = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? buildMonthlyInitialMessage({
+  const frozen = deliveries.find((d) => d.renderedMessage)?.renderedMessage ?? null;
+  // Prioridad: snapshot congelado → render desde PLANTILLA activa → hardcode legacy.
+  const fromTemplate = frozen ? null : await renderFromTemplate(deliveries);
+  const message = frozen ?? fromTemplate ?? parseSpintax(buildMonthlyInitialMessage({
     personName: personDisplayName(publisher),
     monthName: monthNameFor(first),
     items,
     showDuration: false,
-  });
+  }));
 
   // H1: una sola clave idempotente para el aviso mensual (un único mensaje).
   const idempotencyKey = buildIdempotencyKey({ deliveryIds: deliveries.map((d) => d.id), phone, message });
@@ -659,6 +667,40 @@ async function claimGroup(group: FreshDelivery[]): Promise<string[]> {
     }
   }
   return claimedIds;
+}
+
+/**
+ * Reúne el GRUPO COMPLETO de una entrega: todas las entregas vencidas que
+ * comparten su groupKey (misma persona + mes para INITIAL_NOTICE; misma persona
+ * + semana + tipo para el resto). El fetch por BATCH_SIZE puede traer solo parte
+ * de un grupo; sin esto, un aviso inicial se enviaría PARTIDO en varios mensajes.
+ */
+async function loadCompleteDueGroup(first: FreshDelivery, now: Date): Promise<FreshDelivery[]> {
+  const dueOr = [
+    { status: "PENDING" as const, scheduledAt: { lte: now } },
+    { status: "READY" as const, scheduledAt: { lte: now } },
+    { status: "FAILED" as const, nextRetryAt: { lte: now } },
+  ];
+  let assignmentFilter: any;
+  if (first.reminderType === "INITIAL_NOTICE") {
+    const monthId = first.assignment!.meetingWeek.monthlyScheduleId ?? null;
+    assignmentFilter = monthId
+      ? { meetingWeek: { monthlyScheduleId: monthId } }
+      : { meetingWeekId: first.assignment!.meetingWeekId };
+  } else {
+    assignmentFilter = { meetingWeekId: first.assignment!.meetingWeekId };
+  }
+  const all = await prisma.reminderDelivery.findMany({
+    where: {
+      publisherId: first.publisherId,
+      reminderType: first.reminderType,
+      assignment: assignmentFilter,
+      OR: dueOr,
+    },
+    include: DELIVERY_INCLUDE,
+    orderBy: { scheduledAt: "asc" },
+  });
+  return all.length ? all : [first];
 }
 
 /** ¿El delivery tiene un mensaje personalizado (override) no vacío? */
@@ -842,14 +884,28 @@ async function runProcessReminders() {
   const maxSendsPerRun = sendConfig.maxSendsPerRun;
 
   for (const group of groups) {
+    // Re-verificar la pausa en CADA iteración del lote. El config se cargaba una
+    // sola vez por run, así que "Pausar" / "Cancelar envíos" no detenían un lote
+    // ya en curso. Ahora, si se pausa a mitad, el lote se detiene de inmediato.
+    const pausedNow = await prisma.appConfig.findUnique({ where: { key: "SENDS_PAUSED" } });
+    if (pausedNow?.value === "true") {
+      console.log("[Worker] Envíos pausados durante el run; se detiene el lote en curso.");
+      break;
+    }
     if (maxSendsPerRun > 0 && sentThisRun >= maxSendsPerRun) {
       console.log(`[Worker] Tope de envíos por tick alcanzado (${maxSendsPerRun}); el resto se enviará en el próximo tick.`);
       break;
     }
     const groupId = group[0].id;
     try {
-      // 2a. Claim atómico del grupo. Sólo seguimos con los deliveries reclamados.
-      const claimedIds = await claimGroup(group);
+      // Completar el grupo: traer TODAS las entregas vencidas del mismo groupKey.
+      // El fetch por BATCH_SIZE puede traer solo PARTE de un grupo (p. ej. las 9
+      // partes del aviso inicial de una persona), lo que producía mensajes
+      // PARTIDOS (misma persona, varios mensajes con distintas fechas). Aquí se
+      // reúne el grupo entero para enviar UN solo mensaje.
+      const fullGroup = await loadCompleteDueGroup(group[0], now);
+      // 2a. Claim atómico del grupo completo. Sólo seguimos con lo reclamado.
+      const claimedIds = await claimGroup(fullGroup);
       if (claimedIds.length === 0) continue;
 
       // Refrescamos el estado actual (con includes) de lo reclamado y validamos.
@@ -858,8 +914,8 @@ async function runProcessReminders() {
         where: { id: { in: claimedIds } },
         include: DELIVERY_INCLUDE,
       });
-      // Preservamos el orden de aparición original del grupo.
-      const orderedFresh = group.filter((d) => claimedSet.has(d.id)).map((d) => fresh.find((f) => f.id === d.id)!);
+      // Preservamos el orden de aparición del grupo completo.
+      const orderedFresh = fullGroup.filter((d) => claimedSet.has(d.id)).map((d) => fresh.find((f) => f.id === d.id)!);
 
       const sendable: FreshDelivery[] = [];
       for (const f of orderedFresh) {

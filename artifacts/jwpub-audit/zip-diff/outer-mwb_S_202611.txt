@@ -1,0 +1,78 @@
+Archive:  ../../../mwb_S_202611.jwpub
+The zipfile comment is 243 bytes long and contains the following text:
+======================== zipfile comment begins ==========================
+JASPER
+========================= zipfile comment ends ===========================
+
+End-of-central-directory record:
+-------------------------------
+
+  Zip archive file size:                   3943212 (00000000003C2B2Ch)
+  Actual end-cent-dir record offset:       3942947 (00000000003C2A23h)
+  Expected end-cent-dir record offset:     3942947 (00000000003C2A23h)
+  (based on the length of the central directory and its expected offset)
+
+  This zipfile constitutes the sole disk of a single-part archive; its
+  central directory contains 2 entries.
+  The central directory is 113 (0000000000000071h) bytes long,
+  and its (expected) offset in bytes from the beginning of the zipfile
+  is 3942834 (00000000003C29B2h).
+
+
+Central directory entry #1:
+---------------------------
+
+  manifest.json
+
+  offset of local header from start of archive:   0
+                                                  (0000000000000000h) bytes
+  file system or operating system of origin:      MS-DOS, OS/2 or NT FAT
+  version of encoding software:                   3.6
+  minimum file system compatibility required:     MS-DOS, OS/2 or NT FAT
+  minimum software version required to extract:   2.0
+  compression method:                             deflated
+  compression sub-type (deflation):               maximum
+  file security status:                           not encrypted
+  extended local header:                          no
+  file last modified on (DOS date/time):          2026 May 14 08:33:02
+  32-bit CRC value (hex):                         f2222b2f
+  compressed size:                                1072 bytes
+  uncompressed size:                              4158 bytes
+  length of filename:                             13 characters
+  length of extra field:                          0 bytes
+  length of file comment:                         0 characters
+  disk number on which file begins:               disk 1
+  apparent file type:                             binary
+  non-MSDOS external file attributes:             000000 hex
+  MS-DOS file attributes (00 hex):                none
+
+  There is no file comment.
+
+Central directory entry #2:
+---------------------------
+
+  contents
+
+  offset of local header from start of archive:   1115
+                                                  (000000000000045Bh) bytes
+  file system or operating system of origin:      MS-DOS, OS/2 or NT FAT
+  version of encoding software:                   3.6
+  minimum file system compatibility required:     MS-DOS, OS/2 or NT FAT
+  minimum software version required to extract:   2.0
+  compression method:                             none (stored)
+  file security status:                           not encrypted
+  extended local header:                          no
+  file last modified on (DOS date/time):          2026 May 14 08:33:02
+  32-bit CRC value (hex):                         e302b430
+  compressed size:                                3941681 bytes
+  uncompressed size:                              3941681 bytes
+  length of filename:                             8 characters
+  length of extra field:                          0 bytes
+  length of file comment:                         0 characters
+  disk number on which file begins:               disk 1
+  apparent file type:                             binary
+  non-MSDOS external file attributes:             000000 hex
+  MS-DOS file attributes (00 hex):                none
+
+  There is no file comment.
+

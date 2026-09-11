@@ -1,0 +1,75 @@
+Archive:  ../../../pt14z_S.jwpub
+There is no zipfile comment.
+
+End-of-central-directory record:
+-------------------------------
+
+  Zip archive file size:                   1778744 (00000000001B2438h)
+  Actual end-cent-dir record offset:       1778722 (00000000001B2422h)
+  Expected end-cent-dir record offset:     1778722 (00000000001B2422h)
+  (based on the length of the central directory and its expected offset)
+
+  This zipfile constitutes the sole disk of a single-part archive; its
+  central directory contains 2 entries.
+  The central directory is 113 (0000000000000071h) bytes long,
+  and its (expected) offset in bytes from the beginning of the zipfile
+  is 1778609 (00000000001B23B1h).
+
+
+Central directory entry #1:
+---------------------------
+
+  manifest.json
+
+  offset of local header from start of archive:   0
+                                                  (0000000000000000h) bytes
+  file system or operating system of origin:      MS-DOS, OS/2 or NT FAT
+  version of encoding software:                   2.0
+  minimum file system compatibility required:     MS-DOS, OS/2 or NT FAT
+  minimum software version required to extract:   2.0
+  compression method:                             deflated
+  compression sub-type (deflation):               normal
+  file security status:                           not encrypted
+  extended local header:                          no
+  file last modified on (DOS date/time):          2026 Sep 3 10:31:50
+  32-bit CRC value (hex):                         8d300b86
+  compressed size:                                715 bytes
+  uncompressed size:                              2127 bytes
+  length of filename:                             13 characters
+  length of extra field:                          0 bytes
+  length of file comment:                         0 characters
+  disk number on which file begins:               disk 1
+  apparent file type:                             binary
+  non-MSDOS external file attributes:             018000 hex
+  MS-DOS file attributes (00 hex):                none
+
+  There is no file comment.
+
+Central directory entry #2:
+---------------------------
+
+  contents
+
+  offset of local header from start of archive:   758
+                                                  (00000000000002F6h) bytes
+  file system or operating system of origin:      MS-DOS, OS/2 or NT FAT
+  version of encoding software:                   2.0
+  minimum file system compatibility required:     MS-DOS, OS/2 or NT FAT
+  minimum software version required to extract:   2.0
+  compression method:                             none (stored)
+  file security status:                           not encrypted
+  extended local header:                          no
+  file last modified on (DOS date/time):          2026 Sep 3 10:31:50
+  32-bit CRC value (hex):                         7ead8206
+  compressed size:                                1777813 bytes
+  uncompressed size:                              1777813 bytes
+  length of filename:                             8 characters
+  length of extra field:                          0 bytes
+  length of file comment:                         0 characters
+  disk number on which file begins:               disk 1
+  apparent file type:                             binary
+  non-MSDOS external file attributes:             018000 hex
+  MS-DOS file attributes (00 hex):                none
+
+  There is no file comment.
+

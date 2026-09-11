@@ -41,6 +41,7 @@ enum AssignmentType {
   EXPLAIN_BELIEFS
   MAKE_DISCIPLES
   TALK
+  AUDIENCE_ANALYSIS // Análisis con el auditorio (¿Qué diría?, etc.). Lo dirige un hermano capacitado (canGiveTalk).
   OTHER
   // ─── Fase 3: resto de la reunión (aditivo, no altera SMM) ───
   CHAIRMAN // Presidente de la reunión.
@@ -593,6 +594,114 @@ model AppConfig {
   id    String @id @default(cuid())
   key   String @unique
   value String
+}
+
+// ─── Research Chat (Beta) ────────────────────────────────
+
+model ResearchChatSession {
+  id        String   @id @default(cuid())
+  title     String?
+  userId    String
+  profileId String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile    ResearchProfile       @relation(fields: [profileId], references: [id])
+  messages   ResearchChatMessage[]
+  references ResearchReference[]
+  aiRuns     ResearchAiRun[]
+
+  @@index([userId])
+  @@index([profileId])
+}
+
+// Perfil de investigación: define qué fuentes/prompt/apariencia usa una sesión.
+// Extensible: nuevos perfiles se agregan como filas, no como código.
+model ResearchProfile {
+  id                  String   @id // slug: "general", "precursor", ...
+  name                String
+  description         String?
+  promptRuleName      String   // namespace en ResearchPromptRule.name
+  defaultOutputType   String?
+  defaultLevel        String?
+  defaultDuration     String?
+  reasoningEffort     String? // "minimal" | "low" | "medium" | "high" | "xhigh" — null = sin razonamiento extendido
+  forcePrecursorMatch Boolean  @default(false)
+  themeKey            String   @default("general")
+  isActive            Boolean  @default(true)
+  order               Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  sessions ResearchChatSession[]
+}
+
+model ResearchChatMessage {
+  id         String   @id @default(cuid())
+  sessionId  String
+  role       String   // user | assistant | system
+  content    String
+  structured Json?    // respuesta estructurada del asistente
+  createdAt  DateTime @default(now())
+
+  session    ResearchChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  references ResearchReference[]
+  aiRuns     ResearchAiRun[]
+
+  @@index([sessionId])
+}
+
+model ResearchReference {
+  id             String   @id @default(cuid())
+  sessionId      String?
+  messageId      String?
+  type           String   // bible | wol | user_text | wol_link
+  raw            String
+  normalized     Json?
+  status         String   // resolved | unresolved | ambiguous | failed
+  title          String?
+  url            String?
+  excerpt        String?
+  sourceMetadata Json?
+  createdAt      DateTime @default(now())
+
+  session ResearchChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message ResearchChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([messageId])
+}
+
+model ResearchAiRun {
+  id            String   @id @default(cuid())
+  sessionId     String
+  messageId     String?
+  model         String
+  promptVersion String?
+  inputTokens   Int?
+  outputTokens  Int?
+  status        String   // success | failed
+  error         String?
+  createdAt     DateTime @default(now())
+
+  session ResearchChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  message ResearchChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+model ResearchPromptRule {
+  id          String   @id @default(cuid())
+  name        String
+  version     Int
+  content     String
+  isActive    Boolean  @default(false)
+  isProtected Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, version])
 }
 
 // Programa real de una semana importado desde WOL (Vida y Ministerio).

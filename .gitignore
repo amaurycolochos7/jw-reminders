@@ -52,3 +52,23 @@ plink.exe
 /*.sql
 instrucciones-gstack.md
 comandos para usar gstack
+
+# Datos personales de publicadores (nombres y telefonos reales). El repo es
+# publico: estos archivos NUNCA deben subirse.
+numeros-publicadores.csv
+numeros-recuperados.csv
+*.vcf
+
+# Publicaciones oficiales de JW y las copias derivadas de la auditoria del
+# formato. Son material con copyright: se quedan en local, no se redistribuyen.
+*.jwpub
+artifacts/jwpub-audit/variants/
+pt14_S_extracted/
+
+# Documento interno de la congregacion (no es codigo, 7.5 MB)
+Manual_de_limpieza_y_cuidado_del_salon_Actualizado*.docx
+
+# Cualquier variante de fichero de entorno (.env.dev, .env.prod, ...): todas
+# llevan secretos reales. La linea ".env" sola no cubria .env.dev.
+.env*
+!.env.example

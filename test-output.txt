@@ -1,0 +1,56 @@
+[32m✔ Case 1: Detects 2 questions [90m(1.3328ms)[39m[39m
+[32m✔ Case 1: First question has intent 'reason' [90m(0.307ms)[39m[39m
+[32m✔ Case 1: Second question has intent 'personal_application' [90m(0.1157ms)[39m[39m
+[32m✔ Case 1: requiresPersonalApplication is true [90m(0.0733ms)[39m[39m
+[32m✔ Case 1: Detects 1 explicit reference (w10 15/7 pág. 24 párr. 15) [90m(0.1317ms)[39m[39m
+[32m✔ Case 1: parseAllReferences detects the WOL reference [90m(1.1602ms)[39m[39m
+[32m✔ Case 1: Good response passes validation [90m(0.3383ms)[39m[39m
+[32m✔ Case 1: Response without personal application fails validation [90m(0.1499ms)[39m[39m
+[32m✔ Case 2: Detects 1 question [90m(0.2565ms)[39m[39m
+[32m✔ Case 2: Detects 3 explicit references [90m(0.241ms)[39m[39m
+[32m✔ Case 2: parseAllReferences finds 2 Bible + 1 WOL [90m(0.308ms)[39m[39m
+[32m✔ Case 2: All resolved → VERIFIED [90m(0.0877ms)[39m[39m
+[32m✔ Case 2: Some resolved, some not → PARTIAL [90m(0.0397ms)[39m[39m
+[32m✔ Case 2: Contradiction detected when showing sources + unresolved explicit refs [90m(0.1048ms)[39m[39m
+[32m✔ Case 3: Detects 2 questions [90m(0.1175ms)[39m[39m
+[32m✔ Case 3: First question has intent 'lesson' [90m(0.1228ms)[39m[39m
+[32m✔ Case 3: Second question has intent 'method' [90m(0.0451ms)[39m[39m
+[32m✔ Case 3: No explicit references → AI_SUGGESTED [90m(0.0548ms)[39m[39m
+[32m✔ Case 4: Detects 1 question and 1 explicit reference [90m(0.921ms)[39m[39m
+[32m✔ Case 4: No references resolved → UNVERIFIED [90m(0.0725ms)[39m[39m
+[32m✔ Case 4: UNVERIFIED must not show used sources (validation catches contradiction) [90m(0.0823ms)[39m[39m
+[32m✔ Case 4: UNVERIFIED with 0 sources shown → no contradiction [90m(0.0654ms)[39m[39m
+[32m✔ Case A: resolved WOL reference with excerpt allows AI generation [90m(0.7642ms)[39m[39m
+[32m✔ Case B: unresolved WOL reference without user text blocks AI generation [90m(0.1296ms)[39m[39m
+[32m✔ Case B: failed WOL reference also blocks AI generation [90m(0.0823ms)[39m[39m
+[32m✔ Case C: unresolved WOL but user provides sufficient text → allows AI generation [90m(0.0652ms)[39m[39m
+[32m✔ Bible reference (always resolved) counts as usable source [90m(0.0896ms)[39m[39m
+[32m✔ WOL link resolved with excerpt is usable [90m(0.0879ms)[39m[39m
+[32m✔ WOL resolved without excerpt is NOT considered usable for AI [90m(0.0731ms)[39m[39m
+[32m✔ Parser correctly detects w15 15/12 pág. 8 párrs. 16, 17 [90m(2.158ms)[39m[39m
+[32m✔ Parser detects invalid reference w99 99/99 pág. 999 párr. 99 [90m(0.3679ms)[39m[39m
+[32m✔ Mixed sources: only resolved ones count as usable [90m(0.1794ms)[39m[39m
+[32m✔ parseAllReferences detects exactly 3 references from test input [90m(5.4625ms)[39m[39m
+[32m✔ Mat. 5:14-16 parses as bible type with book=Mateo, chapter=5, verses=14-16 [90m(0.7606ms)[39m[39m
+[32m✔ Mar. 13:10 parses as bible type with book=Marcos, chapter=13, verses=10 [90m(0.2133ms)[39m[39m
+[32m✔ w12 1/5 pág. 9 párr. 2 parses as wol type with correct metadata [90m(0.6263ms)[39m[39m
+[32m✔ Bible resolved source with real text passes integrity [90m(0.9936ms)[39m[39m
+[32m✔ JW publication with real text passes integrity [90m(0.1406ms)[39m[39m
+[32m✔ detectAIGeneratedText catches all known AI patterns [90m(0.1071ms)[39m[39m
+[32m✔ detectAIGeneratedText does NOT flag real Bible text [90m(0.102ms)[39m[39m
+[32m✔ Verified source with AI-generated text fails integrity [90m(0.1181ms)[39m[39m
+[32m✔ w12 that cannot be extracted becomes verified:false via enforceSourceIntegrity [90m(1.0617ms)[39m[39m
+[32m✔ countVerifiedSources excludes sources that fail integrity [90m(0.4262ms)[39m[39m
+[32m✔ enforceSourceIntegrity rejects AI-injected source and degrades it [90m(0.3413ms)[39m[39m
+[32m✔ ANTI-REGRESSION: AI response with verifiedSources containing AI text is rejected [90m(0.439ms)[39m[39m
+[32m✔ ANTI-REGRESSION: sanitizeAIInjectedSource always returns verified:false [90m(0.1407ms)[39m[39m
+[32m✔ ANTI-REGRESSION: validateVerifiedSourceIntegrity blocks source with no origin even if text looks real [90m(0.0941ms)[39m[39m
+[32m✔ ANTI-REGRESSION: Full pipeline - AI response is sanitized before reaching verified sources [90m(0.1393ms)[39m[39m
+[34mℹ tests 48[39m
+[34mℹ suites 0[39m
+[34mℹ pass 48[39m
+[34mℹ fail 0[39m
+[34mℹ cancelled 0[39m
+[34mℹ skipped 0[39m
+[34mℹ todo 0[39m
+[34mℹ duration_ms 304.8563[39m

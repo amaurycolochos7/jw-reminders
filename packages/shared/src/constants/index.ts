@@ -35,6 +35,7 @@ export const ASSIGNMENT_TYPE_LABELS: Record<string, string> = {
   EXPLAIN_BELIEFS: "Explique sus creencias",
   MAKE_DISCIPLES: "Haga discípulos",
   TALK: "Discurso",
+  AUDIENCE_ANALYSIS: "Análisis con el auditorio",
   OTHER: "Otra asignación",
   // Fase 3: resto de la reunión.
   CHAIRMAN: "Presidente",

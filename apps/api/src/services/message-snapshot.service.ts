@@ -1,12 +1,14 @@
 import { prisma, Prisma } from "@jw-reminders/database";
 import {
   renderMessage,
+  parseSpintax,
   assembleMessageVariables,
   buildInitialAssignmentsList,
   buildReminderAssignmentsList,
   groupDeliveries,
   ASSIGNMENT_TYPE_LABELS,
   formatDateSpanish,
+  typeNeedsCompanion,
   type MessagePart,
   type TemplateTypeKey,
 } from "@jw-reminders/shared";
@@ -46,7 +48,11 @@ function deliveryToMessagePart(d: FullDelivery): MessagePart {
     sectionLabel: ASSIGNMENT_TYPE_LABELS[a.assignmentType] || a.assignmentType,
     title: a.title,
     durationMinutes: a.durationMinutes,
-    isApplyYourself: a.section === "APPLY_YOURSELF",
+    // Solo las partes de demostración estudiante/ayudante (las que llevan
+    // acompañante) usan el rótulo "Como estudiante"/"Como ayudante". Un Discurso
+    // (TALK) está en "Seamos Mejores Maestros" pero lo presenta una sola persona,
+    // así que NO debe decir "Como estudiante".
+    isApplyYourself: a.section === "APPLY_YOURSELF" && typeNeedsCompanion(a.assignmentType),
     recipientRole: d.recipientRole,
     companionName: personDisplayName(a.companion) || null,
     assignedName: personDisplayName(a.assigned) || null,
@@ -131,8 +137,11 @@ export async function renderFrozenForGroup(group: FullDelivery[], congregationNa
   }
 
   const r = renderMessage(tv.body, variables, { templateType: type as TemplateTypeKey });
+  // ponytail: resolve spintax NOW (at freeze time) so each snapshot is unique
+  // and stable across retries. The worker sends renderedMessage as-is.
+  const resolvedMessage = parseSpintax(r.renderedMessage);
   return {
-    renderedMessage: r.renderedMessage,
+    renderedMessage: resolvedMessage,
     renderedVariables: variables,
     templateId: tv.templateId,
     templateVersionId: tv.versionId,
@@ -224,6 +233,10 @@ export async function generateSnapshots(scope: {
         status: "DRAFT",
       },
     });
+    // Audit log: snapshot congelado con spintax resuelto
+    for (const d of group) {
+      console.log(`[snapshot-freeze] deliveryId=${d.id} type=${d.reminderType} templateVersionId=${render.templateVersionId ?? "none"} spintaxResolved=true msgLength=${render.renderedMessage.length}`);
+    }
     frozen += group.length;
   }
 

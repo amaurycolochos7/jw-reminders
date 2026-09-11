@@ -4,6 +4,7 @@ import {
   requiredCapabilityForType,
   getAssignmentTypeRule,
   isChairmanAutofillType,
+  CHAIRMAN_AUTOFILL_TYPES,
   type EligibilityPublisher,
 } from "@jw-reminders/shared";
 import {
@@ -15,6 +16,7 @@ import {
   hasAssignmentAutomation,
   publisherSnapshot,
   regenerateAssignmentAutomation,
+  supersedeActivePlansForAssignment,
 } from "../../services/automation.service.js";
 
 /**
@@ -168,8 +170,9 @@ function changedRelevantFields(before: any, data: any) {
 }
 
 /**
- * Resincroniza la oración inicial y las palabras de introducción de una semana
- * con el presidente. Solo toca las que siguen autocompletadas
+ * Resincroniza con el presidente las partes que él realiza (oración inicial,
+ * palabras de introducción, palabras de conclusión y oración final; ver
+ * CHAIRMAN_AUTOFILL_TYPES) de una semana. Solo toca las que siguen autocompletadas
  * (`autoFilledFromChairman = true`): las editadas manualmente se respetan. Debe
  * ejecutarse dentro de una transacción.
  */
@@ -181,7 +184,7 @@ async function propagateChairmanToOpeningParts(
   const siblings = await tx.jwAssignment.findMany({
     where: {
       meetingWeekId,
-      assignmentType: { in: ["OPENING_PRAYER", "OPENING_COMMENTS"] },
+      assignmentType: { in: CHAIRMAN_AUTOFILL_TYPES },
       autoFilledFromChairman: true,
       status: { notIn: ["CANCELLED"] },
     },
@@ -287,8 +290,9 @@ export async function updateAssignment(id: string, data: any) {
       await regenerateAssignmentAutomation(tx, id, "assignment_changed");
     }
 
-    // Cambiar el presidente resincroniza la oración inicial y las palabras de
-    // introducción de esa semana que sigan autocompletadas (no editadas a mano).
+    // Cambiar el presidente resincroniza las partes que él realiza (oración
+    // inicial, palabras de introducción, palabras de conclusión y oración final)
+    // de esa semana que sigan autocompletadas (no editadas a mano).
     if (effectiveType === "CHAIRMAN" && assignedPersonChanged) {
       await propagateChairmanToOpeningParts(tx, before.meetingWeekId, effectiveAssignedId);
     }
@@ -337,12 +341,29 @@ export async function generateReminders(id: string) {
     if (current.status === "PROPOSED") {
       throw new Error("Esta asignacion es una propuesta. Aprueba la propuesta antes de generar automatizaciones.");
     }
+    // Una asignación eliminada (CANCELLED) o completada no genera recordatorios:
+    // no se envía ningún mensaje de esa parte al generar la automatización.
+    if (current.status === "CANCELLED" || current.status === "COMPLETED") {
+      return { count: 0, planId: null };
+    }
     await applyAssignmentSnapshots(tx, id);
     const existingActive = await tx.automationPlan.findFirst({
       where: { assignmentId: id, status: "ACTIVE" },
+      select: { id: true },
     });
     if (existingActive) {
-      return { count: 0, planId: existingActive.id };
+      // Si el plan activo aún tiene recordatorios vivos, ya está automatizada.
+      // Si todos fueron cancelados (p. ej. "Cancelar pendientes"), regenerar para
+      // restaurar el flujo en vez de no hacer nada.
+      const live = await tx.reminderDelivery.count({
+        where: { assignmentId: id, status: { notIn: ["CANCELLED", "SENT", "SKIPPED", "DEAD"] } },
+      });
+      if (live > 0) {
+        return { count: 0, planId: existingActive.id };
+      }
+      // Plan activo sin recordatorios vivos: reemplazar y generar como primera vez
+      // (aviso inicial), no aviso de cambio. Cae al bloque de generación fresca.
+      await supersedeActivePlansForAssignment(tx, id, "manual_generate_restore");
     }
 
     const result = await createAutomationPlanForAssignment(tx, id, {

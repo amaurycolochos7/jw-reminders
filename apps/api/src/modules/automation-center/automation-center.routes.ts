@@ -518,18 +518,34 @@ router.post("/deliveries/:id/cancel", async (req: Request<{ id: string }>, res: 
 // ─── Cancelar TODOS los envíos pendientes de golpe ───────
 router.post("/cancel-all-pending", async (_req: Request, res: Response) => {
   try {
+    // Cancelación COMPLETA: todos los recordatorios no terminales.
     const result = await prisma.reminderDelivery.updateMany({
-      where: { status: { in: ["PENDING", "READY", "QUEUED", "FAILED"] } },
+      where: { status: { notIn: ["CANCELLED", "SENT", "SKIPPED", "DEAD"] } },
       data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason: "bulk_cancelled_by_admin" },
+    });
+    // Desactivar TODOS los planes de automatización activos: así, al volver a
+    // "Generar automatizaciones", el flujo arranca completo desde cero (aviso
+    // inicial), no como aviso de cambio.
+    const plans = await prisma.automationPlan.updateMany({
+      where: { status: "ACTIVE" },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+    // Pausar los envíos: detiene también cualquier lote que el worker ya tenga en
+    // curso (el worker re-verifica SENDS_PAUSED en cada mensaje). El admin reanuda
+    // manualmente con el botón "Reanudar" cuando quiera volver a enviar.
+    await prisma.appConfig.upsert({
+      where: { key: "SENDS_PAUSED" },
+      update: { value: "true" },
+      create: { id: "sends_paused", key: "SENDS_PAUSED", value: "true" },
     });
     await createAutomationEvent(prisma, {
       eventType: "BULK_CANCEL",
       entityType: "ReminderDelivery",
       entityId: "all",
       actorType: "admin",
-      metadata: { count: result.count, reason: "bulk_cancelled_by_admin" },
+      metadata: { count: result.count, plansCancelled: plans.count, reason: "bulk_cancelled_by_admin", paused: true },
     });
-    res.json({ ok: true, cancelled: result.count });
+    res.json({ ok: true, cancelled: result.count, plansCancelled: plans.count, paused: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

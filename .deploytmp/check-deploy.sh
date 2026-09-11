@@ -1,0 +1,2 @@
+#!/bin/bash
+curl -s 'http://localhost:3000/api/trpc/compose.one?input=%7B%22json%22%3A%7B%22composeId%22%3A%22z6xyxXGM1QTnRlFs_2Lmc%22%7D%7D' -H 'x-api-key: wIgKudTpmfPnTDsUCIefHMgwDyymQwZsbrAFAyGhWpPCLAYIYBibhxQqfuFsKYEm' | python3 -c "import json,sys;d=json.load(sys.stdin)['result']['data']['json'];print('composeStatus:',d['composeStatus']);[print(x['status'],x['createdAt'][:19],x['title'][:60]) for x in d['deployments'][:3]]"

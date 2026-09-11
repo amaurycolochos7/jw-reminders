@@ -211,6 +211,7 @@ function replaceCellText(row: string, cellIndex: number, newText: string): strin
 /**
  * Replace all <w:t> nodes in an element with a single text value.
  * Keeps the FIRST <w:r> with its formatting and removes extra runs.
+ * If the element has no runs, inserts a minimal run with the text.
  */
 function replaceAllTextInElement(xml: string, newText: string): string {
   // Find all <w:r> elements (runs)
@@ -223,7 +224,14 @@ function replaceAllTextInElement(xml: string, newText: string): string {
     runs.push({ start: m.index, end: m.index + m[0].length, content: m[0] });
   }
 
-  if (runs.length === 0) return xml;
+  if (runs.length === 0) {
+    // No existing runs — insert a minimal run inside the first <w:p> element
+    if (!newText) return xml; // Nothing to write to an empty cell
+    const pClose = xml.lastIndexOf("</w:p>");
+    if (pClose === -1) return xml;
+    const newRun = `<w:r><w:t>${newText}</w:t></w:r>`;
+    return xml.slice(0, pClose) + newRun + xml.slice(pClose);
+  }
 
   // Use the first run, replace its <w:t> content, remove all other runs
   const firstRun = runs[0];
@@ -304,10 +312,15 @@ function fillWeekBlock(blockRows: string[], data: S140WeekData): string[] {
     
     if (text.includes("Presidente") && (text.includes("|") || text.includes("| "))) {
       dateRowIdx = i;
+    } else if (text.includes("Canción")) {
+      // Toda fila con "Canción" es fila de canción, AUNQUE también traiga
+      // "Oración:" (en las semanas 2-4 la canción de apertura viene combinada con
+      // la oración inicial: "Canción N | Oración: | —"). Debe ir a songRows para
+      // que se rellene el número correcto; si no, se clasificaba como oración y
+      // quedaba el número de muestra de la plantilla.
+      songRows.push(i);
     } else if (text.includes("Oración") && text.includes(":")) {
       if (prayerRowIdx === -1) prayerRowIdx = i;
-    } else if (text.includes("Canción")) {
-      songRows.push(i);
     } else if (hasSectionShading(row, "575A5D") && text.includes("TESOROS")) {
       tesorosHeaderIdx = i;
     } else if (hasSectionShading(row, "BE8900") && text.includes("SEAMOS")) {
@@ -333,6 +346,11 @@ function fillWeekBlock(blockRows: string[], data: S140WeekData): string[] {
   // 3. Songs (opening, middle, closing)
   if (songRows.length >= 1) {
     result[songRows[0]] = replaceContentText(result[songRows[0]], `Canción ${data.openingSong}`);
+    // Si la canción de apertura trae la oración inicial en la misma fila
+    // (semanas 2-4), colocar también el nombre de quien ora en la última celda.
+    if (getRowText(result[songRows[0]]).includes("Oración")) {
+      result[songRows[0]] = replaceLastCellText(result[songRows[0]], data.openingPrayer);
+    }
   }
   if (songRows.length >= 2) {
     result[songRows[1]] = replaceContentText(result[songRows[1]], `Canción ${data.middleSong}`);
@@ -400,10 +418,15 @@ function fillWeekBlock(blockRows: string[], data: S140WeekData): string[] {
       const refText = part.reference ? ` (${part.reference}).` : "";
       const partText = `${num}. ${part.title} (${part.duration})${refText}`;
       result[idx] = replaceContentText(result[idx], partText);
-      const nameText = part.assistant
-        ? `${part.student} / ${part.assistant}`
-        : part.student;
-      result[idx] = replaceLastCellText(result[idx], nameText);
+      // ponytail: si no hay ayudante (discurso/lectura), quitar label "Estudiante/Ayudante:" y solo poner nombre
+      if (part.assistant) {
+        const nameText = `${part.student} / ${part.assistant}`;
+        result[idx] = replaceLastCellText(result[idx], nameText);
+      } else {
+        // Limpiar la celda de "Estudiante/Ayudante:" (celda 2) y poner solo el nombre en la última
+        result[idx] = replaceCellText(result[idx], 2, "");
+        result[idx] = replaceLastCellText(result[idx], part.student);
+      }
     }
     
     // If we have MORE parts than template rows, clone and insert
@@ -418,10 +441,13 @@ function fillWeekBlock(blockRows: string[], data: S140WeekData): string[] {
         const partText = `${num}. ${part.title} (${part.duration})${refText}`;
         let newRow = regenerateIds(templateRow);
         newRow = replaceContentText(newRow, partText);
-        const nameText = part.assistant
-          ? `${part.student} / ${part.assistant}`
-          : part.student;
-        newRow = replaceLastCellText(newRow, nameText);
+        if (part.assistant) {
+          const nameText = `${part.student} / ${part.assistant}`;
+          newRow = replaceLastCellText(newRow, nameText);
+        } else {
+          newRow = replaceCellText(newRow, 2, "");
+          newRow = replaceLastCellText(newRow, part.student);
+        }
         extra.push(newRow);
       }
       result.splice(insertAt, 0, ...extra);
@@ -477,6 +503,12 @@ function fillWeekBlock(blockRows: string[], data: S140WeekData): string[] {
     // NVC song (middle song - first song after NVC header)
     // Already handled above in songRows
 
+    // ponytail: if CBS row wasn't detected by text, the last nvcContentRow IS the CBS
+    // (CBS is always the last "0:00" content row before conclusion/closing song)
+    if (cbsRow === -1 && nvcContentRows.length > 0 && data.cbs.conductor !== "—") {
+      cbsRow = nvcContentRows.pop()!;
+    }
+
     // NVC parts
     const nvcParts = data.livingAsChristians;
     for (let p = 0; p < Math.min(nvcParts.length, nvcContentRows.length); p++) {
@@ -488,12 +520,66 @@ function fillWeekBlock(blockRows: string[], data: S140WeekData): string[] {
       result[idx] = replaceLastCellText(result[idx], part.assignee);
     }
 
+    // Si la semana tiene MENOS partes de NVC que las filas de la plantilla,
+    // eliminar las filas de ejemplo sobrantes (p. ej. la fila de muestra
+    // "8. Informe sobre la actividad del Departamento Local de Diseño y
+    // Construcción" que trae la plantilla). Se quitan de mayor a menor índice
+    // y se ajustan los índices posteriores (CBS/conclusión/canción final).
+    if (nvcParts.length < nvcContentRows.length) {
+      const toRemove = nvcContentRows.slice(nvcParts.length).sort((a, b) => b - a);
+      for (const idx of toRemove) {
+        result.splice(idx, 1);
+        if (cbsRow > idx) cbsRow -= 1;
+        if (conclusionRow > idx) conclusionRow -= 1;
+        if (closingSongRow > idx) closingSongRow -= 1;
+      }
+    }
+
     // CBS
     if (cbsRow >= 0) {
-      const cbsText = `Estudio bíblico de la congregación (${data.cbs.duration})`;
-      result[cbsRow] = replaceContentText(result[cbsRow], cbsText);
+      // The S-140 template has TWO different CBS row structures:
+      //
+      // Block 1: Cell[0]=time | Cell[1]=title+label (12.1cm, span=11) | Cell[2]=names (4.3cm) | Cell[3]=empty (8.6cm)
+      // Block 2: Cell[0]=time | Cell[1]=title (7.6cm, span=4) | Cell[2]=label (4.5cm, span=7) | Cell[3]=names (4.3cm)
+      //
+      // We detect which structure we have by checking if Cell[1] contains "Conductor/Lector"
+      // and write data accordingly. The goal is the same for both: title, label, names separated.
+      
+      const cbsTitle = `Estudio bíblico de la congregación (${data.cbs.duration})`;
+      const cbsLabel = "Conductor/Lector:";
       const cbsNames = `${data.cbs.conductor} / ${data.cbs.reader}`;
-      result[cbsRow] = replaceLastCellText(result[cbsRow], cbsNames);
+
+      const cbsRowText = getRowText(result[cbsRow]);
+      const cellRegex = /<w:tc[\s>][\s\S]*?<\/w:tc>/g;
+      const cbsCells: string[] = [];
+      let cellMatch: RegExpExecArray | null;
+      while ((cellMatch = cellRegex.exec(result[cbsRow])) !== null) {
+        cbsCells.push(cellMatch[0]);
+      }
+
+      // Detect block type by checking Cell[1] width/span
+      const cell1Span = cbsCells[1]?.match(/w:gridSpan w:val="(\d+)"/);
+      const isBlock1 = cell1Span && parseInt(cell1Span[1]) > 8; // Block 1 has span=11
+
+      if (isBlock1) {
+        // Block 1 structure: Cell[1] is wide (12.1cm, span=11), Cell[2] is 4.3cm, Cell[3] is 8.6cm
+        // Put title in Cell[1], label+names together to avoid overflow:
+        // Cell[1] = title only (it was title+label in template)
+        // Cell[2] = "Conductor/Lector:" label (4.3cm — same width as names cell in Block 2)  
+        // But this would put names in Cell[3] (8.6cm) causing overflow.
+        // Better: put title+label in Cell[1] and names in Cell[2] (like the original template did).
+        // Cell[3] must be empty.
+        const combined = `${cbsTitle}  ${cbsLabel}`;
+        result[cbsRow] = replaceCellText(result[cbsRow], 1, combined);
+        result[cbsRow] = replaceCellText(result[cbsRow], 2, cbsNames);
+        result[cbsRow] = replaceCellText(result[cbsRow], 3, "");
+      } else {
+        // Block 2 structure: Cell[1]=title (7.6cm), Cell[2]=label (4.5cm), Cell[3]=names (4.3cm)
+        // This is the correct layout — write directly
+        result[cbsRow] = replaceCellText(result[cbsRow], 1, cbsTitle);
+        result[cbsRow] = replaceCellText(result[cbsRow], 2, cbsLabel);
+        result[cbsRow] = replaceCellText(result[cbsRow], 3, cbsNames);
+      }
     }
 
     // Conclusion row
@@ -552,14 +638,31 @@ export async function generateS140(input: S140ExportInput): Promise<Buffer> {
   // 6. Identify the header rows (before first week block)
   const headerRows = rows.slice(0, blocks[0].startIndex);
 
-  // 7. Replace congregation name in header
+  // 7. Replace congregation name in header + fix title to fit one line
   const congregationName = input.congregationName;
   if (headerRows.length > 0) {
     headerRows[0] = replaceCellText(headerRows[0], 0, congregationName);
   }
+  // ponytail: ensure the title fits one line by replacing with shorter text
+  for (let i = 0; i < headerRows.length; i++) {
+    const text = getRowText(headerRows[i]);
+    if (text.includes("Programa para la reuni") && text.includes("semana")) {
+      headerRows[i] = headerRows[i].replace(
+        /Programa para la reuni[óo]n de entre\s*semana/gi,
+        "Programa de la reunión de entre semana"
+      );
+      // Also reduce font size if it's too large (from 28pt to 24pt)
+      headerRows[i] = headerRows[i].replace(/w:sz w:val="56"/g, 'w:sz w:val="44"');
+      headerRows[i] = headerRows[i].replace(/w:szCs w:val="56"/g, 'w:szCs w:val="44"');
+      break;
+    }
+  }
 
   // 8. Build output rows: header + filled week blocks
   const outputRows: string[] = [...headerRows];
+
+  // ponytail: spacer row — empty table row for visual separation between weeks
+  const spacerRow = `<w:tr w14:paraId="${randomParaId()}" w14:textId="${randomParaId()}"><w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr><w:p w14:paraId="${randomParaId()}" w14:textId="${randomParaId()}"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:sz w:val="12"/></w:rPr></w:pPr></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr><w:p w14:paraId="${randomParaId()}" w14:textId="${randomParaId()}"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr><w:p w14:paraId="${randomParaId()}" w14:textId="${randomParaId()}"><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr></w:p></w:tc></w:tr>`;
 
   for (let w = 0; w < input.weeks.length; w++) {
     const weekData = input.weeks[w];
@@ -571,6 +674,14 @@ export async function generateS140(input: S140ExportInput): Promise<Buffer> {
     // Clone and fill
     let filledRows = blockRows.map((r) => regenerateIds(r));
     filledRows = fillWeekBlock(filledRows, weekData);
+
+    // Add 3 spacer rows between weeks for visual separation
+    if (w > 0) {
+      for (let s = 0; s < 3; s++) {
+        outputRows.push(regenerateIds(spacerRow));
+      }
+    }
+
     outputRows.push(...filledRows);
   }
 
@@ -583,7 +694,16 @@ export async function generateS140(input: S140ExportInput): Promise<Buffer> {
   // 11. Write back to zip
   zip.file("word/document.xml", docXml);
 
-  // 12. Generate output buffer
+  // 12. Remove footer text "S-140-S 11/23" from all footer files
+  const footerFiles = Object.keys(zip.files).filter((f) => f.match(/^word\/footer\d*\.xml$/));
+  for (const footerFile of footerFiles) {
+    let footerXml = await zip.file(footerFile)!.async("string");
+    // Clear all text nodes in the footer
+    footerXml = footerXml.replace(/<w:t[^>]*>[^<]*<\/w:t>/g, "<w:t></w:t>");
+    zip.file(footerFile, footerXml);
+  }
+
+  // 13. Generate output buffer
   const outputBuffer = await zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",

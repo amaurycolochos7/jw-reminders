@@ -434,7 +434,7 @@ export default function PublicadoresPage() {
 
               {/* ─── 2. Estado congregacional ─── */}
               <section className="space-y-2 border-t border-silver-mist pt-5">
-                <h3 className="text-sm font-semibold text-ink uppercase tracking-wide mb-2">2. Estado congregacional</h3>
+                <h3 className="text-sm font-semibold text-ink uppercase tracking-wide mb-2">2. Estado</h3>
                 <Toggle label="Bautizado" checked={form.isBaptized} onChange={changeBaptized} />
                 {!form.isBaptized && (
                   <p className="text-xs text-amber-700 p-2 bg-amber-50 rounded-xl">

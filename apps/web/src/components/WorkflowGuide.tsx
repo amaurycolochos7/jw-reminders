@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { isLockedPath } from '@/lib/locked-features'
 import {
   PersonIcon,
   CalendarPlusIcon,
@@ -75,7 +76,7 @@ export default function WorkflowGuide() {
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {steps.map((step) => (
+        {steps.filter((step) => !isLockedPath(step.href)).map((step) => (
           <Link
             key={step.number}
             href={step.href}

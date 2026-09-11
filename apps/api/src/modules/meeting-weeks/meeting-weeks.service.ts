@@ -5,6 +5,7 @@ import {
   createAutomationPlanForAssignment,
   ensureMonthlyScheduleForDate,
   regenerateAssignmentAutomation,
+  supersedeActivePlansForAssignment,
 } from "../../services/automation.service.js";
 import { dateToLocalDateString } from "../../services/date-utils.js";
 
@@ -250,8 +251,18 @@ export async function generateWeekAutomations(id: string) {
           select: { id: true },
         });
         if (active) {
-          skipped += 1;
-          continue;
+          // Si el plan activo aún tiene recordatorios vivos, ya está automatizada.
+          // Si todos fueron cancelados/enviados, regenerar para restaurar el flujo.
+          const live = await tx.reminderDelivery.count({
+            where: { assignmentId: assignment.id, status: { notIn: ["CANCELLED", "SENT", "SKIPPED", "DEAD"] } },
+          });
+          if (live > 0) {
+            skipped += 1;
+            continue;
+          }
+          // Plan activo sin recordatorios vivos: reemplazar y generar como primera
+          // vez (aviso inicial), no aviso de cambio. Cae al bloque de generación.
+          await supersedeActivePlansForAssignment(tx, assignment.id, "week_generate_restore");
         }
         await applyAssignmentSnapshots(tx, assignment.id);
         const result = await createAutomationPlanForAssignment(tx, assignment.id, {

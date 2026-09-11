@@ -1,0 +1,14 @@
+﻿Parsed refs: [
+  {
+    "type": "wol",
+    "raw": "w15 15/12 p├íg. 8 p├írrs. 16, 17"
+  }
+]
+{
+  "status": "resolved",
+  "publication": "La Atalaya, 15 de diciembre de 2015",
+  "url": "https://wol.jw.org/es/wol/s/r4/lp-s?q=La%20Atalaya%202015%20diciembre",
+  "urlType": "search",
+  "notes": "Art├¡culo encontrado pero no se pudieron extraer los p├írrafos espec├¡ficos.",
+  "extractedContent": []
+}

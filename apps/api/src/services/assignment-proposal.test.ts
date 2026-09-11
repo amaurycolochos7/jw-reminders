@@ -309,10 +309,11 @@ const openingSlots = [
   { assignmentNumber: 1, section: "OPENING" as const, assignmentType: "CHAIRMAN", title: "Presidente", room: "MAIN" as const, needsCompanion: false },
   { assignmentNumber: 2, section: "OPENING" as const, assignmentType: "OPENING_PRAYER", title: "Oración inicial", room: "MAIN" as const, needsCompanion: false },
   { assignmentNumber: 3, section: "OPENING" as const, assignmentType: "OPENING_COMMENTS", title: "Palabras de introducción", durationMinutes: 1, room: "MAIN" as const, needsCompanion: false },
-  { assignmentNumber: 4, section: "CONCLUSION" as const, assignmentType: "CLOSING_PRAYER", title: "Oración final", room: "MAIN" as const, needsCompanion: false },
+  { assignmentNumber: 4, section: "CONCLUSION" as const, assignmentType: "CONCLUDING_COMMENTS", title: "Palabras de conclusión", durationMinutes: 3, room: "MAIN" as const, needsCompanion: false },
+  { assignmentNumber: 5, section: "CONCLUSION" as const, assignmentType: "CLOSING_PRAYER", title: "Oración final", room: "MAIN" as const, needsCompanion: false },
 ];
 
-test("oración inicial y palabras de introducción se autocompletan con el presidente; oración final independiente", () => {
+test("oración inicial, introducción y conclusión siguen al presidente; oración final es independiente", () => {
   const publishers = Array.from({ length: 5 }, (_, i) =>
     pub(`m${i}`, `Masc${i}`, { gender: "MALE", canBeChairman: true, appointment: "ELDER" }),
   );
@@ -324,25 +325,29 @@ test("oración inicial y palabras de introducción se autocompletan con el presi
   const chair = assignments.find((a) => a.assignmentType === "CHAIRMAN")!;
   const prayer = assignments.find((a) => a.assignmentType === "OPENING_PRAYER")!;
   const comments = assignments.find((a) => a.assignmentType === "OPENING_COMMENTS")!;
+  const concluding = assignments.find((a) => a.assignmentType === "CONCLUDING_COMMENTS")!;
   const closing = assignments.find((a) => a.assignmentType === "CLOSING_PRAYER")!;
   assert.equal(prayer.assignedPublisherId, chair.assignedPublisherId, "oración inicial = presidente");
   assert.equal(comments.assignedPublisherId, chair.assignedPublisherId, "palabras de introducción = presidente");
-  assert.equal(prayer.companionPublisherId, null);
+  assert.equal(concluding.assignedPublisherId, chair.assignedPublisherId, "palabras de conclusión = presidente");
   // Con 5 hombres distintos, la oración final NO queda atada al presidente.
   assert.notEqual(closing.assignedPublisherId, chair.assignedPublisherId, "oración final es independiente");
+  assert.equal(prayer.companionPublisherId, null);
 });
 
-test("autofillOpeningPartsFromChairman alinea solo inicio, respeta oración final", () => {
+test("autofillOpeningPartsFromChairman alinea inicio+conclusión con el presidente, respeta oración final", () => {
   const assignments = [
     { weekId: "w1", assignmentNumber: 1, section: "OPENING" as const, assignmentType: "CHAIRMAN", title: "Presidente", room: "MAIN" as const, assignedPublisherId: "chair", companionPublisherId: null },
     { weekId: "w1", assignmentNumber: 2, section: "OPENING" as const, assignmentType: "OPENING_PRAYER", title: "Oración inicial", room: "MAIN" as const, assignedPublisherId: "otro1", companionPublisherId: null },
     { weekId: "w1", assignmentNumber: 3, section: "OPENING" as const, assignmentType: "OPENING_COMMENTS", title: "Palabras de introducción", room: "MAIN" as const, assignedPublisherId: "otro2", companionPublisherId: null },
-    { weekId: "w1", assignmentNumber: 4, section: "CONCLUSION" as const, assignmentType: "CLOSING_PRAYER", title: "Oración final", room: "MAIN" as const, assignedPublisherId: "otro3", companionPublisherId: null },
+    { weekId: "w1", assignmentNumber: 4, section: "CONCLUSION" as const, assignmentType: "CONCLUDING_COMMENTS", title: "Palabras de conclusión", room: "MAIN" as const, assignedPublisherId: "otro3", companionPublisherId: null },
+    { weekId: "w1", assignmentNumber: 5, section: "CONCLUSION" as const, assignmentType: "CLOSING_PRAYER", title: "Oración final", room: "MAIN" as const, assignedPublisherId: "otro4", companionPublisherId: null },
   ];
   autofillOpeningPartsFromChairman(assignments);
-  assert.equal(assignments[1].assignedPublisherId, "chair");
-  assert.equal(assignments[2].assignedPublisherId, "chair");
-  assert.equal(assignments[3].assignedPublisherId, "otro3", "la oración final no se toca");
+  assert.equal(assignments[1].assignedPublisherId, "chair", "oración inicial = presidente");
+  assert.equal(assignments[2].assignedPublisherId, "chair", "palabras de introducción = presidente");
+  assert.equal(assignments[3].assignedPublisherId, "chair", "palabras de conclusión = presidente");
+  assert.equal(assignments[4].assignedPublisherId, "otro4", "la oración final no se toca");
 });
 
 

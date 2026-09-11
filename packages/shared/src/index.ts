@@ -10,3 +10,4 @@ export * from "./notifications/index.js";
 export * from "./grouped-message/index.js";
 export * from "./message-render/index.js";
 export * from "./delivery-grouping/index.js";
+export * from "./research-references/index.js";

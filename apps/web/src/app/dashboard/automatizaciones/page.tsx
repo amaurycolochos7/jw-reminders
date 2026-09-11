@@ -130,7 +130,8 @@ export default function AutomatizacionesPage() {
     setActionLoading('pause')
     try {
       const newValue = ops?.queue.paused ? 'false' : 'true'
-      const res = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'SENDS_PAUSED', value: newValue }) })
+      // El endpoint /api/config espera un mapa { CLAVE: valor }, no { key, value }.
+      const res = await api('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ SENDS_PAUSED: newValue }) })
       if (res.ok) { notify('success', newValue === 'true' ? 'Cola pausada' : 'Cola reanudada'); await load() }
       else notify('error', 'No se pudo cambiar el estado')
     } finally { setActionLoading('') }
@@ -168,7 +169,7 @@ export default function AutomatizacionesPage() {
   const queueActive = !ops.queue.paused && waReady
 
   // Contar MENSAJES (groups = 1 mensaje WhatsApp por persona), NO asignaciones
-  const sentMsgs = groups.filter((g) => g.status === 'SENT').length
+  const sentMsgs = groups.filter((g) => g.status === 'SENT' || g.status === 'UNCERTAIN').length
   const pendingMsgs = groups.filter((g) => ['PENDING', 'READY', 'QUEUED', 'SENDING'].includes(g.status)).length
   const failedMsgs = groups.filter((g) => ['FAILED', 'DEAD'].includes(g.status)).length
   const totalMsgs = groups.length
@@ -382,7 +383,9 @@ export default function AutomatizacionesPage() {
 
 // ─── Row por publicador (1 row = 1 mensaje WhatsApp) ─────
 function PublisherRow({ group: g, index }: { group: SendGroup; index: number }) {
-  const isSent = g.status === 'SENT'
+  // UNCERTAIN = el mensaje SÍ salió y se entregó (ACK), solo que WhatsApp Web no
+  // devolvió el ID al enviar. Para la vista cuenta como enviado (con palomita).
+  const isSent = g.status === 'SENT' || g.status === 'UNCERTAIN'
   const isFailed = g.status === 'FAILED' || g.status === 'DEAD'
 
   return (

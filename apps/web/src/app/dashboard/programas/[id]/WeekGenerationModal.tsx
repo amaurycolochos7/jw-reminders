@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { StatusDot } from '@/components'
+import Portal from '@/components/Portal'
 import { importStatusMeta } from '@/lib/week-program'
 
 interface WeekProgress {
@@ -120,9 +121,16 @@ export default function WeekGenerationModal({ programId, programName, meetingDay
   const failedWeeks = progress?.weeks.filter((w) => w.importStatus === 'IMPORT_FAILED') ?? []
   const hasErrors = phase === 'done' && failedWeeks.length > 0
 
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-card p-6 sm:p-7 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <Portal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-[20px] p-6 sm:p-7 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-elevated" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-5">
           {phase === 'done' && !hasErrors ? (
@@ -228,5 +236,6 @@ export default function WeekGenerationModal({ programId, programName, meetingDay
         )}
       </div>
     </div>
+    </Portal>
   )
 }

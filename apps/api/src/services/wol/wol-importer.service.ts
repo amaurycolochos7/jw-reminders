@@ -274,6 +274,34 @@ export async function importWeekFromText(weekId: string, rawText: string, source
   return finalizeImport(weekId, items, warnings, { meetingsUrl: null, programUrl: sourceUrl });
 }
 
+/**
+ * Elimina los ítems que sobraron de una importación anterior más larga.
+ *
+ * El upsert de `persistItems` es por (semana, sortOrder): si el parseo de hoy
+ * devuelve menos partes que el de ayer, las posiciones altas se quedan con
+ * datos viejos (p. ej. una canción duplicada). Esta limpieza acota el programa
+ * a lo que WOL trae ahora.
+ *
+ * Seguridad:
+ *  - Solo toca el rango de WOL (sortOrder >= keepCount y < CBS_READER_SORT_ORDER),
+ *    así que nunca borra las partes estándar (presidente y oraciones usan
+ *    sentinelas negativos; lector 8000; oración final 9000).
+ *  - Respeta cualquier ítem que ya tenga una asignación enlazada.
+ */
+async function removeStaleItems(weekId: string, keepCount: number): Promise<number> {
+  const stale = await prisma.meetingProgramItem.findMany({
+    where: {
+      meetingWeekId: weekId,
+      sortOrder: { gte: keepCount, lt: CBS_READER_SORT_ORDER },
+      assignments: { none: {} },
+    },
+    select: { id: true },
+  });
+  if (stale.length === 0) return 0;
+  await prisma.meetingProgramItem.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
+  return stale.length;
+}
+
 async function finalizeImport(
   weekId: string,
   items: ParsedProgramItem[],
@@ -293,6 +321,10 @@ async function finalizeImport(
   }
 
   await persistItems(weekId, items, urls.programUrl ?? "");
+  // Si una importación anterior dejó MÁS partes que la actual, las sobrantes
+  // quedarían huérfanas (el upsert es por sortOrder y no borra nada). Se limpian
+  // para que el programa refleje exactamente lo que trae WOL hoy.
+  await removeStaleItems(weekId, items.length);
   // Fase 3: crear partes estándar que no vienen de WOL (presidente, oraciones).
   await ensureStandardMeetingParts(weekId);
   // Lector del Estudio Bíblico de la Congregación (si la semana tiene EBC).

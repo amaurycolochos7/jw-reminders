@@ -273,7 +273,7 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
     );
     const smmItems = programItems
       .filter((p: any) => p.section === "APPLY_YOURSELF" || (
-        ["START_CONVERSATION", "MAKE_RETURN_VISIT", "BIBLE_STUDY", "EXPLAIN_BELIEFS", "MAKE_DISCIPLES", "TALK"].includes(p.assignmentType)
+        ["START_CONVERSATION", "MAKE_RETURN_VISIT", "BIBLE_STUDY", "EXPLAIN_BELIEFS", "MAKE_DISCIPLES", "TALK", "AUDIENCE_ANALYSIS"].includes(p.assignmentType)
         && p.section !== "TREASURES" && p.section !== "LIVING_AS_CHRISTIANS"
       ))
       .sort((a: any, b: any) => a.sortOrder - b.sortOrder);
@@ -363,12 +363,14 @@ export async function fetchS140Data(monthlyScheduleId: string): Promise<S140Expo
 
       applyYourself: smmItems.map((item: any, idx: number) => {
         const assignment = smmAssignments[idx];
+        const needsCompanion = Boolean(item.requiresAssistant);
         return {
           title: item.title,
           duration: formatDuration(item.durationMinutes),
           reference: item.reference || "",
           student: personName(assignment?.assigned),
-          assistant: personName(assignment?.companion),
+          // ponytail: discursos y lectura no llevan acompañante — dejar vacío
+          assistant: needsCompanion ? personName(assignment?.companion) : "",
         };
       }),
 

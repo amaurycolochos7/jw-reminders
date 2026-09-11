@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { StatusDot } from '@/components/StatusDot'
+import { isLockedPath } from '@/lib/locked-features'
 
 // ─── Types ───────────────────────────────────────────────
 type Severity = 'critical' | 'warning' | 'info'
@@ -290,6 +291,10 @@ function StatusCard({ icon, title, value, subtitle, dot, href }: { icon: React.R
       <p className="text-xs text-graphite leading-relaxed">{subtitle}</p>
     </div>
   )
+  // Apartado bloqueado: la tarjeta se sigue mostrando, pero no enlaza.
+  if (href && isLockedPath(href)) {
+    return <div title="Apartado bloqueado" className="cursor-not-allowed opacity-60">{content}</div>
+  }
   if (href) return <Link href={href}>{content}</Link>
   return content
 }
@@ -306,6 +311,8 @@ function MetricTile({ label, value, color }: { label: string; value: number; col
 }
 
 function QuickAction({ href, title, desc, icon }: { href: string; title: string; desc: string; icon: React.ReactNode }) {
+  // Los accesos rapidos a apartados bloqueados no se muestran.
+  if (isLockedPath(href)) return null
   return (
     <Link href={href} className="flex items-start gap-4 rounded-2xl border border-silver-mist/50 bg-white p-4 hover:border-azure/25 hover:shadow-sm transition-all group">
       <div className="w-10 h-10 rounded-xl bg-azure/8 flex items-center justify-center text-azure flex-shrink-0 group-hover:bg-azure/12 transition-colors">{icon}</div>

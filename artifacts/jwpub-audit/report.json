@@ -1,0 +1,133 @@
+{
+  "fecha": "2026-09-03",
+  "app_version": "15.9.36.0",
+  "estado": "CERRADO - Causa raiz confirmada por A/B limpio",
+  "muestras_oficiales": 2,
+  "archivos": {
+    "pt14_S.jwpub": {
+      "sha256": "f19fc396fbf21ab0211cc032020449aba12abc291a594c20b53a600e7913a799",
+      "tam": 1773916,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175
+    },
+    "mwb_S_202611.jwpub": {
+      "sha256": "b51c1f20ff77fe182208bf0757ae5afa538fe7a9926418d4bb92629695497f11",
+      "tam": 3943212,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175
+    },
+    "pt14z_S.jwpub": {
+      "sha256": "259e50b063051edb95bd354fa0d1a5a563ab4cd7febea272a7499b800bbe68cd",
+      "tam": 1778744,
+      "comentario": 0,
+      "jasper": false,
+      "bloque_bytes": null
+    },
+    "mlsalon_S.jwpub": {
+      "sha256": "0b4ace3f862e45d4803ba4e58c41e8a8b50334bf0d8b4a9d211c2c96c2ce1d03",
+      "tam": 734411,
+      "comentario": 0,
+      "jasper": false,
+      "bloque_bytes": null
+    }
+  },
+  "dll_JWLibrary": {
+    "JASPER": 1,
+    "Ed25519": 2,
+    "VerifySignature": 1,
+    "InvalidSignature": 3,
+    "ECDSA": "presente",
+    "PublicKey": "presente"
+  },
+  "bloque_jasper": {
+    "total": 175,
+    "estructura": {
+      "0x00": "ab",
+      "0x01-0x04": "version BE=2",
+      "0x05-0x64": "96B alta entropia",
+      "0x65-0x6e": "10B ceros fijos",
+      "0x6f-0xae": "64B (tam. firma Ed25519)"
+    }
+  },
+  "html2jwpub": {
+    "commit": "a71411d 2025-07-24",
+    "escribe_comentario_zip": false,
+    "firma": null,
+    "probado_en_15.9.36": false
+  },
+  "variantes": [
+    {
+      "archivo": "TEST-00-BITCOPY.jwpub",
+      "sha256": "f19fc396fbf21ab0211cc032020449aba12abc291a594c20b53a600e7913a799",
+      "tam": 1773916,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175,
+      "import_jwlibrary": "pendiente"
+    },
+    {
+      "archivo": "TEST-01-NOCOMMENT.jwpub",
+      "sha256": "00c325ba031edb0453b9ce6049a9865f23a5c688be8d7a757d1a4e1c404127c8",
+      "tam": 1773673,
+      "comentario": 0,
+      "jasper": false,
+      "bloque_bytes": null,
+      "import_jwlibrary": "pendiente"
+    },
+    {
+      "archivo": "TEST-02-JASPER-BITFLIP.jwpub",
+      "sha256": "38c8e882ab6f58f115adf6331fe6cf6e0fe523c2c0fd0bb56945679c7890c0da",
+      "tam": 1773916,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175,
+      "import_jwlibrary": "pendiente"
+    },
+    {
+      "archivo": "TEST-03-JASPER-RANDOM.jwpub",
+      "sha256": "452aec893bacc61351f0a3d8386c0c3683bfc47a959a3046638528fb0f2d4259",
+      "tam": 1773916,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175,
+      "import_jwlibrary": "pendiente"
+    },
+    {
+      "archivo": "TEST-04-PAYLOAD-BITFLIP.jwpub",
+      "sha256": "c600cf9663c9a1b1291f05dc5164b65e360e5bd54bd09f30927dc7d1dc4e4f61",
+      "tam": 1773916,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175,
+      "import_jwlibrary": "pendiente"
+    },
+    {
+      "archivo": "TEST-06-ZIP-METADATA.jwpub",
+      "sha256": "9f65df5c08abb4b89a05f77e117df4337cf651d98d77c22b94df847fb97e2cb1",
+      "tam": 1773916,
+      "comentario": 243,
+      "jasper": true,
+      "bloque_bytes": 175,
+      "import_jwlibrary": "pendiente"
+    },
+    {
+      "archivo": "TEST-07-COMMENT-TRUNC.jwpub",
+      "sha256": "069d83ed9f1b305257691f3d323cd1d4ee87ffed2d15beb074e5a4c5baee6aee",
+      "tam": 1773793,
+      "comentario": 120,
+      "jasper": true,
+      "bloque_bytes": -1,
+      "import_jwlibrary": "pendiente"
+    }
+  ],
+  "pruebas_importacion": {
+    "TEST-00-BITCOPY": "INSTALA (firma valida, pt14 desinstalado)",
+    "TEST-01-NOCOMMENT": "FALLA (sin firma) - firma OBLIGATORIA",
+    "TEST-03-JASPER-RANDOM": "FALLA (marca+longitud OK, bloque aleatorio) - contenido de la firma se VERIFICA"
+  },
+  "hallazgo": "La deteccion de duplicados (identidad/version) ocurre antes que la verificacion de firma en la ruta de importacion",
+  "causa_raiz": "JW Library 15.9.36.0 verifica criptograficamente una firma del editor (bloque JASPER de 175B, prob. Ed25519) al importar. Sin la clave privada de Watchtower no es posible generar un .jwpub instalable. Ningun campo/tabla lo sustituye.",
+  "viabilidad_jwpub_propio": false
+}

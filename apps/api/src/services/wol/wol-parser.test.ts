@@ -54,6 +54,17 @@ test("mapWolTitleToType mapea a los tipos existentes", () => {
   assert.equal(mapWolTitleToType("Discurso"), "TALK");
 });
 
+test("mapWolTitleToType: 'curso bíblico' solo cuenta como título propio (anclado)", () => {
+  // Título real de la parte → sí clasifica como curso bíblico.
+  assert.equal(mapWolTitleToType("Curso bíblico"), "BIBLE_STUDY");
+  // Instrucción del auditorio que menciona 'curso bíblico' al final → NO es una
+  // asignación de curso bíblico (antes generaba un item basura sin duración).
+  assert.equal(
+    mapWolTitleToType("Haga una lista de personas a las que le gustaría ofrecerles un curso bíblico"),
+    "OTHER",
+  );
+});
+
 // ── Parser: caso base del spec ──
 const SAMPLE = `
 Lectura de la Biblia
@@ -228,6 +239,99 @@ test("REGRESIÓN SMM: el caso base sigue dando exactamente las mismas 4 partes",
   );
   // Ninguna parte SMM se marca informativa.
   assert.ok(items.every((i) => i.requiresAssignee !== false));
+});
+
+test("AUDIENCE_ANALYSIS: parte nueva de SMM '¿Qué diría?' (Análisis con el auditorio)", () => {
+  const smm = `
+SEAMOS MEJORES MAESTROS
+4. Empiece conversaciones (3 mins.) DE CASA EN CASA. lmd lección 1.
+5. Haga revisitas (4 mins.) DE CASA EN CASA. lmd lección 3.
+6. ¿Qué diría? (6 mins.) Análisis con el auditorio. DE CASA EN CASA. Repase brevemente Una obra de amor lección 2 punto 5.
+`;
+  const { items } = parseWolProgram(smm);
+  const analisis = items.find((i) => i.assignmentType === "AUDIENCE_ANALYSIS");
+  assert.ok(analisis, "debe emitir la parte de análisis con el auditorio");
+  assert.equal(analisis!.itemNumber, 6);
+  assert.equal(analisis!.title, "¿Qué diría?");
+  assert.equal(analisis!.durationMinutes, 6);
+  assert.equal(analisis!.section, "APPLY_YOURSELF");
+  assert.equal(analisis!.requiresAssistant, false); // la dirige un solo hermano
+  // Las partes de estudiante previas se conservan intactas.
+  assert.equal(items.filter((i) => i.assignmentType === "START_CONVERSATION").length, 1);
+  assert.equal(items.filter((i) => i.assignmentType === "MAKE_RETURN_VISIT").length, 1);
+});
+
+test("FALSO POSITIVO: instrucción con 'curso bíblico' sin duración NO genera asignación", () => {
+  const smm = `
+SEAMOS MEJORES MAESTROS
+6. Haga revisitas (5 mins.) DE CASA EN CASA. lmd lección 3.
+Haga una lista de personas a las que le gustaría ofrecerles un curso bíblico.
+Respuesta
+`;
+  const { items } = parseWolProgram(smm);
+  // Antes esta línea instructiva se emitía como BIBLE_STUDY con duración nula
+  // (rompía la semana). Ahora no debe existir ninguna asignación así.
+  assert.equal(items.filter((i) => i.assignmentType === "BIBLE_STUDY").length, 0);
+  assert.ok(items.every((i) => i.durationMinutes !== null), "ningún item queda sin duración");
+});
+
+test("Guía desde noviembre 2026: los títulos en forma 'nosotros' siguen siendo las mismas partes", () => {
+  // Texto real de la semana 2026-11-02. Antes, "Empecemos conversaciones" y
+  // "Hagamos discípulos" no coincidían con ningún título conocido y las partes
+  // 4 y 6 desaparecían del programa SIN ninguna advertencia.
+  const { items, warnings } = parseWolProgram(`
+SEAMOS MEJORES MAESTROS
+4. Empecemos conversaciones (3 mins.) DE CASA EN CASA. Enseña una verdad bíblica ( lmd lección 1 punto 5 ).
+5. Hagamos revisitas (4 mins.) DE CASA EN CASA. Visitas a alguien para conversar ( lmd lección 9 punto 3 ).
+6. Hagamos discípulos (5 mins.) lff lección 20 punto 4 ( lmd lección 11 punto 4 ).
+`);
+  assert.deepEqual(
+    items.map((i) => [i.itemNumber, i.assignmentType]),
+    [
+      [4, "START_CONVERSATION"],
+      [5, "MAKE_RETURN_VISIT"],
+      [6, "MAKE_DISCIPLES"],
+    ],
+  );
+  assert.deepEqual(warnings, []);
+  // Son partes de estudiante: llevan acompañante igual que su forma antigua.
+  assert.ok(items.every((i) => i.requiresAssistant));
+});
+
+test("HUECO: una parte numerada que no se reconoce avisa en vez de desaparecer", () => {
+  const { items, warnings } = parseWolProgram(`
+SEAMOS MEJORES MAESTROS
+4. Empiece conversaciones (3 mins.) DE CASA EN CASA. lmd lección 1.
+5. Título totalmente nuevo que el parser no conoce (4 mins.) DE CASA EN CASA.
+`);
+  // La parte 5 no se pierde en silencio: la semana queda marcada para revisión.
+  assert.equal(items.some((i) => i.itemNumber === 5), false);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /parte 5 del programa/);
+});
+
+test("FALSO POSITIVO: una frase del cuerpo que menciona 'discurso' NO es una parte", () => {
+  // Texto real de la semana 2026-03-23: viñeta dentro de una parte de NVC.
+  const { items, warnings } = parseWolProgram(`
+NUESTRA VIDA CRISTIANA
+7. Aproveche bien el día más importante del año (15 mins.) Análisis con el auditorio.
+Participe al máximo en la campaña invitando a conocidos, familiares y personas del territorio a asistir al discurso especial y a la Conmemoración.
+`);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].assignmentType, "CHRISTIAN_LIVING");
+  assert.equal(items.filter((i) => i.assignmentType === "TALK").length, 0);
+  assert.ok(items.every((i) => i.durationMinutes !== null));
+  assert.deepEqual(warnings, []);
+});
+
+test("Semana sin reunión normal (solo cánticos) se marca para revisión", () => {
+  const { items, warnings } = parseWolProgram(`
+CANCIÓN 76 Cuéntame lo que sientes
+CANCIÓN 160 ¡Buenas noticias!
+`);
+  assert.equal(items.length, 2);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /ninguna parte asignable/);
 });
 
 test("TREASURES_TALK: captura el título variable del punto 1 (10 min)", () => {

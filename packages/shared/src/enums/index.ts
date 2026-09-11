@@ -22,6 +22,7 @@ export enum AssignmentType {
   EXPLAIN_BELIEFS = "EXPLAIN_BELIEFS",
   MAKE_DISCIPLES = "MAKE_DISCIPLES",
   TALK = "TALK",
+  AUDIENCE_ANALYSIS = "AUDIENCE_ANALYSIS",
   OTHER = "OTHER",
   // Fase 3: resto de la reunión (aditivo, no altera SMM).
   CHAIRMAN = "CHAIRMAN",

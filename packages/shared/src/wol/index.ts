@@ -145,6 +145,11 @@ const REQUIRES_ASSISTANT_TITLES = [
   "curso biblico",
   "revisita",
   "primera conversacion",
+  // Forma "nosotros" de la guía desde noviembre de 2026 (mismas partes).
+  "empecemos conversaciones",
+  "hagamos revisitas",
+  "hagamos discipulos",
+  "expliquemos nuestras creencias",
 ].map(normalizeTitle);
 
 /**
@@ -180,11 +185,15 @@ export function mapWolTitleToType(title: string): AssignmentTypeId {
   const n = normalizeTitle(title);
   // ─── SMM + Lectura + Discurso (sin cambios) ───
   if (n.includes("lectura de la biblia")) return "BIBLE_READING";
-  if (n.includes("empiece conversaciones") || n.includes("primera conversacion")) return "START_CONVERSATION";
+  // Cada parte admite las dos formas que usa la guía: mandato ("Empiece...") y
+  // "nosotros" ("Empecemos..."), que es la que se estrena en noviembre de 2026.
+  if (n.includes("empiece conversaciones") || n.includes("empecemos conversaciones") || n.includes("primera conversacion")) return "START_CONVERSATION";
   if (n.includes("haga revisitas") || n === "revisita" || n.includes("revisita")) return "MAKE_RETURN_VISIT";
-  if (n.includes("curso biblico")) return "BIBLE_STUDY";
-  if (n.includes("explique sus creencias")) return "EXPLAIN_BELIEFS";
-  if (n.includes("haga discipulos")) return "MAKE_DISCIPLES";
+  // "curso biblico" solo cuenta como TÍTULO propio de la parte (no cuando aparece
+  // dentro de una instrucción como "Haga una lista... ofrecerles un curso bíblico").
+  if (n.startsWith("curso biblico")) return "BIBLE_STUDY";
+  if (n.includes("explique sus creencias") || n.includes("expliquemos nuestras creencias")) return "EXPLAIN_BELIEFS";
+  if (n.includes("haga discipulos") || n.includes("hagamos discipulos")) return "MAKE_DISCIPLES";
   if (n.includes("discurso")) return "TALK";
   // ─── Fase 3: resto de la reunión ───
   if (n.includes("cancion") || n.includes("cantico")) return "SONG";

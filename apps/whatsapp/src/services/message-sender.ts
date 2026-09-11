@@ -128,9 +128,20 @@ export async function sendMessage(
     const chatId = numberId._serialized;
     const result = await client.sendMessage(chatId, message);
     const messageId = result?.id?.id;
+    // Si WhatsApp NO devolvió un messageId, el envío no está confirmado (suele
+    // pasar con sesiones inestables / "detached Frame"). No afirmamos SENT: se
+    // marca UNCERTAIN (sin auto-retry) para no dar falsos "enviado".
+    if (!messageId) {
+      await prisma.whatsappOutbox.update({
+        where: { idempotencyKey: key },
+        data: { status: "UNCERTAIN", error: "WhatsApp no devolvió messageId (envío no confirmado)" },
+      }).catch(() => undefined);
+      console.warn(`[WhatsApp] Envío SIN messageId a ${maskPhone(number)} → UNCERTAIN key=${key.slice(0, 12)}…`);
+      return { success: false, outcome: "UNCERTAIN", error: "WhatsApp no devolvió messageId (envío no confirmado)" };
+    }
     await prisma.whatsappOutbox.update({
       where: { idempotencyKey: key },
-      data: { status: "SENT", providerMessageId: messageId ?? null, sentAt: new Date(), error: null },
+      data: { status: "SENT", providerMessageId: messageId, sentAt: new Date(), error: null },
     }).catch(() => undefined);
     console.log(`[WhatsApp] Enviado a ${maskPhone(number)} (msgId=${messageId}) key=${key.slice(0, 12)}…`);
     return { success: true, outcome: "SENT", messageId };

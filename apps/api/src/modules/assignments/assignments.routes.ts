@@ -24,6 +24,7 @@ const createSchema = z.object({
     "EXPLAIN_BELIEFS",
     "MAKE_DISCIPLES",
     "TALK",
+    "AUDIENCE_ANALYSIS",
     "OTHER",
     "CHAIRMAN",
     "OPENING_COMMENTS",
