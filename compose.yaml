@@ -32,10 +32,13 @@ services:
       TEST_MODE: ${TEST_MODE:-true}
       TEST_PHONE: ${TEST_PHONE:-5219611234567}
       # Contraseña del usuario "admin". El seed la aplica en cada arranque: si se
-      # define, actualiza la del admin existente; si se deja vacía, no la toca.
-      # El valor se configura en el panel de Dokploy, NUNCA aquí: el repositorio
-      # es público.
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # define, actualiza la del admin existente.
+      #
+      # ATENCIÓN: el valor por defecto "admin" es PROVISIONAL y este repositorio
+      # es público, así que esa contraseña es de dominio público. Definir
+      # ADMIN_PASSWORD en el panel de Dokploy la sobrescribe sin tocar código;
+      # hacerlo es lo primero que debería ocurrir aquí.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
     depends_on:
       db:
         condition: service_healthy
