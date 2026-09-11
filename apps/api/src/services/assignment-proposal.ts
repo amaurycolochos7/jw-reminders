@@ -212,6 +212,32 @@ export function buildAssignmentProposal(input: {
 
       const assignSalt = salt(week.weekId, slot.assignmentNumber);
 
+      // Partes que siempre acaba haciendo el presidente (oración inicial,
+      // palabras de introducción y de conclusión): se le asignan YA, en vez de
+      // dárselas a otro y sobrescribirlas después en `autofillOpeningPartsFromChairman`.
+      //
+      // El resultado visible es el mismo, pero el reparto deja de mentirse a sí
+      // mismo: antes estas tres partes se contaban a tres hermanos distintos que
+      // luego las perdían en silencio, mientras el presidente acumulaba cuatro
+      // partes que el equilibrado nunca veía. De ahí que unos salieran con 13
+      // participaciones al mes y otros con 4.
+      if (isChairmanAutofillType(slot.assignmentType) && weekChairmanId) {
+        liveCount[weekChairmanId] = (liveCount[weekChairmanId] || 0) + 1;
+        assignments.push({
+          weekId: week.weekId,
+          assignmentNumber: slot.assignmentNumber,
+          section: slot.section,
+          assignmentType: slot.assignmentType,
+          title: slot.title,
+          durationMinutes: slot.durationMinutes,
+          room: slot.room,
+          assignedPublisherId: weekChairmanId,
+          companionPublisherId: null,
+          programItemId: slot.programItemId ?? null,
+        });
+        continue;
+      }
+
       // Pick assigned publisher (respecting capability + gender rules for this part).
       let slotEligible = assignable.filter((p) =>
         isPublisherEligibleForAssignment(p, slot.assignmentType, "ASSIGNEE"),
@@ -301,7 +327,107 @@ export function buildAssignmentProposal(input: {
   // de conclusión y oración final) toman el mismo publicador que preside.
   autofillOpeningPartsFromChairman(assignments);
 
+  // ─── Oración final: para el nombrado con menos participación esa semana ─────
+  // Va DESPUÉS del autorrelleno a propósito: hasta que el presidente no absorbe
+  // sus partes, la carga real de cada hermano en la semana no está decidida.
+  balanceClosingPrayer(assignments, input.publishers, input.history, warnings, seed);
+
   return { assignments, warnings };
+}
+
+/** Tope de participaciones semanales para poder recibir la oración final. */
+const CLOSING_PRAYER_MAX_WEEK_LOAD = 2;
+
+/**
+ * Reasigna la oración final de cada semana al hermano NOMBRADO (anciano o siervo
+ * ministerial) que menos participe esa semana.
+ *
+ * Motivo: el reparto general equilibra por MES, así que un hermano podía quedarse
+ * una semana entera sin ninguna parte mientras la oración final le tocaba a otro
+ * que ya tenía dos. Aquí se mira la semana concreta: primero los que no tienen
+ * nada, luego los de una, luego los de dos. Por encima de
+ * CLOSING_PRAYER_MAX_WEEK_LOAD no se asigna salvo que no quede nadie por debajo,
+ * en cuyo caso se elige al menos cargado y se avisa (dejar la parte vacía sería
+ * peor: el programa saldría incompleto).
+ *
+ * Empates: gana quien menos lleve en el mes, y si persisten, un hash estable.
+ * Muta `assignments` en su lugar.
+ */
+function balanceClosingPrayer(
+  assignments: ProposedAssignment[],
+  publishers: ProposalPublisher[],
+  history: ProposalHistory,
+  warnings: string[],
+  seed?: number,
+): void {
+  const appointed = publishers.filter(
+    (p) =>
+      (p.appointment === "ELDER" || p.appointment === "MINISTERIAL_SERVANT") &&
+      isPublisherEligibleForAssignment(p, "CLOSING_PRAYER", "ASSIGNEE"),
+  );
+  if (appointed.length === 0) return; // Sin nombrados elegibles no hay nada que reordenar.
+
+  const weekIds = [...new Set(assignments.map((a) => a.weekId))];
+  // Carga del mes, para desempatar entre quienes empaten en la semana.
+  const monthLoad = new Map<string, number>();
+  for (const a of assignments) {
+    monthLoad.set(a.assignedPublisherId, (monthLoad.get(a.assignedPublisherId) ?? 0) + 1);
+    if (a.companionPublisherId) {
+      monthLoad.set(a.companionPublisherId, (monthLoad.get(a.companionPublisherId) ?? 0) + 1);
+    }
+  }
+
+  // Veces que cada hermano ya ha hecho la oración final en este mes.
+  const prayerCount = new Map<string, number>();
+
+  for (const weekId of weekIds) {
+    const prayer = assignments.find((a) => a.weekId === weekId && a.assignmentType === "CLOSING_PRAYER");
+    if (!prayer) continue; // Esa semana no tiene oración final en el programa.
+
+    // Participaciones de la semana SIN contar la propia oración final, para que
+    // quien la tiene ahora no aparezca artificialmente más cargado que el resto.
+    const weekLoad = new Map<string, number>();
+    for (const a of assignments) {
+      if (a.weekId !== weekId || a === prayer) continue;
+      weekLoad.set(a.assignedPublisherId, (weekLoad.get(a.assignedPublisherId) ?? 0) + 1);
+      if (a.companionPublisherId) {
+        weekLoad.set(a.companionPublisherId, (weekLoad.get(a.companionPublisherId) ?? 0) + 1);
+      }
+    }
+
+    const ranked = [...appointed].sort((a, b) => {
+      // 1º la carga de ESTA semana: primero quien no tiene nada.
+      const byWeek = (weekLoad.get(a.id) ?? 0) - (weekLoad.get(b.id) ?? 0);
+      if (byWeek !== 0) return byWeek;
+      // 2º cuántas veces ya ha orado este mes, para que no se repita siempre el
+      // mismo cuando varios están igual de libres.
+      const byPrayers = (prayerCount.get(a.id) ?? 0) - (prayerCount.get(b.id) ?? 0);
+      if (byPrayers !== 0) return byPrayers;
+      // 3º la carga del mes (incluido el histórico).
+      const byMonth =
+        (monthLoad.get(a.id) ?? 0) + (history.assignedCount[a.id] ?? 0) -
+        ((monthLoad.get(b.id) ?? 0) + (history.assignedCount[b.id] ?? 0));
+      if (byMonth !== 0) return byMonth;
+      return hashStringToInt(`op|${seed ?? 0}|${a.id}`) - hashStringToInt(`op|${seed ?? 0}|${b.id}`);
+    });
+
+    const chosen = ranked[0];
+    const chosenLoad = weekLoad.get(chosen.id) ?? 0;
+    if (chosenLoad > CLOSING_PRAYER_MAX_WEEK_LOAD) {
+      warnings.push(
+        `Semana ${weekId}: todos los hermanos nombrados tienen más de ${CLOSING_PRAYER_MAX_WEEK_LOAD} participaciones; la oración final recae en ${chosen.fullName} (${chosenLoad}).`,
+      );
+    }
+
+    if (chosen.id !== prayer.assignedPublisherId) {
+      // El anterior deja de contar en el mes y el nuevo pasa a contar.
+      monthLoad.set(prayer.assignedPublisherId, (monthLoad.get(prayer.assignedPublisherId) ?? 1) - 1);
+      monthLoad.set(chosen.id, (monthLoad.get(chosen.id) ?? 0) + 1);
+      prayer.assignedPublisherId = chosen.id;
+    }
+    prayerCount.set(chosen.id, (prayerCount.get(chosen.id) ?? 0) + 1);
+    prayer.companionPublisherId = null;
+  }
 }
 
 /**

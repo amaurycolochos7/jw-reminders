@@ -351,6 +351,81 @@ test("autofillOpeningPartsFromChairman alinea inicio+conclusión con el presiden
 });
 
 
+// ─── Oración final: al nombrado con menos participación esa semana ───────────
+
+test("oración final: va al nombrado que no participa en nada esa semana", () => {
+  // El presidente absorbe 4 partes por el autorrelleno; "libre" no hace nada.
+  const publishers = [
+    pub("presi", "Presidente", { gender: "MALE", canBeChairman: true, appointment: "ELDER" }),
+    pub("libre", "Sin Partes", { gender: "MALE", canBeChairman: true, appointment: "MINISTERIAL_SERVANT" }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({
+    weeks: [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [], slots: openingSlots }],
+    publishers,
+    history: emptyHistory,
+  });
+  const chair = assignments.find((a) => a.assignmentType === "CHAIRMAN")!;
+  const closing = assignments.find((a) => a.assignmentType === "CLOSING_PRAYER")!;
+  // Quién preside lo decide el desempate; lo que importa es que la oración final
+  // recae en el OTRO, que esa semana se queda sin ninguna parte.
+  const elOtro = chair.assignedPublisherId === "presi" ? "libre" : "presi";
+  assert.equal(closing.assignedPublisherId, elOtro, "debe orar quien no tiene ninguna parte");
+  // Las partes del presidente ya no consumen a otros hermanos, así que con dos
+  // personas y cinco partes no debe faltar nadie.
+  assert.deepEqual(warnings, []);
+});
+
+test("oración final: nunca recae en el presidente si hay otro nombrado más libre", () => {
+  const publishers = Array.from({ length: 4 }, (_, i) =>
+    pub(`m${i}`, `Masc${i}`, { gender: "MALE", canBeChairman: true, appointment: "ELDER" }),
+  );
+  const { assignments } = buildAssignmentProposal({
+    weeks: [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [], slots: openingSlots }],
+    publishers,
+    history: emptyHistory,
+  });
+  const chair = assignments.find((a) => a.assignmentType === "CHAIRMAN")!;
+  const closing = assignments.find((a) => a.assignmentType === "CLOSING_PRAYER")!;
+  assert.notEqual(closing.assignedPublisherId, chair.assignedPublisherId);
+  // El presidente carga con 4 partes; quien ora debe estar por debajo del tope.
+  const carga = assignments.filter((a) => a.assignedPublisherId === closing.assignedPublisherId).length;
+  assert.ok(carga <= 2, `quien ora no debe pasar de 2 participaciones (tenía ${carga})`);
+});
+
+test("oración final: si el único nombrado ya está cargado, se asigna igual y se avisa", () => {
+  // Un solo nombrado: preside y acumula las 4 partes del autorrelleno.
+  const publishers = [
+    pub("solo", "Unico Nombrado", { gender: "MALE", canBeChairman: true, appointment: "ELDER" }),
+  ];
+  const { assignments, warnings } = buildAssignmentProposal({
+    weeks: [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [], slots: openingSlots }],
+    publishers,
+    history: emptyHistory,
+  });
+  const closing = assignments.find((a) => a.assignmentType === "CLOSING_PRAYER")!;
+  assert.equal(closing.assignedPublisherId, "solo", "la parte no se queda vacía");
+  assert.ok(
+    warnings.some((w) => /más de 2 participaciones/.test(w)),
+    "debe avisar de que se supera el tope",
+  );
+});
+
+test("oración final: no la recibe quien no está nombrado", () => {
+  const publishers = [
+    pub("presi", "Presidente", { gender: "MALE", canBeChairman: true, appointment: "ELDER" }),
+    pub("nombrado", "Nombrado", { gender: "MALE", canBeChairman: true, appointment: "MINISTERIAL_SERVANT" }),
+    // Puede presidir pero NO está nombrado: no debe orar.
+    pub("sinNombrar", "Sin Nombramiento", { gender: "MALE", canBeChairman: true, appointment: "NONE" }),
+  ];
+  const { assignments } = buildAssignmentProposal({
+    weeks: [{ weekId: "w1", existingNumbers: [], existingPublisherIds: [], slots: openingSlots }],
+    publishers,
+    history: emptyHistory,
+  });
+  const closing = assignments.find((a) => a.assignmentType === "CLOSING_PRAYER")!;
+  assert.notEqual(closing.assignedPublisherId, "sinNombrar");
+});
+
 // ─── Estudio Bíblico de la Congregación: lector ──────────────────────────────
 
 const cbsSlots = [
